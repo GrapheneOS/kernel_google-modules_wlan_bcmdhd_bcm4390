@@ -189,10 +189,6 @@ int cc_wd_reset = FALSE;
 extern unsigned int system_rev;
 #endif /* SUPPORT_MULTIPLE_BOARD_REV */
 
-#ifdef EWP_EDL
-extern int host_edl_support;
-#endif
-
 #ifdef BCMQT_HW
 extern int qt_dngl_timeout;
 #endif /* BCMQT_HW */
@@ -1721,6 +1717,17 @@ dhdpcie_bus_intstatus(dhd_bus_t *bus)
 }
 
 void
+dhdpcie_set_collect_fis(dhd_bus_t *bus)
+{
+#if defined(BOARD_HIKEY) || defined(CONFIG_X86)
+	if (CHIPTYPE(bus->sih->socitype) == SOCI_NCI) {
+		DHD_PRINT(("%s : Collect FIS dumps\n", __FUNCTION__));
+		bus->dhd->collect_fis = TRUE;
+	}
+#endif /* BOARD_HIKEY || CONFIG_X86 */
+}
+
+void
 dhdpcie_cto_recovery_handler(dhd_pub_t *dhd)
 {
 	dhd_bus_t *bus = dhd->bus;
@@ -1782,11 +1789,7 @@ dhdpcie_cto_recovery_handler(dhd_pub_t *dhd)
 #ifdef DHD_SSSR_DUMP
 			DHD_PRINT(("%s : Set collect_sssr as TRUE\n", __FUNCTION__));
 			bus->dhd->collect_sssr = TRUE;
-#if defined(BOARD_HIKEY) || defined(CONFIG_X86)
-			if (CHIPTYPE(bus->sih->socitype) == SOCI_NCI) {
-				bus->dhd->fis_enab_cto = TRUE;
-			}
-#endif /* BOARD_HIKEY || CONFIG_X86 */
+			dhdpcie_set_collect_fis(bus);
 #endif /* DHD_SSSR_DUMP */
 #ifdef DHD_SDTC_ETB_DUMP
 			if (bus->dhd->etb_dap_flush_supported) {
@@ -1810,7 +1813,7 @@ dhdpcie_cto_recovery_handler(dhd_pub_t *dhd)
 	/* do not set linkdown if FIS dump collection
 	 * is to be done for CTO
 	 */
-	if (!bus->dhd->fis_enab_cto) {
+	if (!bus->dhd->collect_fis) {
 		bus->is_linkdown = TRUE;
 	}
 	bus->dhd->hang_reason = HANG_REASON_PCIE_CTO_DETECT;
@@ -5126,6 +5129,7 @@ _dhdpcie_download_firmware(struct dhd_bus *bus)
 		if ((bcmerror = dhdpcie_download_code_file(bus, bus->fw_path))) {
 			DHD_ERROR(("%s:%d dongle image file download failed\n", __FUNCTION__,
 				__LINE__));
+			bcmerror = BCME_NORESOURCE;
 			goto err;
 		} else {
 			embed = FALSE;
@@ -5474,6 +5478,7 @@ dhdpcie_get_link_state(dhd_bus_t *bus)
 			}
 		} else {
 			DHD_ERROR(("%s: Failed to read armca7 reg !\n",	__FUNCTION__));
+			link_state = DHD_PCIE_WLAN_BP_DOWN;
 			goto exit;
 		}
 	} else {
@@ -5537,16 +5542,10 @@ dhd_validate_pcie_link_cbp_wlbp(dhd_bus_t *bus)
 		dhd_bus_dump_dar_registers(bus);
 #if defined(DHD_FW_COREDUMP)
 #ifdef DHD_SSSR_DUMP
-#ifdef OEM_ANDROID
 		DHD_PRINT(("%s : Set collect_sssr\n", __FUNCTION__));
 		bus->dhd->collect_sssr = TRUE;
-#endif /* OEM_ANDROID */
+		dhdpcie_set_collect_fis(bus);
 #endif /* DHD_SSSR_DUMP */
-		/* save core dump or write to a file */
-		if (bus->dhd->memdump_enabled) {
-			bus->dhd->memdump_type = DUMP_TYPE_READ_SHM_FAIL;
-			dhdpcie_mem_dump(bus);
-		}
 #endif /* DHD_FW_COREDUMP */
 	}
 	return;
@@ -6227,6 +6226,23 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 		goto exit;
 	}
 
+	if (bus->link_state != DHD_PCIE_ALL_GOOD) {
+		DHD_ERROR(("%s: Pcie link state(%d) not good\n",
+			__FUNCTION__, bus->link_state));
+#ifdef DHD_SSSR_DUMP
+		if (bus->dhd->collect_fis) {
+			DHD_PRINT(("FIS is set, collect it in memdump work\n"));
+			ret = BCME_OK;
+			goto sched_memdump;
+		} else
+#endif /* DHD_SSSR_DUMP */
+		{
+			DHD_ERROR(("%s: skip memdump\n", __FUNCTION__));
+			ret = BCME_ERROR;
+			goto exit;
+		}
+	}
+
 	/* Induce DB7 trap for below non-trap cases */
 	switch (dhdp->memdump_type) {
 		case DUMP_TYPE_RESUMED_ON_TIMEOUT:
@@ -6297,13 +6313,7 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 					/* For android collect FIS dumps */
 #ifdef DHD_SSSR_DUMP
 					dhdp->collect_sssr = TRUE;
-#if defined(BOARD_HIKEY) || defined(CONFIG_X86)
-					if (CHIPTYPE(bus->sih->socitype) == SOCI_NCI) {
-						DHD_PRINT(("%s : Collect FIS dumps\n",
-							__FUNCTION__));
-						dhdp->fis_enab_no_db7ack = TRUE;
-					}
-#endif /* BOARD_HIKEY || CONFIG_X86 */
+					dhdpcie_set_collect_fis(bus);
 #endif /* DHD_SSSR_DUMP */
 					if (timeout) {
 						collect_cbaon_dmps = TRUE;
@@ -6371,7 +6381,7 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 	 * collect FIS - this will have arm pc and nci wrapper regs anyway
 	 */
 #ifdef DHD_SSSR_DUMP
-	if (timeout && !dhdp->fis_enab_no_db7ack) {
+	if (timeout && !dhdp->collect_fis) {
 #else
 	if (timeout) {
 #endif /* DHD_SSSR_DUMP */
@@ -6392,6 +6402,10 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 		dhd_schedule_pktlog_dump(dhdp);
 #endif /* DHD_PKT_LOGGING && DHD_DUMP_FILE_WRITE_FROM_KERNEL */
 	}
+
+#ifdef DHD_SSSR_DUMP
+sched_memdump:
+#endif /* DHD_SSSR_DUMP */
 	dhd_schedule_memdump(dhdp, dhdp->soc_ram, dhdp->soc_ram_length);
 	/* buf, actually soc_ram free handled in dhd_{free,clear} */
 
@@ -8889,7 +8903,19 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			if (bcmerror) {
 				DHD_ERROR(("%s: dhd_bus_start: %d\n",
 					__FUNCTION__, bcmerror));
-				bcmerror = BCME_NOTUP;
+				/* NORESOURCE means oob irq init failed
+				 * NOMEM means host memory alloc failed
+				 * in these cases retain the error code
+				 * so that caller can take decision based
+				 * on it to not collect debug_dump
+				 * Because in such a case prot_init etc would
+				 * not have happened and iovars/ioctls to FW
+				 * should be avoided.
+				 */
+				if ((bcmerror != BCME_NORESOURCE) &&
+					(bcmerror != BCME_NOMEM)) {
+					bcmerror = BCME_NOTUP;
+				}
 				goto done;
 			}
 
@@ -16460,9 +16486,16 @@ dhdpcie_readshared(dhd_bus_t *bus)
 		(sh->flags2 & PCIE_SHARED2_HSCB) == PCIE_SHARED2_HSCB;
 
 #ifdef EWP_EDL
-	if (host_edl_support) {
-		bus->dhd->dongle_edl_support = (sh->flags2 & PCIE_SHARED2_EDL_RING) ? TRUE : FALSE;
-		DHD_PRINT(("Dongle EDL support: %u\n", bus->dhd->dongle_edl_support));
+	bus->dhd->dongle_edl_support = (sh->flags2 & PCIE_SHARED2_EDL_RING) ? TRUE : FALSE;
+	DHD_PRINT(("host_edl_mem_inited:%u Dongle EDL support: %u\n", bus->dhd->host_edl_mem_inited,
+		bus->dhd->dongle_edl_support));
+	if (bus->dhd->dongle_edl_support && !bus->dhd->host_edl_mem_inited) {
+		DHD_ERROR(("Dongle supports EDL but host allocation failed during module init\n"));
+		DHD_PRINT(("Retry Allocating EDL buffer\n"));
+		if (DHD_EDL_MEM_INIT(bus->dhd) != BCME_OK) {
+			DHD_ERROR(("EDL Alloc failed. Abort!!\n"));
+			return BCME_NOMEM;
+		}
 	}
 #endif /* EWP_EDL */
 
@@ -17316,8 +17349,7 @@ int dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 	 * reason, collect ewp init dumps
 	*/
 	if (ret == BCME_OK || ret == BCME_BADADDR ||
-		ret == BCME_NOMEM || ret == BCME_DATA_NOTFOUND ||
-		ret == BCME_UNSUPPORTED) {
+		ret == BCME_DATA_NOTFOUND || ret == BCME_UNSUPPORTED) {
 		if (bus->api.fw_rev >= PCIE_SHARED_VERSION_9) {
 		/* ewp hw new init sequence and ewp hw log collection
 		 * is supported only above ipc rev 9
@@ -20507,6 +20539,12 @@ dhdpcie_dump_oobr(dhd_pub_t *dhd, uint core_bmap, uint coreunit_bmap)
 	}
 
 	si_setcore(sih, curcore, 0);
+}
+
+bool
+dhd_bus_cto_triggered(dhd_pub_t *dhd)
+{
+	return dhd->bus->cto_triggered;
 }
 
 int

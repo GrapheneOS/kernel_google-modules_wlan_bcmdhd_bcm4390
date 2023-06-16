@@ -28,9 +28,6 @@ ifeq ($(KERNEL_SRC),)
   else
     BCMDHD_ROOT=$(srctree)/$(src)
   endif
-  $(warning : ** Regular in-tree build BCMDHD_ROOT=$(BCMDHD_ROOT)**)
-else
-  $(warning : ** out-of-tree Kbuild BCMDHD_ROOT=$(BCMDHD_ROOT)**)
 endif
 
 #####################
@@ -355,6 +352,8 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
 	DHDCFLAGS += -DDHD_TREAT_D3ACKTO_AS_LINKDWN
 	# Skip coredump for certain health check traps
 	DHDCFLAGS += -DDHD_SKIP_COREDUMP_ON_HC
+	# Skip coredump for older chip revs
+	DHDCFLAGS += -DDHD_SKIP_COREDUMP_OLDER_CHIPS
 endif
 endif
 
@@ -982,7 +981,7 @@ else ifneq ($(CONFIG_ARCH_HISI),)
         DHDCFLAGS += -DDHD_IOVAR_LOG_FILTER_DUMP
 	DHDCFLAGS += -DDHD_CAP_PLATFORM="\"hikey \""
         # Dongle init fail
-	DHDCFLAGS += -DPOWERUP_MAX_RETRY=3
+	DHDCFLAGS += -DPOWERUP_MAX_RETRY=0
 	DHDCFLAGS := $(filter-out -DSIMPLE_MAC_PRINT ,$(DHDCFLAGS))
 endif
 

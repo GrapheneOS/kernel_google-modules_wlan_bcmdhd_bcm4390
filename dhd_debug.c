@@ -1220,6 +1220,14 @@ dhd_dbg_logtrace_process_payload(dhd_pub_t *dhdp, char *data, uint datalen, dll_
 		if (!dhd_dbg_process_event_log_hdr(log_hdr, &prcd_log_hdr)) {
 			DHD_ERROR(("%s: Error while parsing event log header\n",
 				__FUNCTION__));
+			/* if the log hdr itself is improper, should not
+			 * trust rest of the contents of the header. Hence
+			 * proceeding to the next event log using the info
+			 * in this log hdr can prove to be dangerous.
+			 * So better to return rather than process the rest of
+			 * the event logs in the buffer.
+			 */
+			break;
 		}
 
 		/* skip zero padding at end of frame */

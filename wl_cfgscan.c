@@ -1495,13 +1495,14 @@ static u32
 wl_cfgscan_map_nl80211_scan_type(struct bcm_cfg80211 *cfg, struct cfg80211_scan_request *request)
 {
 	u32 scan_flags = 0;
+	dhd_pub_t *dhd = (dhd_pub_t *)cfg->pub;
 
 	if (!request) {
 		return scan_flags;
 	}
 
 	if (cfg->latency_mode &&
-		wl_is_sta_connected(cfg)) {
+		wl_is_sta_connected(cfg) && FW_SUPPORTED(dhd, sc)) {
 		WL_DBG_MEM(("latency mode on. force LP scan\n"));
 		scan_flags |= WL_SCANFLAGS_LOW_POWER_SCAN;
 		goto exit;
@@ -1513,7 +1514,7 @@ wl_cfgscan_map_nl80211_scan_type(struct bcm_cfg80211 *cfg, struct cfg80211_scan_
 	if (request->flags & NL80211_SCAN_FLAG_HIGH_ACCURACY) {
 		scan_flags |= WL_SCANFLAGS_HIGH_ACCURACY;
 	}
-	if (request->flags & NL80211_SCAN_FLAG_LOW_POWER) {
+	if ((request->flags & NL80211_SCAN_FLAG_LOW_POWER) && FW_SUPPORTED(dhd, sc)) {
 		scan_flags |= WL_SCANFLAGS_LOW_POWER_SCAN;
 	}
 	if (request->flags & NL80211_SCAN_FLAG_LOW_PRIORITY) {
@@ -2363,6 +2364,14 @@ wl_cfgscan_handle_scanbusy(struct bcm_cfg80211 *cfg, struct net_device *ndev, s3
 		 * value to cfg80211 stack
 		 */
 		scanbusy_err = -EAGAIN;
+	}
+
+	if (wl_get_drv_status_all(cfg, CSA_ACTIVE)) {
+		/* override error to EGAIN to avoid forcing panic as CSA can
+		 * take upto 25secs. Don't limit on number of scans in this case.
+		 */
+		scanbusy_err = -EAGAIN;
+		WL_ERR(("scan busy due to csa in progress\n"));
 	}
 
 	/* if continuous busy state, clear assoc type in FW by disassoc cmd */
@@ -6522,6 +6531,17 @@ static int wl_cfgscan_acs_do_apcs(struct net_device *dev,
 	if (parameter->scc_chspec) {
 		chosen = parameter->scc_chspec;
 		WL_INFORM_MEM(("sta connected case. chosen:0x%x\n", chosen));
+		if ((CHSPEC_BAND(chosen) == WL_CHANSPEC_BAND_5G) &&
+			((CHSPEC_BW(chosen) == WL_CHANSPEC_BW_320) ||
+			(CHSPEC_BW(chosen) == WL_CHANSPEC_BW_160))) {
+			/* max bw restricted to 80MHz */
+			if (wl_cfgscan_get_bw_chspec((chanspec_t *)&chosen, WL_CHANSPEC_BW_80)) {
+				WL_ERR(("bw config failed for chosen chspec\n"));
+				chosen = INVCHANSPEC;
+			}
+			WL_DBG_MEM(("5G AP restricted to 80Mhz. chosen:0x%x\n", chosen));
+
+		}
 		goto done2;
 	}
 
@@ -7147,6 +7167,8 @@ wl_acs_check_scc(struct bcm_cfg80211 *cfg, drv_acs_params_t *parameter,
 	chanspec_t sta_chanspec, int qty, uint32 *pList)
 {
 	bool scc = FALSE;
+	chanspec_t cur_chanspec = INVCHANSPEC;
+	s32 ret = 0;
 
 	if (!(parameter->freq_bands & CHSPEC_TO_WLC_BAND(sta_chanspec))) {
 		return scc;
@@ -7179,9 +7201,17 @@ wl_acs_check_scc(struct bcm_cfg80211 *cfg, drv_acs_params_t *parameter,
 #endif /* DHD_ACS_CHECK_SCC_2G_ACTIVE_CH */
 
 	if (scc == TRUE) {
-		parameter->scc_chspec = sta_chanspec;
-		parameter->freq_bands = CHSPEC_TO_WLC_BAND(sta_chanspec);
-		WL_INFORM_MEM(("SCC case, ACS pick up STA chanspec:0x%x\n", sta_chanspec));
+		cur_chanspec = sta_chanspec;
+
+		ret = wl_filter_restricted_subbands(cfg, bcmcfg_to_prmry_ndev(cfg), &cur_chanspec);
+		if (ret || !wf_chspec_valid(cur_chanspec)) {
+			scc = FALSE;
+		} else {
+			parameter->scc_chspec = cur_chanspec;
+			parameter->freq_bands = CHSPEC_TO_WLC_BAND(parameter->scc_chspec);
+			WL_INFORM_MEM(("SCC case, ACS pick up STA chanspec:0x%x\n",
+				parameter->scc_chspec));
+		}
 	}
 	return scc;
 }
@@ -7575,10 +7605,11 @@ wl_is_channel_dynamic(struct bcm_cfg80211 *cfg, chanspec_t in_chspec)
 {
 	u16 list_count;
 	u8 *list = NULL;
-	int i;
+	int i, j;
+	u8 chan_array[MAX_20MHZ_CHANNELS] = {0};
 	u32 chaninfo = 0;
 	chanspec_t chspec;
-	u32 freq, in_freq;
+	u32 in_chan_band;
 	bool dyn_indoor = !!(cfg->dyn_chan_policy & DYN_CHAN_POLICY_INDOOR);
 	bool dyn_dfs = !!(cfg->dyn_chan_policy & DYN_CHAN_POLICY_DFS);
 
@@ -7590,8 +7621,10 @@ wl_is_channel_dynamic(struct bcm_cfg80211 *cfg, chanspec_t in_chspec)
 		return -EINVAL;
 	}
 
-	in_freq = wl_channel_to_frequency(wf_chspec_ctlchan((chanspec_t)in_chspec),
-			CHSPEC_BAND((chanspec_t)in_chspec));
+	in_chan_band = CHSPEC_BAND(in_chspec);
+	WL_DBG(("dfs:%d indoor:%d chan_cnt:%d in_band:%d\n",
+			dyn_dfs, dyn_indoor, dtoh32(list_count), in_chan_band));
+	wf_get_all_ext(in_chspec, chan_array);
 	for (i = 0; i < dtoh32(list_count); i++) {
 		chspec = (chanspec_t)dtoh32
 			(((wl_chanspec_list_v1_t *)list)->chspecs[i].chanspec);
@@ -7599,20 +7632,31 @@ wl_is_channel_dynamic(struct bcm_cfg80211 *cfg, chanspec_t in_chspec)
 			(((wl_chanspec_list_v1_t *)list)->chspecs[i].chaninfo);
 		chspec = wl_chspec_driver_to_host(chspec);
 
-		INDOOR_DBG(("sta_chanspec:%x chspec:%x\n", in_chspec, chspec));
-		freq = wl_channel_to_frequency(wf_chspec_ctlchan((chanspec_t)chspec),
-				CHSPEC_BAND((chanspec_t)chspec));
-		/* compare incoming freq against current supported channel list flags */
-		if (freq == in_freq) {
-			INDOOR_DBG(("chspec:%x chaninfo:%x indoor_p:%d dfs_p:%d indoor:%d "
-				"dfs:%d passive:%d\n", chspec, chaninfo, dyn_indoor, dyn_dfs,
-				((chaninfo & WL_CHAN_INDOOR_ONLY) ? 1 : 0),
-				((chaninfo & WL_CHAN_RADAR) ? 1 : 0),
-				((chaninfo & WL_CHAN_PASSIVE) ? 1 : 0)));
-			if (((chaninfo & WL_CHAN_INDOOR_ONLY) &&
-				(dyn_indoor)) || ((chaninfo & WL_CHAN_RADAR) && dyn_dfs)) {
-				WL_DBG(("indoor or RADAR channel\n"));
-				return TRUE;
+		if ((in_chan_band == CHSPEC_BAND(chspec)) &&
+				(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_20)) {
+			for (j = 0; j < MAX_20MHZ_CHANNELS; j++) {
+				if (!chan_array[j]) {
+					/* if there are no more subband channels, exit the loop */
+					break;
+				}
+				WL_DBG(("sta_chanspec:%x chspec:%x channel:%d band:%d bw:%d\n",
+					in_chspec, chspec, chan_array[j],
+					CHSPEC_BAND(chspec), CHSPEC_BW(chspec)));
+				if (chan_array[j] == CHSPEC_CHANNEL(chspec)) {
+					/* if subband channel matches, check flags */
+					WL_DBG(("overlapping chspec. chspec:%x chaninfo:%x\n",
+						chspec, chaninfo));
+					if (((chaninfo & WL_CHAN_INDOOR_ONLY) && (dyn_indoor)) ||
+						((chaninfo & WL_CHAN_RADAR) && dyn_dfs)) {
+						WL_INFORM_MEM(("chspec:%x chaninfo:%x indr_p:%d"
+							"dfs_p:%d indoor:%d dfs:%d passive:%d\n",
+							chspec, chaninfo, dyn_indoor, dyn_dfs,
+							((chaninfo & WL_CHAN_INDOOR_ONLY) ? 1 : 0),
+							((chaninfo & WL_CHAN_RADAR) ? 1 : 0),
+							((chaninfo & WL_CHAN_PASSIVE) ? 1 : 0)));
+						return TRUE;
+					}
+				}
 			}
 		}
 	}
@@ -7648,7 +7692,7 @@ wl_cfgscan_update_dynamic_channels(struct bcm_cfg80211 *cfg,
 			/* MLO case, check for each link chanspec */
 			for (i = 0; i < MAX_MLO_LINK; i++) {
 				perlink = &netinfo->mlinfo.links[i];
-				WL_DBG_MEM(("check chan for indoor/radar:%x\n", perlink->chspec));
+				WL_DBG(("check for indoor/radar:0x%x\n", perlink->chspec));
 				if (perlink->chspec &&
 						wl_is_channel_dynamic(cfg, perlink->chspec)) {
 					dynamic_channel_found = TRUE;
@@ -7657,7 +7701,7 @@ wl_cfgscan_update_dynamic_channels(struct bcm_cfg80211 *cfg,
 			}
 		} else {
 			sta_chanspec = (chanspec_t *)wl_read_prof(cfg, ndev, WL_PROF_CHAN);
-			WL_DBG_MEM(("check sta channel for indoor/radar:%x\n", *sta_chanspec));
+			WL_DBG(("check for indoor/radar:0x%x\n", *sta_chanspec));
 			if ((sta_chanspec) && (wl_is_channel_dynamic(cfg, *sta_chanspec))) {
 				dynamic_channel_found = TRUE;
 			}
@@ -7691,3 +7735,26 @@ wl_cfgscan_update_dynamic_channels(struct bcm_cfg80211 *cfg,
 	return err;
 }
 #endif /* WL_DYNAMIC_CHAN_POLICY */
+
+s32
+wl_cfgscan_get_bw_chspec(chanspec_t *chspec, u32 bw)
+{
+	chanspec_t cur_chspec = *chspec;
+
+#ifdef WL_BW320MHZ
+	*chspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(cur_chspec),
+		bw, CHSPEC_BAND(cur_chspec), 0);
+#else
+	*chspec = wf_create_chspec_from_primary(wf_chspec_primary20_chan(cur_chspec),
+		bw, CHSPEC_BAND(cur_chspec));
+#endif /* WL_BW320MHZ */
+	if (!wf_chspec_valid(*chspec)) {
+		WL_ERR(("invalid chanspec\n"));
+		return BCME_ERROR;
+	}
+
+	WL_INFORM_MEM(("cur_chspec:%x new_chspec:0x%x BW:%d chan:%d\n",
+			cur_chspec, *chspec, bw,
+			wf_chspec_primary20_chan(*chspec)));
+	return BCME_OK;
+}

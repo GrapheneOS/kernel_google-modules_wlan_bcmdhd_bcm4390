@@ -6991,10 +6991,21 @@ wl_do_preassoc_ops(struct bcm_cfg80211 *cfg,
 		}
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0) || WL_MLO_HOST_CTRL */
 
-		if (mlo_enable && !wl_is_mlo_sec_supported(cfg, dev, sme)) {
-			mlo_enable = FALSE;
+		if (mlo_enable) {
+			if (!wl_is_mlo_sec_supported(cfg, dev, sme)) {
+				/* for non verified ML securities, attempt non ML */
+				mlo_enable = FALSE;
+			}
+#ifndef DISABLE_NON_ML_RETRY
+			else if (wl_cfgvif_prev_conn_fail(cfg, dev, sme)) {
+				/* If assoc/4way handshake falure is seen, subsequent
+				 * attempts, use non-ml
+				 */
+				WL_DBG_MEM(("prev assoc failed. attempt non-ml config\n"));
+				mlo_enable = FALSE;
+			}
+#endif /* DISABLE_NON_ML_RETRY */
 		}
-
 		wl_mlo_sta_config(cfg, dev, mlo_enable);
 	}
 #endif /* WL_MLO */
@@ -16079,7 +16090,7 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	s32 dtim_period;
 	size_t ie_len;
 	const u8 *ie;
-	const u8 *curbssid;
+	u8 *curbssid;
 	s32 err = 0;
 	struct wiphy *wiphy;
 	char *buf;
@@ -16106,17 +16117,20 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		return BCME_NOMEM;
 	}
 
+	if (!target_bssid) {
 #ifdef WL_MLO
-	WL_CFG_NET_LIST_SYNC_LOCK(&cfg->net_list_sync, flags);
-	mld_netinfo = _wl_get_netinfo_by_wdev(cfg, ndev->ieee80211_ptr);
-	if (mld_netinfo && mld_netinfo->mlinfo.num_links) {
-		/* copy for local use */
-		(void)memcpy_s(&mlinfo, sizeof(mlinfo), &mld_netinfo->mlinfo, sizeof(mlinfo));
-		ml_conn = TRUE;
-		num_links = mld_netinfo->mlinfo.num_links;
-	}
-	WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
+		WL_CFG_NET_LIST_SYNC_LOCK(&cfg->net_list_sync, flags);
+		mld_netinfo = _wl_get_netinfo_by_wdev(cfg, ndev->ieee80211_ptr);
+		if (mld_netinfo && mld_netinfo->mlinfo.num_links) {
+			/* copy for local use */
+			(void)memcpy_s(&mlinfo, sizeof(mlinfo),
+					&mld_netinfo->mlinfo, sizeof(mlinfo));
+			ml_conn = TRUE;
+			num_links = mld_netinfo->mlinfo.num_links;
+		}
+		WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
 #endif /* WL_MLO */
+	}
 
 	mutex_lock(&cfg->usr_sync);
 	for (index = 0; index < num_links; index++) {
@@ -16127,8 +16141,9 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		 * instance as even FW does not have peer link addr populated.
 		 */
 		if (target_bssid) {
-			WL_INFORM_MEM(("Update bssinfo for target bssid\n"));
 			curbssid = target_bssid;
+			WL_INFORM_MEM(("Update bssinfo for target bssid " MACDBG "\n",
+				MAC2STRDBG(curbssid)));
 		} else if (ml_conn) {
 #ifdef WL_MLO
 			linkinfo = &mlinfo.links[index];
@@ -16158,7 +16173,8 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		}
 		bi = (wl_bss_info_v109_t *)(buf + 4);
 		chspec = wl_chspec_driver_to_host(bi->chanspec);
-		WL_INFORM_MEM(("link_idx %d chanspec %x\n", link_idx, chspec));
+		WL_INFORM_MEM(("chanspec:0x%x\n band:%d chan:%d", chspec, CHSPEC_BAND(chspec),
+			wf_chspec_ctlchan(wl_chspec_driver_to_host(chspec))));
 		/* chanspec queried for ASSOCIATED BSSID needs to be valid */
 		if (!(target_bssid) && !wf_chspec_valid(chspec)) {
 			WL_ERR(("Invalid chanspec from get bss info %x\n", chspec));
@@ -16729,6 +16745,7 @@ wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	u8 *curbssid = wl_read_prof(cfg, ndev, WL_PROF_BSSID);
 	u32 event_type = ntoh32(e->event_type);
 	struct cfg80211_bss *bss = NULL;
+	u32 assoc_status = 0;
 #ifdef BCMDONGLEHOST
 	dhd_pub_t *dhdp;
 	dhdp = (dhd_pub_t *)(cfg->pub);
@@ -16820,6 +16837,10 @@ wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
 	}
 
+	/* update conn status before reporting */
+	assoc_status = (status == WLAN_STATUS_SUCCESS) ?
+		WL_PROF_ASSOC_SUCCESS : WL_PROF_ASSOC_FAIL;
+	wl_update_prof(cfg, ndev, NULL, &assoc_status, WL_PROF_ASSOC_STATUS);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))
 	if (wl_fillup_conn_resp_params(cfg, ndev, curbssid, &resp_params, sec, status) != BCME_OK) {
 		WL_ERR(("connect done resp_params update failure\n"));
@@ -17660,7 +17681,8 @@ static void wl_init_event_handler(struct bcm_cfg80211 *cfg)
 	cfg->evt_handler[WLC_E_NAN_CRITICAL] = wl_cfgnan_notify_nan_status;
 	cfg->evt_handler[WLC_E_NAN_NON_CRITICAL] = wl_cfgnan_notify_nan_status;
 #endif /* WL_NAN */
-	cfg->evt_handler[WLC_E_CSA_COMPLETE_IND] = wl_csa_complete_ind;
+	cfg->evt_handler[WLC_E_CSA_START_IND] = wl_cfgvif_csa_start_ind;
+	cfg->evt_handler[WLC_E_CSA_COMPLETE_IND] = wl_cfgvif_csa_complete_ind;
 	cfg->evt_handler[WLC_E_AP_STARTED] = wl_ap_start_ind;
 #ifdef CUSTOM_EVENT_PM_WAKE
 	cfg->evt_handler[WLC_E_EXCESS_PM_WAKE_EVENT] = wl_check_pmstatus;
@@ -19505,6 +19527,8 @@ static s32 wl_update_chan_param(struct net_device *dev, u32 cur_chspec, u32 chan
 		channel = chaninfo;
 	}
 
+	WL_TRACE(("channel:%d chaninfo:%x chspec:%x flags:%x\n",
+			cur_channel, channel, cur_chspec, band_chan->flags));
 	if (!err) {
 		if (channel & WL_CHAN_RADAR) {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 14, 0))
@@ -19513,7 +19537,7 @@ static s32 wl_update_chan_param(struct net_device *dev, u32 cur_chspec, u32 chan
 #else
 			band_chan->flags |= IEEE80211_CHAN_RADAR;
 #endif
-			WL_DBG(("DFS channel:%d chaninfo:%x chspec:%x flags:%x\n",
+			WL_TRACE(("DFS channel:%d chaninfo:%x chspec:%x flags:%x\n",
 				cur_channel, channel, cur_chspec, band_chan->flags));
 			*dfs_radar_disabled = TRUE;
 		}
@@ -19527,7 +19551,7 @@ static s32 wl_update_chan_param(struct net_device *dev, u32 cur_chspec, u32 chan
 			band_chan->flags |= IEEE80211_CHAN_NO_IR;
 #endif /* USE_INDOOR_CHAN_FLAG */
 #endif /* LINUX_VER >= 5.4 */
-			WL_DBG(("indoor channel:%d chaninfo:%x chspec:%x flags:%x\n",
+			WL_TRACE(("indoor channel:%d chaninfo:%x chspec:%x flags:%x\n",
 				cur_channel, channel, cur_chspec, band_chan->flags));
 		}
 
@@ -19538,6 +19562,8 @@ static s32 wl_update_chan_param(struct net_device *dev, u32 cur_chspec, u32 chan
 #else
 			band_chan->flags |= IEEE80211_CHAN_NO_IR;
 #endif
+			WL_TRACE(("passive/restricted channel:%d chaninfo:%x chspec:%x flags:%x\n",
+				cur_channel, channel, cur_chspec, band_chan->flags));
 			}
 
 	} else if (err == BCME_UNSUPPORTED) {
@@ -20864,6 +20890,7 @@ static s32 __wl_cfg80211_down(struct bcm_cfg80211 *cfg)
 		wl_clr_drv_status(cfg, AP_CREATING, iter->ndev);
 		wl_clr_drv_status(cfg, NESTED_CONNECT, iter->ndev);
 		wl_clr_drv_status(cfg, CFG80211_CONNECT, iter->ndev);
+		wl_clr_drv_status(cfg, CSA_ACTIVE, iter->ndev);
 	}
 #ifdef WL_CFG80211_MONITOR
 	if (ndev->ieee80211_ptr->iftype != NL80211_IFTYPE_MONITOR)
@@ -21222,6 +21249,9 @@ void *wl_read_prof(struct bcm_cfg80211 *cfg, struct net_device *ndev, s32 item)
 	case WL_PROF_LATEST_BSSID:
 		rptr = profile->latest_bssid;
 		break;
+	case WL_PROF_ASSOC_STATUS:
+		rptr = &profile->assoc_status;
+		break;
 	}
 	WL_CFG_DRV_UNLOCK(&cfg->cfgdrv_lock, flags);
 	if (!rptr)
@@ -21271,6 +21301,9 @@ wl_update_prof(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		break;
 	case WL_PROF_CHAN:
 		profile->channel = *(const chanspec_t *)data;
+		break;
+	case WL_PROF_ASSOC_STATUS:
+		profile->assoc_status = *(const u32 *)data;
 		break;
 	case WL_PROF_LATEST_BSSID:
 		if (data) {
@@ -25005,6 +25038,7 @@ wl_cfg80211_sup_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgde
 	struct net_device *ndev = (struct net_device *)cfgdev_to_ndev(cfgdev);
 	u32 reason = ntoh32(event->reason);
 	const u8 *curbssid = NULL;
+	u32 assoc_status = 0;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 	const u8 *td_mode = NULL;
 	u16 td_mode_len = 0;
@@ -25086,6 +25120,7 @@ wl_cfg80211_sup_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgde
 		WL_INFORM_MEM(("4way HS finished. port authorized event sent\n"));
 		/* Post SCB authorize actions */
 		wl_cfg80211_post_scb_auth(cfg, ndev);
+		assoc_status = WL_PROF_ASSOC_SUCCESS;
 	} else if ((status == WLC_SUP_KEYED) && (reason == WLC_E_SUP_DEAUTH)) {
 		/* In case of priority roam, ignore the deauth, if roam fails link down
 		 * is triggered to disconnect STA
@@ -25095,10 +25130,13 @@ wl_cfg80211_sup_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgde
 		reason != WLC_E_SUP_PTK_UPDATE)) {
 		/* if any failure seen while 4way HS, should send NL80211_CMD_DISCONNECT */
 		WL_ERR(("4way HS error. status:%d, reason:%d\n", status, reason));
+		/* update conn status before reporting */
+		assoc_status = WL_PROF_ASSOC_4WAY_FAIL;
 		wl_cfg80211_disassoc(ndev, wl_sup_event_ieee80211_error(reason));
 		CFG80211_DISCONNECTED(ndev, 0, NULL, 0, false, GFP_KERNEL);
 	}
 
+	wl_update_prof(cfg, ndev, NULL, &assoc_status, WL_PROF_ASSOC_STATUS);
 	return err;
 }
 
@@ -26583,24 +26621,9 @@ wl_notify_start_auth(struct bcm_cfg80211 *cfg,
 		goto fail;
 	}
 
-#ifdef WL_MLO
-	if (cfg->mlo.supported && !ETHER_ISNULLADDR(e->addr.octet) &&
-			memcmp(evt_data->bssid.octet, e->addr.octet, ETH_ALEN)) {
-		/* For MLO cases, e->addr would carry MLD address and incase
-		 * MLD is different from link address, a bss entry needs to
-		 * be created so that the host accepts the SAE AUTH indication.
-		 * Without this WAR, host will ignore the event since MLD is not
-		 * known to host yet. This WAR to be removed once user space and
-		 * kernel is ML aware.
-		 */
-		WL_INFORM_MEM(("[MLO] Create MLD bss entry\n"));
-		wl_update_bss_info(cfg, ndev, false, evt_data->bssid.octet);
-	} else
-#endif /* WL_MLO */
-	if (wl_get_drv_status(cfg, CONNECTED, ndev)) {
-		/* Make sure bss_info is updated in roam case */
-		wl_update_bss_info(cfg, ndev, false, evt_data->bssid.octet);
-	}
+	WL_INFORM(("evt_data->addr: " MACDBG " e->addr: " MACDBG "\n",
+			MAC2STRDBG(evt_data->bssid.octet), MAC2STRDBG(e->addr.octet)));
+	wl_update_bss_info(cfg, ndev, false, evt_data->bssid.octet);
 
 	ext_auth_param.ssid.ssid_len = MIN(evt_data->ssid.SSID_len, DOT11_MAX_SSID_LEN);
 	if (ext_auth_param.ssid.ssid_len) {
@@ -26608,12 +26631,35 @@ wl_notify_start_auth(struct bcm_cfg80211 *cfg,
 			evt_data->ssid.SSID, ext_auth_param.ssid.ssid_len);
 	}
 
-	(void)memcpy_s(&ext_auth_param.bssid, ETHER_ADDR_LEN, &e->addr, ETHER_ADDR_LEN);
+	/*
+	 * For MLO cases, e->addr would carry MLD address and incase
+	 * MLD is different from link address, a bss entry needs to
+	 * be created for non-ml aware kernels so that the host accepts
+	 * the SAE AUTH indication. Without this WAR, host will ignore
+	 * the event since MLD is unknown to host yet.
+	 */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)) || defined(WL_EXT_AUTH_BKPORT)
+	(void)memcpy_s(&ext_auth_param.mld_addr, ETHER_ADDR_LEN, e->addr.octet, ETHER_ADDR_LEN);
+	(void)memcpy_s(&ext_auth_param.bssid,
+			ETHER_ADDR_LEN, evt_data->bssid.octet, ETHER_ADDR_LEN);
+#else
+	/* In non-ml aware kernels, use MLD address for auth ind for SAE PMK calc. */
+	(void)memcpy_s(&ext_auth_param.bssid, ETHER_ADDR_LEN, e->addr.octet, ETHER_ADDR_LEN);
+	if (cfg->mlo.supported && !ETHER_ISNULLADDR(e->addr.octet) &&
+			memcmp(evt_data->bssid.octet, e->addr.octet, ETH_ALEN)) {
+		/* report MLD address based bss for non ML aware external auth kernel I/F */
+		if (wl_cfgvif_clone_bss_info(cfg, ndev,
+			evt_data->bssid.octet, e->addr.octet)) {
+			WL_ERR(("cfg80211_bss_info clone failed\n"));
+			/* fall through to attemp connection anyway */
+		}
+	}
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)) || defined(WL_EXT_AUTH_BKPORT) */
 	ext_auth_param.action = NL80211_EXTERNAL_AUTH_START;
 	ext_auth_param.key_mgmt_suite = ntoh32(WLAN_AKM_SUITE_SAE_SHA256);
 
 	WL_INFORM_MEM(("call cfg80211_external_auth_request, BSSID:"MACDBG"\n",
-		MAC2STRDBG(&e->addr)));
+		MAC2STRDBG(&ext_auth_param.bssid)));
 
 	wl_cfg80211_wdev_lock(wdev);
 	err = cfg80211_external_auth_request(ndev, &ext_auth_param, GFP_KERNEL);

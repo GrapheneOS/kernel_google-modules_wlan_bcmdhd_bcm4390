@@ -1079,16 +1079,63 @@ void* BCM_ASLR_CODE_FNPTR_RELOCATOR(void *func_ptr);
  * A compact form for a list of valid register address offsets.
  * Used for when dumping the contents of the register set for the user.
  *
- * bmp_cnt has either bitmap or count. If the MSB (bit 31) is set, then
- * bmp_cnt[30:0] has count, i.e, number of valid registers whose values are
- * contigous from the start address. If MSB is zero, then the value
- * should be considered as a bitmap of 31 discreet addresses from the base addr.
- * Note: the data type for bmp_cnt is chosen as an array of uint8 to avoid padding.
+ * Note: bmp_cnt is logically a single 32-bit word but it's
+ * represented as an array of uint8 to avoid padding. A uint32
+ * type would lead to 2 bytes of padding which would consume
+ * ~20% more space per table.
+ *
+ * The MSB of these 32 bits is used as a flag: "count" if set, "bitmap" if not.
+ * The two bits following the MSB are effectively an enum as below:
+ *
+ *     #define REGLIST_BMP_SIZE_1BYTE        0x0
+ *     #define REGLIST_BMP_SIZE_2BYTES       0x1
+ *     #define REGLIST_BMP_SIZE_4BYTES       0x2
+ *     #define REGLIST_BMP_SIZE_UNUSED       0x3
+ *
+ * The remaining 29 bits are either a bitmap or a count. If the
+ * MSB is set they're a count, i.e the number of valid same-size
+ * registers whose values are contiguous from "addr".
+ * If the MSB is zero they should be considered as a bitmap
+ * of 29 discrete addresses counting from "addr".
+ * Whether bitmap or count, each set of registers in a given
+ * bmp_cnt set must have the same width as given by the enum.
  */
 typedef struct _regs_bmp_list {
 	uint16 addr;		/* start address offset */
-	uint8 bmp_cnt[4];	/* bit[31]=1, bit[30:0] is count else it is a bitmap */
+
+	/* bit[31] count if set, else bitmap.
+	 * bit[30:29] enum describing register size.
+	 * Remaining 29 bits represent count if bit[31] is set or bitmap if unset.
+	 */
+	uint8 bmp_cnt[4u];
 } regs_list_t;
+
+#define REGLIST_BMP_SIZE_1BYTE		0x0
+#define REGLIST_BMP_SIZE_2BYTES		0x1u
+#define REGLIST_BMP_SIZE_4BYTES		0x2u
+#define REGLIST_BMP_SIZE_UNUSED		0x3u
+
+#define REGLIST_SIZE_SHIFT		29
+#define REGLIST_SIZE_MASK		(3u << REGLIST_SIZE_SHIFT)
+#define REGLIST_COUNT_MASK		(1u << 31)
+#define REGLIST_LOAD_BMP32(_reglist)	((_reglist)->bmp_cnt[0] << 24 | \
+					((_reglist)->bmp_cnt[1u] << 16) | \
+					((_reglist)->bmp_cnt[2u] << 8) | \
+					((_reglist)->bmp_cnt[3u]))
+
+#define REGLIST_WIDTH(rlst)		(((REGLIST_LOAD_BMP32((rlst)) & REGLIST_SIZE_MASK) >> \
+					REGLIST_SIZE_SHIFT))
+
+#define REGLIST_SIZE(rlst)		((REGLIST_WIDTH(rlst) == REGLIST_BMP_SIZE_1BYTE) ? \
+						sizeof(uint8) : REGLIST_WIDTH(rlst) << 1u)
+
+#define REGLIST_BMP_IS_COUNT(rlst)	((REGLIST_LOAD_BMP32((rlst)) & REGLIST_COUNT_MASK) != 0)
+
+#define REGLIST_GET_REG_BITMAP(rlst)	(!REGLIST_BMP_IS_COUNT(rlst) ? (REGLIST_LOAD_BMP32(rlst) \
+						& ~(REGLIST_SIZE_MASK | REGLIST_COUNT_MASK)) : 0)
+
+#define REGLIST_GET_REG_COUNT(rlst)	(REGLIST_BMP_IS_COUNT(rlst) ? (REGLIST_LOAD_BMP32(rlst) \
+						& ~(REGLIST_SIZE_MASK | REGLIST_COUNT_MASK)) : 0)
 
 #ifndef WL_UNITTEST
 typedef union d11rxhdr d11rxhdr_t;

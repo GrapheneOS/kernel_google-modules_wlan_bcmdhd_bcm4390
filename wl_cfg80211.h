@@ -405,6 +405,17 @@ extern char *dhd_log_dump_get_timestamp(void);
 #define WL_GCMP
 #endif /* (LINUX_VERSION > KERNEL_VERSION(4, 0, 0) && WL_GCMP_SUPPORT */
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)) || \
+	   (defined(CONFIG_ARCH_MSM) && defined(CFG80211_DISCONNECTED_V2))
+#define CFG80211_GET_BSS(wiphy, channel, bssid, ssid, ssid_len) \
+	cfg80211_get_bss(wiphy, channel, bssid, ssid, ssid_len,	\
+			IEEE80211_BSS_TYPE_ANY, IEEE80211_PRIVACY_ANY);
+#else
+#define CFG80211_GET_BSS(wiphy, channel, bssid, ssid, ssid_len) \
+	cfg80211_get_bss(wiphy, channel, bssid, ssid, ssid_len,	\
+			WLAN_CAPABILITY_ESS, WLAN_CAPABILITY_ESS);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)) */
+
 #ifndef IBSS_COALESCE_ALLOWED
 #define IBSS_COALESCE_ALLOWED IBSS_COALESCE_DEFAULT
 #endif
@@ -1039,7 +1050,8 @@ enum wl_status {
 	WL_STATUS_NESTED_CONNECT,
 	WL_STATUS_CFG80211_CONNECT,
 	WL_STATUS_AUTHORIZED,
-	WL_STATUS_ROAMING
+	WL_STATUS_ROAMING,
+	WL_STATUS_CSA_ACTIVE
 };
 
 #ifdef WL_MLO
@@ -1087,6 +1099,12 @@ enum wl_mode {
 	WL_MODE_MAX
 };
 
+typedef enum wl_prof_assoc_status {
+	WL_PROF_ASSOC_SUCCESS,
+	WL_PROF_ASSOC_FAIL,
+	WL_PROF_ASSOC_4WAY_FAIL
+} wl_prof_assoc_status_t;
+
 /* driver profile list */
 enum wl_prof_list {
 	WL_PROF_MODE,
@@ -1099,7 +1117,8 @@ enum wl_prof_list {
 	WL_PROF_ACT,
 	WL_PROF_BEACONINT,
 	WL_PROF_DTIMPERIOD,
-	WL_PROF_LATEST_BSSID
+	WL_PROF_LATEST_BSSID,
+	WL_PROF_ASSOC_STATUS
 };
 
 /* donlge escan state */
@@ -1282,6 +1301,7 @@ struct wl_profile {
 	u32 mode;
 	s32 band;
 	u32 channel;
+	u32 assoc_status;
 	struct wlc_ssid ssid;
 	struct wl_security sec;
 	struct wl_ibss ibss;

@@ -17788,7 +17788,9 @@ dhd_prot_smmu_fault_dump(dhd_pub_t *dhdp)
 #ifdef DHD_FW_COREDUMP
 	dhdp->memdump_type = DUMP_TYPE_SMMU_FAULT;
 #ifdef DNGL_AXI_ERROR_LOGGING
-	dhdp->memdump_enabled = DUMP_MEMFILE;
+	if (dhdp->memdump_enabled == DUMP_DISABLED) {
+		dhdp->memdump_enabled = DUMP_MEMFILE;
+	}
 	dhd_bus_get_mem_dump(dhdp);
 #else
 	dhdp->memdump_enabled = DUMP_MEMONLY;

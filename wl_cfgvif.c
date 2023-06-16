@@ -1812,6 +1812,16 @@ wl_cfg80211_set_chan_mlo_concurrency(struct bcm_cfg80211 *cfg, struct net_info *
 		}
 	}
 
+	/* In case the incoming softAP channel is 6G/5G and fails SCC, due to restricted 6G/5G
+	 * STA links, its moved to attempt SCC with any existing 2G link, else default 2G channel
+	 */
+	if (!wf_chspec_valid(target_chspec)) {
+		if (!wl_is_2g_restricted(cfg, sta_chanspecs[WLC_BAND_2G])) {
+			target_chspec = wf_chspec_primary20_chspec(sta_chanspecs[WLC_BAND_2G]);
+		} else {
+			target_chspec = DEFAULT_2G_SOFTAP_CHANSPEC;
+		}
+	}
 	if (wf_chspec_valid(target_chspec)) {
 		WL_INFORM_MEM(("Target chanspec set to %x\n", target_chspec));
 	} else {
@@ -1858,7 +1868,6 @@ wl_get_lower_bw_chspec(chanspec_t *chspec)
 	return BCME_OK;
 }
 
-#define MAX_20MHZ_CHANNELS 16u
 static s32
 wl_get_overlapping_chspecs(chanspec_t sel_chspec,
 		wl_chanspec_attr_v1_t *overlap, u32 *arr_idx)
@@ -1915,7 +1924,7 @@ wl_get_overlapping_chspecs(chanspec_t sel_chspec,
 	return BCME_OK;
 }
 
-static s32
+s32
 wl_filter_restricted_subbands(struct bcm_cfg80211 *cfg,
 	struct net_device *dev, chanspec_t *cur_chspec)
 {
@@ -6754,7 +6763,26 @@ const wl_event_msg_t *e, void *data)
 }
 
 s32
-wl_csa_complete_ind(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
+wl_cfgvif_csa_start_ind(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
+const wl_event_msg_t *e, void *data)
+{
+	struct net_device *ndev = NULL;
+
+	if (!cfgdev) {
+		WL_ERR(("invalid arg\n"));
+		return BCME_ERROR;
+	}
+
+	ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
+	WL_INFORM_MEM(("[%s] csa started\n", ndev->name));
+
+	wl_set_drv_status(cfg, CSA_ACTIVE, ndev);
+
+	return BCME_OK;
+}
+
+s32
+wl_cfgvif_csa_complete_ind(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 const wl_event_msg_t *e, void *data)
 {
 	int error = 0;
@@ -6762,19 +6790,25 @@ const wl_event_msg_t *e, void *data)
 	struct net_device *ndev = NULL;
 	struct ether_addr bssid;
 	uint8 link_id = 0;
+	u32 status = dtoh32(e->status);
 	s32 ret = 0;
 #ifdef WL_MLO
 	wl_mlo_link_t *linkinfo = NULL;
 #endif /* WL_MLO */
 
 	WL_DBG(("Enter\n"));
-	if (unlikely(e->status)) {
-		WL_ERR(("status:0x%x \n", e->status));
-		return -1;
-	}
 
 	if (likely(cfgdev)) {
 		ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
+		wl_clr_drv_status(cfg, CSA_ACTIVE, ndev);
+
+		WL_INFORM_MEM(("[%s] CSA ind. ch:0x%x status:%d\n",
+			ndev->name, chanspec, status));
+		if (status != WLC_E_STATUS_SUCCESS) {
+			WL_ERR(("csa complete error. status:0x%x\n", e->status));
+			return BCME_ERROR;
+		}
+
 		/* Get association state if not AP and then query chanspec */
 		if (!((wl_get_mode_by_netdev(cfg, ndev)) == WL_MODE_AP)) {
 			error = wldev_ioctl_get(ndev, WLC_GET_BSSID, &bssid, ETHER_ADDR_LEN);
@@ -6791,7 +6825,6 @@ const wl_event_msg_t *e, void *data)
 			return -1;
 		}
 
-		WL_INFORM_MEM(("[%s] CSA ind. ch:0x%x\n", ndev->name, chanspec));
 #ifdef WL_MLO
 		linkinfo = wl_cfg80211_get_ml_link_detail(cfg, e->ifidx, e->bsscfgidx);
 		if (linkinfo) {
@@ -8987,4 +9020,99 @@ wl_cfgvif_bssid_match_found(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev,
 exit:
 	WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
 	return found;
+}
+
+bool
+wl_cfgvif_prev_conn_fail(struct bcm_cfg80211 *cfg,
+	struct net_device *ndev, struct cfg80211_connect_params *sme)
+{
+	struct wlc_ssid *prev_ssid = wl_read_prof(cfg, ndev, WL_PROF_SSID);
+	u32 *assoc_status = (u32 *)wl_read_prof(cfg, ndev, WL_PROF_ASSOC_STATUS);
+
+	if (!prev_ssid || !sme) {
+		WL_ERR(("invalid arg\n"));
+		return FALSE;
+	}
+
+	/* if prev connection attempt was to the same SSID as
+	 * current one and status != success, return TRUE.
+	 */
+	if ((*assoc_status != WL_PROF_ASSOC_SUCCESS) &&
+		(prev_ssid->SSID_len == sme->ssid_len) &&
+		!(memcmp(sme->ssid, prev_ssid->SSID, sme->ssid_len))) {
+		WL_DBG_MEM(("previous connection attempt to SSID failed (%d)\n",
+			*assoc_status));
+		return TRUE;
+	}
+	return FALSE;
+}
+
+s32
+wl_cfgvif_clone_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+	u8 *src_bssid, const u8 *target_bssid)
+{
+	struct cfg80211_bss *src_bss, *bss, *target_bss;
+	struct wiphy *wiphy;
+	s32 err = 0;
+	struct wlc_ssid *ssid;
+	u32 ftype;
+
+	wiphy = bcmcfg_to_wiphy(cfg);
+
+	if (!src_bssid || !target_bssid) {
+		WL_ERR(("invalid arg\n"));
+		return BCME_ERROR;
+	}
+
+	ssid = (struct wlc_ssid *)wl_read_prof(cfg, ndev, WL_PROF_SSID);
+	if (!ssid) {
+		WL_ERR(("connection ssid null\n"));
+		return BCME_ERROR;
+	}
+
+	target_bss = CFG80211_GET_BSS(wiphy, NULL, target_bssid,
+		NULL, 0);
+	if (target_bss) {
+		/* Entry already present for target bssid */
+		WL_INFORM(("target bss found for bssid" MACDBG "\n",
+				MAC2STRDBG(target_bssid)));
+		CFG80211_PUT_BSS(wiphy, target_bss);
+		return BCME_OK;
+	}
+
+	src_bss = CFG80211_GET_BSS(wiphy, NULL, (const u8*)src_bssid,
+		ssid->SSID, ssid->SSID_len);
+	if (!src_bss) {
+		WL_ERR(("No src bss found for bssid" MACDBG "\n",
+				MAC2STRDBG(src_bssid)));
+		return BCME_ERROR;
+	}
+
+
+	if (!src_bss->ies || !src_bss->ies->len) {
+		WL_ERR(("empty bss ies\n"));
+		err = BCME_NOMEM;
+		goto exit;
+	}
+
+	ftype = src_bss->proberesp_ies ?
+		CFG80211_BSS_FTYPE_PRESP : CFG80211_BSS_FTYPE_BEACON;
+
+	/* use same info to create a clone with the target bssid */
+	bss = cfg80211_inform_bss(wiphy, src_bss->channel,
+		ftype, target_bssid, src_bss->ies->tsf, src_bss->capability,
+		src_bss->beacon_interval, (const u8 *)src_bss->ies->data, src_bss->ies->len,
+		src_bss->signal, GFP_KERNEL);
+	if (!bss) {
+		WL_ERR(("cfg8011_inform_bss failed\n"));
+		err = BCME_NOMEM;
+		goto exit;
+	}
+	CFG80211_PUT_BSS(wiphy, bss);
+
+	WL_INFORM_MEM(("bss entry created for address:" MACDBG " freq:%d\n",
+		MAC2STRDBG(target_bssid), src_bss->channel->center_freq));
+exit:
+	CFG80211_PUT_BSS(wiphy, src_bss);
+	return err;
 }

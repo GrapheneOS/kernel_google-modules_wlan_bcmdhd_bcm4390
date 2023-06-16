@@ -1626,8 +1626,7 @@ typedef struct dhd_pub {
 	uint32 sssr_dump_mode;
 	bool collect_sssr;		/* Flag to indicate SSSR dump is required */
 	bool fis_triggered;
-	bool fis_enab_no_db7ack;	/* Enable FIS if DB7 ack is not received */
-	bool fis_enab_cto;		/* Enable FIS for CTO recovery case */
+	bool collect_fis;		/* Enable FIS for special cases */
 	bool dongle_fis_enab;		/* does dongle support FIS dump */
 #endif /* DHD_SSSR_DUMP */
 #ifdef DHD_SDTC_ETB_DUMP
@@ -1848,6 +1847,7 @@ typedef struct dhd_pub {
 #ifdef EWP_EDL
 	bool dongle_edl_support;
 	dhd_dma_buf_t edl_ring_mem;
+	bool host_edl_mem_inited;
 #endif /* EWP_EDL */
 #if defined(__linux__)
 	struct mutex ndev_op_sync;
@@ -2078,6 +2078,7 @@ typedef struct dhd_pub {
 	uint *sssr_saqm_buf_before;
 #endif /* DHD_SSSR_DUMP_BEFORE_SR */
 	uint *sssr_saqm_buf_after;
+	bool skip_logdmp;
 } dhd_pub_t;
 
 #if defined(__linux__)

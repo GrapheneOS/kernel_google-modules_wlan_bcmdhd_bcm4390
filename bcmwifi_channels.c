@@ -47,7 +47,7 @@
 
 #include <bcmwifi_channels.h>
 
-#if defined(WIN32) && (defined(BCMDLL) || defined(WLMDLL))
+#if defined(WIN32) && (defined(BCMDLL) || defined(WLMDLL) || defined(_CONSOLE))
 #include <bcmstdlib.h>	/* For wlexe/Makefile.wlm_dll */
 #endif
 
