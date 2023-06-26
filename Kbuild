@@ -37,6 +37,8 @@ endif
 # For inbuilt module, below configs will be provided via defconfig
 # But for out-of-tree module, explicitly define them here and add
 # them as cflags
+BCMDHD=4390
+
 ifeq ($(CONFIG_BCMDHD),)
 CONFIG_BCMDHD=m
 CONFIG_BCMDHD_PCIE=y
