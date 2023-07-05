@@ -1199,9 +1199,9 @@ dhd_read_cis(dhd_pub_t *dhdp)
 #endif /* BCM4389_CHIP_DEF || BCM4398_CHIP_DEF */
 
 	totlen = read_otp_from_bp(dhdp->bus, raw_data);
-	if (totlen == BCME_ERROR || totlen == 0) {
+	if (totlen == BCME_ERROR || BCME_NOTFOUND || totlen == 0) {
 		DHD_ERROR(("%s : Can't read the OTP\n", __FUNCTION__));
-		return BCME_ERROR;
+		return (totlen == 0 ? BCME_ERROR : totlen);
 	}
 
 	(void)memcpy_s(g_cis_buf + cis_offset, CIS_BUF_SIZE, raw_data, totlen);
