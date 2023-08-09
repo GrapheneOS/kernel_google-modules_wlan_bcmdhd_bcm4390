@@ -849,7 +849,7 @@ typedef struct dot11_rmreq_pause_time dot11_rmreq_pause_time_t;
 /* From Draft P802.11be_D2.2.pdf */
 #define DOT11_NGBR_EHT_CAP_SE_ID		198
 #define DOT11_NGBR_EHT_OP_SE_ID			199
-#define DOT11_NGBR_BASIC_MULTI_LINK_SE_ID	200
+#define DOT11_NGBR_BASIC_MULTI_LINK_SE_ID	201
 
 /** Neighbor Report, BSS Transition Candidate Preference subelement */
 BWL_PRE_PACKED_STRUCT struct dot11_ngbr_bsstrans_pref_se {

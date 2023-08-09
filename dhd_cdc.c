@@ -658,9 +658,7 @@ dhd_sync_with_dongle(dhd_pub_t *dhd)
 
 	DHD_SSSR_DUMP_INIT(dhd);
 
-	dhd_process_cid_mac(dhd, TRUE);
 	ret = dhd_preinit_ioctls(dhd);
-	dhd_process_cid_mac(dhd, FALSE);
 
 	/* Always assumes wl for now */
 	dhd->iswl = TRUE;

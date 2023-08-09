@@ -26,7 +26,6 @@
 
 #include <dhd.h>
 
-int dhd_dscp_policy_set_vndr_ie(struct bcm_cfg80211 *cfg, struct net_device *ndev, int bssidx);
 int dhd_dscp_policy_process_vsaf(struct bcm_cfg80211 *cfg, struct net_device *dev,
                                  uint8 *body, uint body_len);
 int dhd_dscp_policy_attach(struct bcm_cfg80211 *cfg);

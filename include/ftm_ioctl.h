@@ -394,6 +394,7 @@ typedef enum {
 	WL_FTM_TLV_ID_AZ_RTT_RESULT_V1		= 524,	/* wl_ftm_az_rtt_result_v1_t */
 	WL_FTM_TLV_ID_AZ_COUNTERS_V1		= 525,	/* wl_ftm_az_counters_v1_t */
 	WL_FTM_TLV_ID_HAL_COUNTERS_V1		= 526,	/* wl_ftm_hal_counters_v1_t */
+	WL_FTM_TLV_ID_AZ_COUNTERS_V2		= 527,	/* wl_ftm_az_counters_v2_t */
 
 	/* debug tlvs can be added starting 1024 */
 	WL_FTM_TLV_ID_DEBUG_MASK		= 1024,
@@ -666,6 +667,29 @@ typedef struct wl_ftm_az_counters_v1 {
 	uint32 rxrtfrpt;	/* RX Ranging TF Report */
 	uint32 rxrtfpsnd;	/* RX Ranging TF Passive Sounding */
 } wl_ftm_az_counters_v1_t;
+
+/* WL_FTM_TLV_ID_AZ_COUNTERS_V2
+ * 11az ranging counters
+ */
+typedef struct wl_ftm_az_counters_v2 {
+	uint32 active;		/* 11az measurement activation */
+	uint32 meas;		/* successful measurement */
+	uint32 timeout;		/* measurement timeout */
+	uint32 rtt;		/* rtt from measurement */
+	uint32 txndpa;		/* TX NDPA */
+	uint32 rxndpa;		/* RX NDPA */
+	uint32 txndp;		/* TX NDP */
+	uint32 rxndp;		/* RX NDP */
+	uint32 txlmr;		/* TX LMR */
+	uint32 rxlmr;		/* RX LMR */
+	uint32 rxrtfpoll;	/* RX Ranging TF Poll */
+	uint32 rxrtfsnd;	/* RX Ranging TF Sounding */
+	uint32 rxrtfssnd;	/* RX Ranging TF Secure Sounding */
+	uint32 rxrtfrpt;	/* RX Ranging TF Report */
+	uint32 rxrtfpsnd;	/* RX Ranging TF Passive Sounding */
+	uint32 ndpatxtmo;	/* NDPA TX timeout */
+	uint32 dtmismatch;	/* Dialog Token mismatch */
+} wl_ftm_az_counters_v2_t;
 
 /* WL_FTM_TLV_ID_HAL_COUNTERS_V1
  * ftm HAL counters

@@ -2407,7 +2407,7 @@ BWL_PRE_PACKED_STRUCT struct dot11_timeout_ie {
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_timeout_ie dot11_timeout_ie_t;
 
-/** GTK ie */
+/** Fast BSS Transition element (FTE) GTK IE */
 BWL_PRE_PACKED_STRUCT struct dot11_gtk_ie {
 	uint8 id;
 	uint8 len;

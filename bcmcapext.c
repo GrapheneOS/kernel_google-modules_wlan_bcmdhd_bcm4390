@@ -373,6 +373,8 @@ static const capext_bitpos_to_string_map_t capext_wl_features_subfeature_map[] =
 
 	CAPEXT_SUBFEATURE_MAP(WLC_CAPEXT_FEATURE_BITPOS_SAE_EXT, "sae_ext"),
 
+	CAPEXT_SUBFEATURE_MAP(WLC_CAPEXT_FEATURE_BITPOS_SC_6G_HE, "sc_6g_he"),
+
 	CAPEXT_SUBFEATURE_MAP(WLC_CAPEXT_FEATURE_BITPOS_MAX, NULL)
 };
 

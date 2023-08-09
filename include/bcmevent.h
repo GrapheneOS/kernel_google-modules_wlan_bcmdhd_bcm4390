@@ -598,32 +598,45 @@ typedef struct wl_event_sdb_trans {
 
 
 /* WPA failure reason codes carried in the WLC_E_PSK_SUP event */
-#define WLC_E_SUP_OTHER			0	/* Other reason */
-#define WLC_E_SUP_DECRYPT_KEY_DATA	1	/* Decryption of key data failed */
-#define WLC_E_SUP_BAD_UCAST_WEP128	2	/* Illegal use of ucast WEP128 */
-#define WLC_E_SUP_BAD_UCAST_WEP40	3	/* Illegal use of ucast WEP40 */
-#define WLC_E_SUP_UNSUP_KEY_LEN		4	/* Unsupported key length */
-#define WLC_E_SUP_PW_KEY_CIPHER		5	/* Unicast cipher mismatch in pairwise key */
-#define WLC_E_SUP_MSG3_TOO_MANY_IE	6	/* WPA IE contains > 1 RSN IE in key msg 3 */
-#define WLC_E_SUP_MSG3_IE_MISMATCH	7	/* WPA IE mismatch in key message 3 */
-#define WLC_E_SUP_NO_INSTALL_FLAG	8	/* INSTALL flag unset in 4-way msg */
-#define WLC_E_SUP_MSG3_NO_GTK		9	/* encapsulated GTK missing from msg 3 */
-#define WLC_E_SUP_GRP_KEY_CIPHER	10	/* Multicast cipher mismatch in group key */
-#define WLC_E_SUP_GRP_MSG1_NO_GTK	11	/* encapsulated GTK missing from group msg 1 */
-#define WLC_E_SUP_GTK_DECRYPT_FAIL	12	/* GTK decrypt failure */
-#define WLC_E_SUP_SEND_FAIL		13	/* message send failure */
-#define WLC_E_SUP_DEAUTH		14	/* received FC_DEAUTH */
-#define WLC_E_SUP_WPA_PSK_TMO		15	/* WPA PSK 4-way handshake timeout */
-#define WLC_E_SUP_WPA_PSK_M1_TMO	16	/* WPA PSK 4-way handshake M1 timeout */
-#define WLC_E_SUP_WPA_PSK_M3_TMO	17	/* WPA PSK 4-way handshake M3 timeout */
-#define WLC_E_SUP_GTK_UPDATE_FAIL	18  /* GTK update failure */
-#define WLC_E_SUP_TK_UPDATE_FAIL	19  /* TK update failure */
-#define WLC_E_SUP_KEY_INSTALL_FAIL	20  /* Buffered key install failure */
-#define WLC_E_SUP_PTK_UPDATE		21	/* PTK update */
-#define WLC_E_SUP_MSG1_PMKID_MISMATCH	22	/* MSG1 PMKID not matched to PMKSA cache list */
-#define WLC_E_SUP_GTK_UPDATE		23	/* GTK update */
-#define WLC_E_SUP_KDK_UPDATE_FAIL	24	/* KDK update failure */
-#define WLC_E_SUP_MSG3_NO_MLO_GTK	25	/* encapsulated MLO GTK missing from msg 3 */
+#define WLC_E_SUP_OTHER			0u	/* Other reason */
+#define WLC_E_SUP_DECRYPT_KEY_DATA	1u	/* Decryption of key data failed */
+#define WLC_E_SUP_BAD_UCAST_WEP128	2u	/* Illegal use of ucast WEP128 */
+#define WLC_E_SUP_BAD_UCAST_WEP40	3u	/* Illegal use of ucast WEP40 */
+#define WLC_E_SUP_UNSUP_KEY_LEN		4u	/* Unsupported key length */
+#define WLC_E_SUP_PW_KEY_CIPHER		5u	/* Unicast cipher mismatch in pairwise key */
+#define WLC_E_SUP_MSG3_TOO_MANY_IE	6u	/* WPA IE contains > 1 RSN IE in key msg 3 */
+#define WLC_E_SUP_MSG3_IE_MISMATCH	7u	/* WPA IE mismatch in key message 3 */
+#define WLC_E_SUP_NO_INSTALL_FLAG	8u	/* INSTALL flag unset in 4-way msg */
+#define WLC_E_SUP_MSG3_NO_GTK		9u	/* NOTE: this is deprecated */
+#define WLC_E_SUP_NO_GTK		9u	/* Encapsulated GTK missing */
+#define WLC_E_SUP_GRP_KEY_CIPHER	10u	/* Multicast cipher mismatch in group key */
+#define WLC_E_SUP_GRP_MSG1_NO_GTK	11u	/* Encapsulated GTK missing from group msg 1 */
+#define WLC_E_SUP_GTK_DECRYPT_FAIL	12u	/* GTK decrypt failure */
+#define WLC_E_SUP_SEND_FAIL		13u	/* Message send failure */
+#define WLC_E_SUP_DEAUTH		14u	/* Received FC_DEAUTH */
+#define WLC_E_SUP_WPA_PSK_TMO		15u	/* WPA PSK 4-way handshake timeout */
+#define WLC_E_SUP_WPA_PSK_M1_TMO	16u	/* WPA PSK 4-way handshake M1 timeout */
+#define WLC_E_SUP_WPA_PSK_M3_TMO	17u	/* WPA PSK 4-way handshake M3 timeout */
+#define WLC_E_SUP_GTK_UPDATE_FAIL	18u	/* GTK update failure */
+#define WLC_E_SUP_TK_UPDATE_FAIL	19u	/* TK update failure */
+#define WLC_E_SUP_KEY_INSTALL_FAIL	20u	/* Buffered key install failure */
+#define WLC_E_SUP_PTK_UPDATE		21u	/* PTK update */
+#define WLC_E_SUP_MSG1_PMKID_MISMATCH	22u	/* MSG1 PMKID not matched to PMKSA cache list */
+#define WLC_E_SUP_GTK_UPDATE		23u	/* GTK update */
+#define WLC_E_SUP_KDK_UPDATE_FAIL	24u	/* KDK update failure */
+#define WLC_E_SUP_MSG3_NO_MLO_GTK	25u	/* NOTE: this is deprecated */
+#define WLC_E_SUP_NO_MLO_GTK		25u	/* Encapsulated MLO GTK missing */
+#define WLC_E_SUP_NO_IGTK		26u	/* Encapsulated IGTK missing */
+#define WLC_E_SUP_NO_BIGTK		27u	/* Encapsulated BIGTK missing */
+#define WLC_E_SUP_NO_MLO_IGTK		28u	/* Encapsulated MLO IGTK missing */
+#define WLC_E_SUP_NO_MLO_BIGTK		29u	/* Encapsulated MLO BIGTK missing */
+#define WLC_E_SUP_IGTK_DECRYPT_FAIL	30u	/* IGTK decrypt failure */
+#define WLC_E_SUP_IGTK_UPDATE_FAIL	31u	/* IGTK update failure */
+#define WLC_E_SUP_BIGTK_DECRYPT_FAIL	32u	/* BIGTK decrypt failure */
+#define WLC_E_SUP_BIGTK_UPDATE_FAIL	33u	/* BIGTK update failure */
+#define WLC_E_SUP_GTK_BAD_KEY_IDX	34u	/* Bad GTK key index */
+#define WLC_E_SUP_IGTK_BAD_KEY_IDX	35u	/* Bad IGTK key index */
+#define WLC_E_SUP_BIGTK_BAD_KEY_IDX	36u	/* Bad BIGTK key index */
 
 /* event msg for WLC_E_SUP_PTK_UPDATE */
 typedef struct wlc_sup_ptk_update {

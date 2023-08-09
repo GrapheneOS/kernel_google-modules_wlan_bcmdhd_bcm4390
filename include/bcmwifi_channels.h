@@ -26,6 +26,27 @@
 #ifndef	_bcmwifi_channels_h_
 #define	_bcmwifi_channels_h_
 
+#include <typedefs.h>
+
+#ifdef BCMDRIVER
+#define BCMWIFI_CHSPEC_BW_COND	/* Conditional channel width support */
+#ifdef WL_BAND6G
+#define BCMWIFI_BAND6G		/* 6Ghz band support */
+#endif
+#ifdef WL_BW160MHZ
+#define BCMWIFI_BW160MHZ	/* 160Mhz channel width support */
+#endif
+#ifdef WL_BW320MHZ
+#define BCMWIFI_BW320MHZ	/* 320Mhz channel width support */
+#endif
+#endif /* BCMDRIVER */
+
+#ifndef BCMWIFI_CHSPEC_BW_COND
+#define WFC_NON_CONT_CHAN	/* 80+80 support */
+#define BCMWIFI_BAND6G
+#define BCMWIFI_BW160MHZ
+#define BCMWIFI_BW320MHZ
+#endif /* !BCMWIFI_COND_CHAN_WIDTH */
 
 /* A chanspec holds the channel number, band, bandwidth and primary 20MHz sub-band */
 typedef uint16 chanspec_t;
@@ -92,14 +113,14 @@ typedef struct {
 #undef  D11AC_IOTYPES
 #define D11AC_IOTYPES
 
-/* For contiguous channel bandwidth other than 240MHz/320Mhz */
+/* For contiguous channel bandwidth other than 320Mhz */
 #define WL_CHANSPEC_CHAN_MASK		0x00ffu
 #define WL_CHANSPEC_CHAN_SHIFT		0u
 
 /* For number of channels in the channel bitmap (operating class >= BCMWIFI_OP_CLASS_6G_20MHZ) */
 #define WL_CHAN_BMAP_NUM_SHIFT		8u
 
-/* For contiguous channel bandwidth >= 240MHz */
+/* For contiguous channel bandwidth >= 320MHz */
 #define WL_CHANSPEC_320_CHAN_MASK	0x0007u
 #define WL_CHANSPEC_320_CHAN_SHIFT	0u
 
@@ -109,7 +130,7 @@ typedef struct {
 #define WL_CHANSPEC_CHAN1_MASK		0x00f0u
 #define WL_CHANSPEC_CHAN1_SHIFT		4u
 
-/* Non-320/Non-240 Mhz channel sideband indication */
+/* Non-320 Mhz channel sideband indication */
 #define WL_CHANSPEC_CTL_SB_MASK		0x0700u
 #define WL_CHANSPEC_CTL_SB_SHIFT	8u
 #define WL_CHANSPEC_CTL_SB_LLL		0x0000u
@@ -130,12 +151,9 @@ typedef struct {
 #define WL_CHANSPEC_CTL_SB_UPPER	WL_CHANSPEC_CTL_SB_LLU
 #define WL_CHANSPEC_CTL_SB_NONE		WL_CHANSPEC_CTL_SB_LLL
 
-/* channel sideband indication for frequency >= 240MHz */
+/* channel sideband indication for frequency >= 320MHz */
 #define WL_CHANSPEC_320_SB_MASK		0x0780u
 #define WL_CHANSPEC_320_SB_SHIFT	7u
-/* deprecated: to be removed */
-#define WL_CHANSPEC_GE240_SB_MASK	WL_CHANSPEC_320_SB_MASK
-#define WL_CHANSPEC_GE240_SB_SHIFT	WL_CHANSPEC_320_SB_SHIFT
 
 #define WL_CHANSPEC_CTL_SB_LLLL		0x0000u
 #define WL_CHANSPEC_CTL_SB_LLLU		0x0080u
@@ -164,6 +182,7 @@ typedef struct {
 #define WL_CHANSPEC_BW_80		0x2000u		/* 4 */
 #define WL_CHANSPEC_BW_160		0x2800u		/* 5 */
 #define WL_CHANSPEC_BW_8080		0x3000u		/* 6 */
+// unused				0x3800u		/* 7 */
 
 /* Band field */
 #define WL_CHANSPEC_BAND_MASK		0xc000u
@@ -176,9 +195,6 @@ typedef struct {
 #define INVCHANSPEC			255u
 #define NONWLAN_CHAN_SPEC		0xFFFEu /* chanspec definition for non-wlan activity */
 #define MAX_CHANSPEC			0xFFFFu
-
-#define WL_CHSPEC_BW(chspec)	((chspec & WL_CHANSPEC_BW_MASK) >> WL_CHANSPEC_BW_SHIFT)
-#define MAX_BW_NUM		(uint8)(((WL_CHANSPEC_BW_MASK) >> WL_CHANSPEC_BW_SHIFT))
 
 #define WL_CHANNEL_BAND(ch) \
 	(((uint)(ch) <= CH_MAX_2G_CHANNEL) ? WL_CHANSPEC_BAND_2G : WL_CHANSPEC_BAND_5G)
@@ -225,57 +241,76 @@ typedef struct {
 
 /* simple MACROs to get different fields of chanspec */
 #define CHSPEC_CHANNEL(chspec)	((uint8)((chspec) & WL_CHANSPEC_CHAN_MASK))
-#define CHSPEC_CHAN0(chspec)	(((chspec) & WL_CHANSPEC_CHAN0_MASK) >> WL_CHANSPEC_CHAN0_SHIFT)
-#define CHSPEC_CHAN1(chspec)	(((chspec) & WL_CHANSPEC_CHAN1_MASK) >> WL_CHANSPEC_CHAN1_SHIFT)
 #define CHSPEC_BAND(chspec)	((chspec) & WL_CHANSPEC_BAND_MASK)
 #define CHSPEC_CTL_SB(chspec)	((chspec) & WL_CHANSPEC_CTL_SB_MASK)
 #define CHSPEC_BW(chspec)	((chspec) & WL_CHANSPEC_BW_MASK)
-#define CHSPEC_320_CHAN(chspec) \
-	(((chspec) & WL_CHANSPEC_320_CHAN_MASK) >> WL_CHANSPEC_320_CHAN_SHIFT)
 #define CHSPEC_320_SB(chspec)	((chspec) & WL_CHANSPEC_320_SB_MASK)
-#define CHSPEC_320_CNTR_FREQ_OVERLAPPED(chspec) (CHSPEC_320_CHAN(chspec) & 0x04u)
+
+/* derived macros from above chanspec fields */
+#define WL_CHSPEC_CHAN0(chspec)	(((chspec) & WL_CHANSPEC_CHAN0_MASK) >> WL_CHANSPEC_CHAN0_SHIFT)
+#define WL_CHSPEC_CHAN1(chspec)	(((chspec) & WL_CHANSPEC_CHAN1_MASK) >> WL_CHANSPEC_CHAN1_SHIFT)
+
+#define WL_CHSPEC_320_CHAN(chspec) \
+	(((chspec) & WL_CHANSPEC_320_CHAN_MASK) >> WL_CHANSPEC_320_CHAN_SHIFT)
+#define WL_CHSPEC_320_CNTR_FREQ_OVERLAPPED(chspec) (WL_CHSPEC_320_CHAN(chspec) & 0x04u)
+
+#define WL_CHSPEC_BW(chspec)	(CHSPEC_BW(chspec) >> WL_CHANSPEC_BW_SHIFT)
 
 /* deprecated: to be removed */
-#define CHSPEC_GE240_CHAN(chspec) CHSPEC_320_CHAN(chspec)
+#define MAX_BW_NUM		(uint8)(WL_CHANSPEC_BW_MASK >> WL_CHANSPEC_BW_SHIFT)
+#define CHSPEC_320_CNTR_FREQ_OVERLAPPED(chspec) (WL_CHSPEC_320_CHAN(chspec) & 0x04u)
 
-#define CHSPEC_IS20(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_20)
-#define CHSPEC_IS20_5G(chspec) \
-	((((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_20) && CHSPEC_IS5G(chspec))
-#ifndef CHSPEC_IS40
-#define CHSPEC_IS40(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40)
+#define CHSPEC_BW_MAX_NUM	WL_CHSPEC_BW(WL_CHANSPEC_BW_MASK)
+#define CHSPEC_BW_REPL(chspec, chspec_bw) \
+	(((chspec) & ~WL_CHANSPEC_BW_MASK) | (chspec_bw))
+
+/*
+ * CHSPEC_ISx()/CHSPEC_ISx_UNCOND()
+ * Use the conditional form of this macro, CHSPEC_ISx(), in code that is checking
+ * chanspecs that have already been cleaned for an operational bandwidth supported by the
+ * driver compile, such as the current radio channel or the currently associated BSS's
+ * chanspec.
+ * Use the unconditional form of this macro, CHSPEC_ISx_UNCOND(), in code that is
+ * checking chanspecs that may not have a bandwidth supported as an operational bandwidth
+ * by the driver compile, such as chanspecs that are specified in incoming ioctls or
+ * chanspecs parsed from received packets.
+ */
+#define CHSPEC_IS20(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_20)
+#define CHSPEC_IS40(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_40)
+#define CHSPEC_IS80(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_80)
+#ifdef BCMWIFI_BW160MHZ
+#define CHSPEC_IS160(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_160)
+#else
+#define CHSPEC_IS160(chspec)	(FALSE)
 #endif
-#ifndef CHSPEC_IS80
-#define CHSPEC_IS80(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_80)
-#endif
-#ifndef CHSPEC_IS160
-#define CHSPEC_IS160(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_160)
-#endif
-#ifndef CHSPEC_IS8080
 #ifdef WFC_NON_CONT_CHAN
-#define CHSPEC_IS8080(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_8080)
+#define CHSPEC_IS8080(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_8080)
 #else
 #define CHSPEC_IS8080(chspec)	(FALSE)
 #endif
-#endif /* CHSPEC_IS8080 */
-#ifndef CHSPEC_IS320
-#if defined(WL_BW320MHZ)
-#define CHSPEC_IS320(chspec)	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_320)
+#ifdef BCMWIFI_BW320MHZ
+#define CHSPEC_IS320(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_320)
 #else
 #define CHSPEC_IS320(chspec)	(FALSE)
 #endif
-#endif /* CHSPEC_IS320 */
+
+#ifdef MOVE_CHSPEC_ISx_UNCOND_TO_BCMWIFI_CHANS
+#define CHSPEC_IS40_UNCOND(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_40)
+#define CHSPEC_IS80_UNCOND(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_80)
+#define CHSPEC_IS8080_UNCOND(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_8080)
+#define CHSPEC_IS160_UNCOND(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_160)
+#define CHSPEC_IS320_UNCOND(chspec)	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_320)
+#endif
 
 /* pass a center channel and get channel offset from it by 10MHz */
-#define CH_OFF_10MHZ_MULTIPLES(channel, offset)				\
-((uint8) (((offset) < 0) ?						\
-	  (((channel) > (WL_CHANSPEC_CHAN_MASK & ((uint16)((-(offset)) * CH_10MHZ_APART)))) ? \
-	   ((channel) + (offset) * CH_10MHZ_APART) : 0) :		\
+#define CH_OFF_10MHZ_MULTIPLES(channel, offset) \
+	((uint8)(((offset) < 0) ? \
+	  (((channel) > (CHSPEC_CHANNEL((uint16)((-(offset)) * CH_10MHZ_APART)))) ? \
+	   ((channel) + (offset) * CH_10MHZ_APART) : 0) : \
 	  ((((uint16)(channel) + (uint16)(offset) * CH_10MHZ_APART) < (uint16)MAXCHANNEL) ? \
 	   ((channel) + (offset) * CH_10MHZ_APART) : 0)))
 
-uint wf_chspec_first_20_sb(chanspec_t chspec);
-
-#if defined(WL_BW320MHZ)
+#ifdef BCMWIFI_BW320MHZ
 /* pass a 320MHz center channel to get 20MHz subband channel numbers */
 #define LLLL_20_SB_320(channel)  CH_OFF_10MHZ_MULTIPLES(channel, -15)
 #define LLLU_20_SB_320(channel)  CH_OFF_10MHZ_MULTIPLES(channel, -13)
@@ -294,7 +329,7 @@ uint wf_chspec_first_20_sb(chanspec_t chspec);
 #define UUUL_20_SB_320(channel)  CH_OFF_10MHZ_MULTIPLES(channel,  13)
 #define UUUU_20_SB_320(channel)  CH_OFF_10MHZ_MULTIPLES(channel,  15)
 #define BW160MHZ_MACROS
-#else /* WL_BW320MHZ */
+#else /* BCMWIFI_BW320MHZ */
 #define LLLL_20_SB_320(channel)  0
 #define LLLU_20_SB_320(channel)  0
 #define LLUL_20_SB_320(channel)  0
@@ -311,11 +346,11 @@ uint wf_chspec_first_20_sb(chanspec_t chspec);
 #define UULU_20_SB_320(channel)  0
 #define UUUL_20_SB_320(channel)  0
 #define UUUU_20_SB_320(channel)  0
-#endif /* WL_BW320MHZ */
+#endif /* BCMWIFI_BW320MHZ */
 
-#if defined(WL_BW160MHZ)
+#ifdef BCMWIFI_BW160MHZ
 #define BW160MHZ_MACROS
-#endif /* WL_BW160MHZ */
+#endif
 
 #ifdef BW160MHZ_MACROS
 /* pass a 160MHz center channel to get 20MHz subband channel numbers */
@@ -422,8 +457,8 @@ uint wf_chspec_first_20_sb(chanspec_t chspec);
 #define BW_LE80(bw)		(BW_LE40(bw) || ((bw) == WL_CHANSPEC_BW_80))
 #define BW_LE160(bw)		(BW_LE80(bw) || ((bw) == WL_CHANSPEC_BW_160))
 
-#define CHSPEC_IS6G(chspec)	(((chspec) & WL_CHANSPEC_BAND_MASK) == WL_CHANSPEC_BAND_6G)
-#define CHSPEC_IS5G(chspec)	(((chspec) & WL_CHANSPEC_BAND_MASK) == WL_CHANSPEC_BAND_5G)
+#define CHSPEC_IS6G(chspec)	(CHSPEC_BAND(chspec) == WL_CHANSPEC_BAND_6G)
+#define CHSPEC_IS5G(chspec)	(CHSPEC_BAND(chspec) == WL_CHANSPEC_BAND_5G)
 /* Table E-4 updates from 5.9G channels */
 #define CHSPEC_IS5P9G(chspec)	((CHSPEC_IS5G(chspec) && \
 				(wf_chspec_center_channel(chspec) >= 163U) && \
@@ -432,25 +467,26 @@ uint wf_chspec_first_20_sb(chanspec_t chspec);
 				(wf_chspec_center_channel(chspec) == 165U))? \
 				FALSE : TRUE): FALSE)
 
-#define CHSPEC_IS2G(chspec)	(((chspec) & WL_CHANSPEC_BAND_MASK) == WL_CHANSPEC_BAND_2G)
-#define CHSPEC_SB_UPPER(chspec)	\
-	((((chspec) & WL_CHANSPEC_CTL_SB_MASK) == WL_CHANSPEC_CTL_SB_UPPER) && \
-	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40))
+#define CHSPEC_IS2G(chspec)	(CHSPEC_BAND(chspec) == WL_CHANSPEC_BAND_2G)
+
+#define CHSPEC_SB_UPPER(chspec) \
+	((CHSPEC_CTL_SB(chspec) == WL_CHANSPEC_CTL_SB_UPPER) && \
+	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_40))
 #define CHSPEC_SB_LOWER(chspec)	\
-	((((chspec) & WL_CHANSPEC_CTL_SB_MASK) == WL_CHANSPEC_CTL_SB_LOWER) && \
-	(((chspec) & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40))
+	((CHSPEC_CTL_SB(chspec) == WL_CHANSPEC_CTL_SB_LOWER) && \
+	(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_40))
 
 #define CHSPEC_BW_CHANGED(prev_chspec, curr_chspec) \
-	(((prev_chspec) & WL_CHANSPEC_BW_MASK) != ((curr_chspec) & WL_CHANSPEC_BW_MASK))
+	(CHSPEC_BW(prev_chspec) != CHSPEC_BW(curr_chspec))
 
-#if (defined(WL_BAND6G) && !defined(WL_BAND6G_DISABLED))
+#ifdef BCMWIFI_BAND6G
 #define CHSPEC_IS_5G_6G(chspec)		(CHSPEC_IS5G(chspec) || CHSPEC_IS6G(chspec))
-#define CHSPEC_IS20_5G_6G(chspec)	((((chspec) & \
-					WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_20) && \
+#define CHSPEC_IS20_5G_6G(chspec)	((CHSPEC_BW(chspec) == WL_CHANSPEC_BW_20) && \
 					(CHSPEC_IS5G(chspec) || CHSPEC_IS6G(chspec)))
 #else
 #define CHSPEC_IS_5G_6G(chspec)		(CHSPEC_IS5G(chspec))
-#define CHSPEC_IS20_5G_6G(chspec)	(CHSPEC_IS20_5G(chspec))
+#define CHSPEC_IS20_5G_6G(chspec)	((CHSPEC_BW(chspec) == WL_CHANSPEC_BW_20) && \
+					CHSPEC_IS5G(chspec))
 #endif
 
 /**
@@ -461,12 +497,6 @@ uint wf_chspec_first_20_sb(chanspec_t chspec);
 #else
 #define CHANSPEC_STR_LEN    20
 #endif
-
-/*
- * This function returns TRUE if both the chanspec can co-exist in PHY.
- * Addition to primary20 channel, the function checks for side band for 2g 40 channels
- */
-extern bool wf_chspec_coexist(chanspec_t chspec1, chanspec_t chspec2);
 
 #define BW_IS_160_WIDE(bw) \
 	(((bw) == WL_CHANSPEC_BW_160) || ((bw) == WL_CHANSPEC_BW_8080))
@@ -579,6 +609,14 @@ extern bool wf_chspec_coexist(chanspec_t chspec1, chanspec_t chspec2);
 
 /* wf_create_chspec_from_primary() flags bitmasks */
 #define WF_CHANSPEC_FLAG_OVERLAPPED320  0x0001u
+
+uint wf_chspec_first_20_sb(chanspec_t chspec);
+
+/*
+ * This function returns TRUE if both the chanspec can co-exist in PHY.
+ * Addition to primary20 channel, the function checks for side band for 2g 40 channels
+ */
+extern bool wf_chspec_coexist(chanspec_t chspec1, chanspec_t chspec2);
 
 /**
  * Return the chanspec bandwidth in MHz
@@ -832,7 +870,7 @@ extern uint8 wf_chspec_primary80_channel(chanspec_t chanspec);
 extern uint8 wf_chspec_secondary80_channel(chanspec_t chanspec);
 
 /**
- * Returns the chanspec for the primary 80MHz sub-band of a 320MHz or 160+160MHz or 160MHz or
+ * Returns the chanspec for the primary 80MHz sub-band of a 320MHz or 160MHz or
  * 80+80MHz channel
  *
  * @param	chspec    input chanspec
@@ -1008,14 +1046,16 @@ int channel_6g_160mhz_to_id(uint ch);
 int channel_6g_320mhz_to_id(uint ch);
 bool wf_chspec_get_20m_lower_upper_channel(chanspec_t chspec, uint* lower, uint* upper,
 	uint *separation);
-#if defined(WL_BW320MHZ)
+
+#ifdef BCMWIFI_BW320MHZ
 /*
  * Returns center channel for a contiguous chanspec and
  * INVCHANNEL for non-contiguous chanspec.
  */
 uint8 wf_chspec_center_channel(chanspec_t chspec);
-#else /* WL_BW320MHZ */
+#else /* BCMWIFI_BW320MHZ */
 #define wf_chspec_center_channel(chspec) CHSPEC_CHANNEL(chspec)
-#endif /* WL_BW320MHZ */
+#endif /* BCMWIFI_BW320MHZ */
 uint8 wf_chspec_get_primary_sb(chanspec_t chspec);
+
 #endif	/* _bcmwifi_channels_h_ */

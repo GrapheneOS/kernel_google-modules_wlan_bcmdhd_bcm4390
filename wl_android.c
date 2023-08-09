@@ -480,9 +480,6 @@ static android_custom_dwell_time_t custom_scan_dwell[] =
 #define BUFSZ 8
 #define BUFSZN	BUFSZ + 1
 
-#define _S(x) #x
-#define S(x) _S(x)
-
 #define  MAXBANDS    2  /**< Maximum #of bands */
 #define BAND_2G_INDEX      1
 #define BAND_5G_INDEX      0
@@ -2988,7 +2985,7 @@ wl_android_reassoc_chan(struct net_device *dev, char *command, int total_len)
 	chanspec_t chanspec;
 	char pcmd[WL_PRIV_CMD_LEN + 1];
 
-	sscanf(command, "%"S(WL_PRIV_CMD_LEN)"s *", pcmd);
+	sscanf(command, "%"BCM_STR(WL_PRIV_CMD_LEN)"s *", pcmd);
 	if (total_len < (strlen(pcmd) + 1 + sizeof(android_wifi_reassoc_params_t))) {
 		WL_ERR(("Invalid parameters %s\n", command));
 		return BCME_ERROR;
@@ -3026,7 +3023,7 @@ wl_android_reassoc_freq(struct net_device *dev, char *command, int total_len)
 	chanspec_t chanspec, frequency;
 	char pcmd[WL_PRIV_CMD_LEN + 1];
 
-	sscanf(command, "%"S(WL_PRIV_CMD_LEN)"s *", pcmd);
+	sscanf(command, "%"BCM_STR(WL_PRIV_CMD_LEN)"s *", pcmd);
 	params = (command + strlen(pcmd) + 1);
 
 	/* Parse Reassoc BSSID */
@@ -3353,7 +3350,7 @@ wl_android_legacy_check_command(struct net_device *dev, char *command)
 	while (strlen(legacy_cmdlist[cnt]) > 0) {
 		if (strnicmp(command, legacy_cmdlist[cnt], strlen(legacy_cmdlist[cnt])) == 0) {
 			char cmd[WL_PRIV_CMD_LEN + 1];
-			sscanf(command, "%"S(WL_PRIV_CMD_LEN)"s ", cmd);
+			sscanf(command, "%"BCM_STR(WL_PRIV_CMD_LEN)"s ", cmd);
 			if (strlen(legacy_cmdlist[cnt]) == strlen(cmd)) {
 				return TRUE;
 			}
@@ -3461,7 +3458,7 @@ wl_android_ncho_check_command(struct net_device *dev, char *command)
 	while (strlen(ncho_cmdlist[cnt]) > 0) {
 		if (strnicmp(command, ncho_cmdlist[cnt], strlen(ncho_cmdlist[cnt])) == 0) {
 			char cmd[WL_PRIV_CMD_LEN + 1];
-			sscanf(command, "%"S(WL_PRIV_CMD_LEN)"s ", cmd);
+			sscanf(command, "%"BCM_STR(WL_PRIV_CMD_LEN)"s ", cmd);
 			if (strlen(ncho_cmdlist[cnt]) == strlen(cmd)) {
 				return TRUE;
 			}
@@ -5358,20 +5355,27 @@ int wl_android_wifi_on(struct net_device *dev)
 				__FUNCTION__, retry));
 			/* Set big hammer flag */
 			dhdp->do_chip_bighammer = TRUE;
-#ifdef BCMPCIE
-			/* if error during power on was NORESOURCE
-			 * do not collect debug_dump for any errors
-			 * seen during power off, because NORESOURCE
-			 * means dhd_prot_init has not yet occured
-			 * and dhd_log_dump will try to fire iovars
-			 * to flush FW logs
+			/*
+			 * If failed to power up wifi chip, dhd_open() which invoked this function
+			 * will invoke dhd_stop. As part of dhd_stop this clean-up will be handled.
+			 *
 			 */
-			dhdp->skip_logdmp = TRUE;
-			dhd_net_bus_devreset(dev, TRUE);
-			dhdp->skip_logdmp = FALSE;
+			if (retry != 0) {
+#ifdef BCMPCIE
+				/* if error during power on was NORESOURCE
+				 * do not collect debug_dump for any errors
+				 * seen during power off, because NORESOURCE
+				 * means dhd_prot_init has not yet occured
+				 * and dhd_log_dump will try to fire iovars
+				 * to flush FW logs
+				 */
+				dhdp->skip_logdmp = TRUE;
+				dhd_net_bus_devreset(dev, TRUE);
+				dhdp->skip_logdmp = FALSE;
 #endif /* BCMPCIE */
 
-			dhd_net_wifi_platform_set_power(dev, FALSE, WIFI_TURNOFF_DELAY);
+				dhd_net_wifi_platform_set_power(dev, FALSE, WIFI_TURNOFF_DELAY);
+			}
 		} while (retry-- > 0);
 		if (ret != 0) {
 			DHD_ERROR(("\nfailed to power up wifi chip, max retry reached **\n\n"));
@@ -5485,12 +5489,6 @@ wbrc2wl_wlan_pcie_link_request(void *dhd_pub)
 		return BCME_NOTFOUND;
 	}
 
-#ifdef WBRC_TEST
-	if (wbrc_test_get_error() == WBRC_WLAN_PCIE_LINK_REQ_FAIL) {
-		return -1;
-	}
-#endif /* WBRC_TEST */
-
 	dhd_net_if_lock(dev);
 	if (!g_wifi_on) {
 		dhd_net_if_unlock(dev);
@@ -5538,12 +5536,6 @@ wbrc2wl_wlan_on_request(void *dhd_pub)
 		DHD_ERROR(("%s: dev is null\n", __FUNCTION__));
 		return BCME_NOTFOUND;
 	}
-
-#ifdef WBRC_TEST
-	if (wbrc_test_get_error() == WBRC_WLAN_FW_DWNLD_FAIL) {
-		return -1;
-	}
-#endif /* WBRC_TEST */
 
 	dhd_net_if_lock(dev);
 	if (!g_wifi_on) {
@@ -5622,16 +5614,7 @@ wbrc2wl_wlan_dwnld_bt_fw(void *dhd_pub, void *fw_blob, uint len)
 #endif /* DHD_PCIE_RUNTIMEPM */
 
 	/* download bt fw over pcie bar2 */
-#ifdef WBRC_TEST
-	if (wbrc_test_get_error() == WBRC_BT_FW_DWNLD_SIM) {
-		OSL_DELAY(2000000);
-		ret = 0;
-	} else {
-		ret = dhd_bt_fw_dwnld_blob(dhdp, fw_blob, len);
-	}
-#else
 	ret = dhd_bt_fw_dwnld_blob(dhdp, fw_blob, len);
-#endif /* WBRC_TEST */
 
 	if (ret && dhdp->do_chip_bighammer) {
 		ret = WBRC_WL_FATAL_ERR;
@@ -5640,12 +5623,6 @@ wbrc2wl_wlan_dwnld_bt_fw(void *dhd_pub, void *fw_blob, uint len)
 	} else if (!ret) {
 		DHD_PRINT(("%s: finished bt fw dwnld successfully\n", __FUNCTION__));
 	}
-
-#ifdef WBRC_TEST
-	if (wbrc_test_get_error() == WBRC_BT_FW_DWNLD_FAIL) {
-		ret = BCME_ERROR;
-	}
-#endif /* WBRC_TEST */
 
 	DHD_GENERAL_LOCK(dhdp, flags);
 	DHD_BUS_BUSY_CLEAR_IN_BT_FW_DWNLD(dhdp);
@@ -8952,6 +8929,7 @@ wl_android_set_miracast(struct net_device *dev, char *command)
 		/* Source mode shares most configurations with sink mode.
 		 * Fall through here to avoid code duplication
 		 */
+		BCM_FALLTHROUGH;
 	case MIRACAST_MODE_SINK:
 		/* disable internal roaming */
 		config.iovar = "roam_off";
@@ -15611,7 +15589,8 @@ int wl_cfg80211_wbtext_weight_config(struct net_device *ndev, char *data,
 	bwcfg->type = 0;
 	bwcfg->weight = 0;
 
-	argc = sscanf(data, "%"S(BUFSZ)"s %"S(BUFSZ)"s %"S(BUFSZ)"s", rssi, band, weight);
+	argc = sscanf(data, "%"BCM_STR(BUFSZ)"s %"BCM_STR(BUFSZ)"s %"BCM_STR(BUFSZ)"s",
+			rssi, band, weight);
 
 	if (!strcasecmp(rssi, "rssi"))
 		bwcfg->type = WNM_BSS_SELECT_TYPE_RSSI;
@@ -15699,7 +15678,7 @@ int wl_cfg80211_wbtext_table_config(struct net_device *ndev, char *data,
 	btcfg->type = 0;
 	btcfg->count = 0;
 
-	sscanf(data, "%"S(BUFSZ)"s %"S(BUFSZ)"s", rssi, band);
+	sscanf(data, "%"BCM_STR(BUFSZ)"s %"BCM_STR(BUFSZ)"s", rssi, band);
 
 	if (!strcasecmp(rssi, "rssi")) {
 		btcfg->type = WNM_BSS_SELECT_TYPE_RSSI;
@@ -15798,7 +15777,7 @@ wl_cfg80211_wbtext_delta_config(struct net_device *ndev, char *data, char *comma
 		goto exit;
 	}
 
-	argc = sscanf(data, "%"S(BUFSZ)"s %"S(BUFSZ)"s", band, delta);
+	argc = sscanf(data, "%"BCM_STR(BUFSZ)"s %"BCM_STR(BUFSZ)"s", band, delta);
 	if (BCME_BADBAND == wl_android_bandstr_to_fwband(band, &band_val)) {
 		WL_ERR(("%s: Missing band\n", __func__));
 		goto exit;

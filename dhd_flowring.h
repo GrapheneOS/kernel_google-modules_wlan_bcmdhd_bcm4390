@@ -358,4 +358,21 @@ int dhd_flow_prio_map_init(dhd_pub_t *dhd);
 extern uint32 dhd_active_tx_flowring_bkpq_len(dhd_pub_t *dhdp);
 
 extern uint8 dhd_flow_rings_ifindex2role(dhd_pub_t *dhdp, uint8 ifindex);
+#ifdef IDLE_TX_FLOW_MGMT
+extern int dhd_bus_flow_ring_resume_request(struct dhd_bus *bus, void *arg);
+extern void dhd_bus_flow_ring_resume_response(struct dhd_bus *bus, uint16 flowid, int32 status);
+extern int dhd_bus_flow_ring_suspend_request(struct dhd_bus *bus, void *arg);
+extern void dhd_bus_flow_ring_suspend_response(struct dhd_bus *bus, uint16 flowid, uint32 status);
+extern void dhd_flow_ring_move_to_active_list_head(struct dhd_bus *bus,
+	flow_ring_node_t *flow_ring_node);
+extern void dhd_flow_ring_add_to_active_list(struct dhd_bus *bus,
+	flow_ring_node_t *flow_ring_node);
+extern void dhd_flow_ring_delete_from_active_list(struct dhd_bus *bus,
+	flow_ring_node_t *flow_ring_node);
+extern void __dhd_flow_ring_delete_from_active_list(struct dhd_bus *bus,
+	flow_ring_node_t *flow_ring_node);
+extern void dhd_bus_flow_ring_resume_response(struct dhd_bus *bus, uint16 flowid, int32 status);
+extern void dhd_bus_check_idle_scan(struct dhd_bus *bus);
+extern void dhd_bus_idle_scan(struct dhd_bus *bus);
+#endif /* IDLE_TX_FLOW_MGMT */
 #endif /* _dhd_flowrings_h_ */

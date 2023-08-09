@@ -66,6 +66,11 @@
 #define WL_CFG_VNDR_OUI_SYNC_LOCK(lock, flags)		(flags) = osl_spin_lock(lock)
 #define WL_CFG_VNDR_OUI_SYNC_UNLOCK(lock, flags)	osl_spin_unlock((lock), (flags))
 
+#define WL_CFG_WBTEXT_BSSID_LIST_SYNC_INIT(osh)           osl_spin_lock_init(osh)
+#define WL_CFG_WBTEXT_BSSID_LIST_SYNC_DEINIT(osh, lock)   osl_spin_lock_deinit(osh, lock)
+#define WL_CFG_WBTEXT_BSSID_LIST_SYNC_LOCK(lock, flags)   (flags) = osl_spin_lock(lock)
+#define WL_CFG_WBTEXT_BSSID_LIST_SYNC_UNLOCK(lock, flags) osl_spin_unlock((lock), (flags))
+
 #include <wifi_stats.h>
 #include <wl_cfgp2p.h>
 #ifdef WL_NAN
@@ -779,8 +784,13 @@ do {									\
 #define WL_INVALID		-1
 
 #ifdef DHD_LOSSLESS_ROAMING
-#define WL_ROAM_TIMEOUT_MS	3000 /* Roam timeout */
-#endif
+#ifdef OEM_ANDROID
+#define WL_ROAM_TIMEOUT_MS	3000 /* roam success/fail would pre-empt the timer */
+#else
+#define WL_ROAM_TIMEOUT_MS	1000 /* Roam timeout */
+#endif /* OEM_ANDROID */
+#endif /* DHD_LOSSLESS_ROAMING */
+
 /* Bring down SCB Timeout to 20secs from 60secs default */
 #ifndef WL_SCB_TIMEOUT
 #define WL_SCB_TIMEOUT	20
@@ -1018,6 +1028,7 @@ enum wl_status {
 	WL_STATUS_CONNECTED,
 	WL_STATUS_DISCONNECTING,
 	WL_STATUS_AP_CREATING,
+	WL_STATUS_AP_BSS_UP_IN_PROG,
 	WL_STATUS_AP_ROLE_UPGRADED,
 	WL_STATUS_AP_CREATED,
 	/* whole sending action frame procedure:
@@ -1390,6 +1401,19 @@ typedef struct wl_mlo_config {
 	wl_mlo_ap_cfg_t ap;
 } wl_mlo_config_t;
 #endif /* WL_MLO */
+
+#define MAX_20MHZ_CHANNELS   16u
+
+#define MAX_SAP_BW_6G	WL_CHANSPEC_BW_160
+#define MAX_SAP_BW_5G	WL_CHANSPEC_BW_80
+#define MAX_SAP_BW_2G	WL_CHANSPEC_BW_20
+
+typedef struct wl_chan_info {
+	chanspec_t chspec;
+	u32 chaninfo;
+	bool is_primary;
+	u8 array[MAX_20MHZ_CHANNELS];
+} wl_chan_info_t;
 
 struct net_info {
 	struct net_device *ndev;
@@ -2061,6 +2085,13 @@ typedef struct scan_stat_cache_cores {
 } scan_stat_cache_cores_t;
 #endif /* LINKSTAT_EXT_SUPPORT */
 
+typedef enum {
+	HAL_IDLE		= 0,
+	HAL_START_IN_PROG	= 1,
+	HAL_STOP_IN_PROG	= 2,
+	HAL_STARTED		= 3
+} hal_state;
+
 /* private data of cfg80211 interface */
 struct bcm_cfg80211 {
 	struct wireless_dev *wdev;	/* representing cfg cfg80211 device */
@@ -2271,6 +2302,7 @@ struct bcm_cfg80211 {
 	uint8 vif_count;	/* Virtual Interface count */
 #ifdef WBTEXT
 	struct list_head wbtext_bssid_list;
+	void *wbtext_bssid_list_sync;
 #endif /* WBTEXT */
 #ifdef SUPPORT_AP_RADIO_PWRSAVE
 	ap_rps_info_t ap_rps_info;
@@ -2300,7 +2332,7 @@ struct bcm_cfg80211 {
 #endif /* WL_BCNRECV */
 	struct net_device *static_ndev;
 	uint8 static_ndev_state;
-	bool hal_started;
+	uint8 hal_state;
 	wl_wlc_version_t wlc_ver;
 	u8 scan_params_ver;
 #ifdef SUPPORT_AP_BWCTRL
@@ -3524,7 +3556,7 @@ extern struct bcm_cfg80211 *wl_get_cfg(struct net_device *ndev);
 extern s32 wl_cfg80211_set_if_band(struct net_device *ndev, int band);
 extern s32 wl_cfg80211_set_country_code(struct net_device *dev, char *country_code,
         bool notify, bool user_enforced, int revinfo);
-extern bool wl_cfg80211_is_hal_started(struct bcm_cfg80211 *cfg);
+extern uint8 wl_cfg80211_is_hal_started(struct bcm_cfg80211 *cfg);
 #ifdef WL_WIPSEVT
 extern int wl_cfg80211_wips_event(uint16 misdeauth, char* bssid);
 extern int wl_cfg80211_wips_event_ext(wl_wips_event_info_t *wips_event);

@@ -1333,6 +1333,7 @@ dhd_update_multicilent_flow_rings(dhd_pub_t *dhdp, uint8 ifindex, bool increment
 		}
 	}
 }
+
 void
 dhd_flow_rings_flush(dhd_pub_t *dhdp, uint8 ifindex)
 {
@@ -1636,3 +1637,184 @@ dhd_active_tx_flowring_bkpq_len(dhd_pub_t *dhd)
 	return active_tx_flowring_qlen;
 }
 
+
+#ifdef IDLE_TX_FLOW_MGMT
+/* resume request */
+int
+dhd_bus_flow_ring_resume_request(dhd_bus_t *bus, void *arg)
+{
+	flow_ring_node_t *flow_ring_node = (flow_ring_node_t *)arg;
+
+	DHD_PRINT(("%s :Flow Resume Request flow id %u\n", __FUNCTION__, flow_ring_node->flowid));
+
+	flow_ring_node->status = FLOW_RING_STATUS_RESUME_PENDING;
+
+	/* Send Msg to device about flow ring resume */
+	dhd_prot_flow_ring_resume(bus->dhd, flow_ring_node);
+
+	return BCME_OK;
+}
+
+/* add the node back to active flowring */
+void
+dhd_bus_flow_ring_resume_response(dhd_bus_t *bus, uint16 flowid, int32 status)
+{
+
+	flow_ring_node_t *flow_ring_node;
+
+	DHD_TRACE(("%s :flowid %d \n", __FUNCTION__, flowid));
+
+	flow_ring_node = DHD_FLOW_RING(bus->dhd, flowid);
+	ASSERT(flow_ring_node->flowid == flowid);
+
+	if (status != BCME_OK) {
+		DHD_ERROR(("%s Error Status = %d \n",
+			__FUNCTION__, status));
+		return;
+	}
+
+	DHD_TRACE(("%s :Number of pkts queued in FlowId:%d is -> %u!!\n",
+		__FUNCTION__, flow_ring_node->flowid,  flow_ring_node->queue.len));
+
+	flow_ring_node->status = FLOW_RING_STATUS_OPEN;
+
+	dhd_bus_schedule_queue(bus, flowid, FALSE, 0, NULL);
+	return;
+}
+
+/* scan the flow rings in active list for idle time out */
+void
+dhd_bus_check_idle_scan(dhd_bus_t *bus)
+{
+	uint64 time_stamp; /* in millisec */
+	uint64 diff;
+
+	time_stamp = OSL_SYSUPTIME();
+	diff = time_stamp - bus->active_list_last_process_ts;
+
+	if (diff > IDLE_FLOW_LIST_TIMEOUT) {
+		dhd_bus_idle_scan(bus);
+		bus->active_list_last_process_ts = OSL_SYSUPTIME();
+	}
+
+	return;
+}
+
+
+/* scan the nodes in active list till it finds a non idle node */
+void
+dhd_bus_idle_scan(dhd_bus_t *bus)
+{
+	dll_t *item, *prev;
+	flow_ring_node_t *flow_ring_node;
+	uint64 time_stamp, diff;
+	unsigned long flags;
+	uint16 ringid[MAX_SUSPEND_REQ];
+	uint16 count = 0;
+
+	time_stamp = OSL_SYSUPTIME();
+	DHD_FLOWRING_LIST_LOCK(bus->dhd->flowring_list_lock, flags);
+
+	for (item = dll_tail_p(&bus->flowring_active_list);
+	         !dll_end(&bus->flowring_active_list, item); item = prev) {
+		prev = dll_prev_p(item);
+
+		flow_ring_node = dhd_constlist_to_flowring(item);
+
+		if (flow_ring_node->flowid == (bus->max_submission_rings - 1))
+			continue;
+
+		if (flow_ring_node->status != FLOW_RING_STATUS_OPEN) {
+			/* Takes care of deleting zombie rings */
+			/* delete from the active list */
+			DHD_INFO(("deleting flow id %u from active list\n",
+				flow_ring_node->flowid));
+			__dhd_flow_ring_delete_from_active_list(bus, flow_ring_node);
+			continue;
+		}
+
+		diff = time_stamp - flow_ring_node->last_active_ts;
+
+		if ((diff > IDLE_FLOW_RING_TIMEOUT) && !(flow_ring_node->queue.len))  {
+			DHD_PRINT(("\nSuspending flowid %d\n", flow_ring_node->flowid));
+			/* delete from the active list */
+			__dhd_flow_ring_delete_from_active_list(bus, flow_ring_node);
+			flow_ring_node->status = FLOW_RING_STATUS_SUSPENDED;
+			ringid[count] = flow_ring_node->flowid;
+			count++;
+			if (count == MAX_SUSPEND_REQ) {
+				/* create a batch message now!! */
+				dhd_prot_flow_ring_batch_suspend_request(bus->dhd, ringid, count);
+				count = 0;
+			}
+
+		} else {
+
+			/* No more scanning, break from here! */
+			break;
+		}
+	}
+
+	if (count) {
+		dhd_prot_flow_ring_batch_suspend_request(bus->dhd, ringid, count);
+	}
+
+	DHD_FLOWRING_LIST_UNLOCK(bus->dhd->flowring_list_lock, flags);
+
+	return;
+}
+
+void dhd_flow_ring_move_to_active_list_head(struct dhd_bus *bus, flow_ring_node_t *flow_ring_node)
+{
+	unsigned long flags;
+	dll_t* list;
+
+	DHD_FLOWRING_LIST_LOCK(bus->dhd->flowring_list_lock, flags);
+	/* check if the node is already at head, otherwise delete it and prepend */
+	list = dll_head_p(&bus->flowring_active_list);
+	if (&flow_ring_node->list != list) {
+		dll_delete(&flow_ring_node->list);
+		dll_prepend(&bus->flowring_active_list, &flow_ring_node->list);
+	}
+
+	/* update flow ring timestamp */
+	flow_ring_node->last_active_ts = OSL_SYSUPTIME();
+
+	DHD_FLOWRING_LIST_UNLOCK(bus->dhd->flowring_list_lock, flags);
+
+	return;
+}
+
+void dhd_flow_ring_add_to_active_list(struct dhd_bus *bus, flow_ring_node_t *flow_ring_node)
+{
+	unsigned long flags;
+
+	DHD_FLOWRING_LIST_LOCK(bus->dhd->flowring_list_lock, flags);
+
+	dll_prepend(&bus->flowring_active_list, &flow_ring_node->list);
+	/* update flow ring timestamp */
+	flow_ring_node->last_active_ts = OSL_SYSUPTIME();
+
+	DHD_FLOWRING_LIST_UNLOCK(bus->dhd->flowring_list_lock, flags);
+
+	return;
+}
+
+void __dhd_flow_ring_delete_from_active_list(struct dhd_bus *bus, flow_ring_node_t *flow_ring_node)
+{
+	dll_delete(&flow_ring_node->list);
+}
+
+void dhd_flow_ring_delete_from_active_list(struct dhd_bus *bus, flow_ring_node_t *flow_ring_node)
+{
+	unsigned long flags;
+
+	DHD_FLOWRING_LIST_LOCK(bus->dhd->flowring_list_lock, flags);
+
+	__dhd_flow_ring_delete_from_active_list(bus, flow_ring_node);
+
+	DHD_FLOWRING_LIST_UNLOCK(bus->dhd->flowring_list_lock, flags);
+
+	return;
+}
+#endif /* IDLE_TX_FLOW_MGMT */

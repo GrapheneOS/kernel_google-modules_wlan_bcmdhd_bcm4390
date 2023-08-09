@@ -325,4 +325,8 @@ extern s32 wl_filter_restricted_subbands(struct bcm_cfg80211 *cfg, struct net_de
 	chanspec_t *cur_chspec);
 s32 wl_cfgvif_clone_bss_info(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev, u8 *src_bssid, const u8 *target_bssid);
+extern bool wl_cfgvif_is_scc_valid(chanspec_t sta_chanspec,
+		chanspec_t chspec, wl_chan_info_t *wl_chaninfo);
+extern s32 wl_cfgvif_get_ml_scc_channel_array(struct bcm_cfg80211 *cfg,
+	wl_chan_info_t *wl_chaninfo);
 #endif /* _wl_cfgvif_h_ */

@@ -77,8 +77,10 @@ static int resched_streak = 0;
 static int resched_streak_max = 0;
 static uint64 last_resched_cnt_check_time_ns = 0;
 static uint64 last_affinity_update_time_ns = 0;
+static uint hw_stage_val = 0;
 /* force to switch to small core at beginning */
 static bool is_irq_on_big_core = TRUE;
+static bool is_plat_pcie_resume = FALSE;
 
 static int pcie_ch_num = EXYNOS_PCIE_CH_NUM;
 #if defined(CONFIG_SOC_GOOGLE)
@@ -94,6 +96,10 @@ extern void exynos_pcie_register_dump(int ch_num);
 #ifdef PRINT_WAKEUP_GPIO_STATUS
 extern void exynos_pin_dbg_show(unsigned int pin, const char* str);
 #endif /* PRINT_WAKEUP_GPIO_STATUS */
+
+#ifdef DHD_TREAT_D3ACKTO_AS_LINKDWN
+extern void exynos_pcie_set_skip_config(int ch_num, bool val);
+#endif /* DHD_TREAT_D3ACKTO_AS_LINKDWN */
 
 #ifdef DHD_COREDUMP
 #define DEVICE_NAME "wlan"
@@ -394,6 +400,11 @@ dhd_get_platform_naming_for_nvram_clmblob_file(download_type_t component, char *
 		return BCME_ERROR;
 	}
 
+	if (hw_stage_val < EVT) {
+		DHD_ERROR(("No multi-NVRAM/CLM support on Proto/Dev device\n"));
+		return BCME_ERROR;
+	}
+
 	if (component == NVRAM) {
 #ifdef DHD_LINUX_STD_FW_API
 		nvram_clmblob_file = DHD_NVRAM_NAME;
@@ -464,7 +475,7 @@ dhd_wlan_init_hardware_info(void)
 			DHD_ERROR(("%s: Failed to get hw minor\n", __FUNCTION__));
 			goto exit;
 		}
-
+		hw_stage_val = hw_stage;
 		switch (hw_stage) {
 			case DEV:
 				snprintf(val_revision, MAX_HW_INFO_LEN, "DEV%d.%d",
@@ -776,11 +787,13 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 			DHD_ERROR(("%s switches to big core unsuccessfully!\n", __FUNCTION__));
 		}
 	}
-	if (is_irq_on_big_core && (resched_streak_max <= RESCHED_STREAK_MAX_LOW) &&
-		!has_recent_affinity_update) {
+	if (is_plat_pcie_resume ||
+		(is_irq_on_big_core && (resched_streak_max <= RESCHED_STREAK_MAX_LOW) &&
+		!has_recent_affinity_update)) {
 		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_SMALL_CORE));
 		if (!err) {
 			is_irq_on_big_core = FALSE;
+			is_plat_pcie_resume = FALSE;
 			last_affinity_update_time_ns = curr_time_ns;
 			DHD_INFO(("%s switches to all cores successfully\n", __FUNCTION__));
 		} else {
@@ -803,7 +816,9 @@ void dhd_plat_report_bh_sched(void *plat_info, int resched)
 
 	if (resched > 0) {
 		resched_streak++;
-		return;
+		if (resched_streak <= RESCHED_STREAK_MAX_HIGH) {
+			return;
+		}
 	}
 
 	if (resched_streak > resched_streak_max) {
@@ -970,7 +985,7 @@ int dhd_plat_pcie_resume(void *plat_info)
 {
 	int ret = 0;
 	ret = exynos_pcie_pm_resume(pcie_ch_num);
-	is_irq_on_big_core = true;
+	is_plat_pcie_resume = TRUE;
 	return ret;
 }
 
@@ -1015,6 +1030,19 @@ uint16 dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz)
 #else
 	return rxbufpost_sz;
 #endif
+}
+
+void dhd_plat_pcie_skip_config_set(bool val)
+{
+#ifdef DHD_TREAT_D3ACKTO_AS_LINKDWN
+	DHD_PRINT(("%s: set skip config\n", __FUNCTION__));
+	exynos_pcie_set_skip_config(pcie_ch_num, val);
+#endif /* DHD_TREAT_D3ACKTO_AS_LINKDWN */
+}
+
+bool dhd_plat_pcie_enable_big_core(void)
+{
+	return is_irq_on_big_core;
 }
 
 #ifndef BCMDHD_MODULAR

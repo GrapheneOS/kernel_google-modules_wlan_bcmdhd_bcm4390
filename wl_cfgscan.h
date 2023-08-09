@@ -58,8 +58,6 @@
 #define SCAN_PARAMS_VER_3    3u
 #define SCAN_PARAMS_VER_4    4u
 
-#define MAX_20MHZ_CHANNELS   16u
-
 /* SCAN_PARAMS V3 and V2 have same size. so use V3 with appriate version param */
 #define IS_SCAN_PARAMS_V3_V2(cfg) (((cfg->scan_params_ver == SCAN_PARAMS_VER_3) || \
 			(cfg->scan_params_ver == SCAN_PARAMS_VER_2)) ? TRUE : FALSE)
@@ -249,4 +247,6 @@ extern bool wl_cfgscan_chaninfo_restricted(struct bcm_cfg80211 *cfg,
 		struct net_device *dev, u32 chan_info, chanspec_t chspec);
 extern s32
 wl_cfgscan_get_bw_chspec(chanspec_t *chspec, u32 bw);
+extern s32 wl_cfgscan_get_chan_info(struct bcm_cfg80211 *cfg,
+		u32 *chan_info, chanspec_t in_chspec);
 #endif /* _wl_cfgscan_h_ */

@@ -2437,18 +2437,10 @@ typedef uint32 ratespec_t;
 
 /* Override bit for WLC_SET_TXPWR.  if set, ignore other level limits */
 #define WL_TXPWR_OVERRIDE	(1U<<31)
-#define WL_TXPWR_2G		(1U<<30)
-#define WL_TXPWR_5G		(1U<<29)
 #define WL_TXPWR_NEG   (1U<<28)
-
-#define WL_TXPWR_MASK		(~(0x7<<29))
-#define WL_TXPWR_CORE_MAX	(3)
-#define WL_TXPWR_CORE0_MASK	(0x000000FF)
-#define WL_TXPWR_CORE0_SHIFT	(0)
-#define WL_TXPWR_CORE1_MASK	(0x0000FF00)
-#define WL_TXPWR_CORE1_SHIFT	(8)
-#define WL_TXPWR_CORE2_MASK	(0x00FF0000)
-#define WL_TXPWR_CORE2_SHIFT	(16)
+#define WL_TXPWR_DEV_CAT_MASK  0xC000000
+#define WL_TXPWR_DEV_CAT_SHIFT (26u)
+#define WL_TXPWR_DEV_CAT_MAX	(3u) /* Max dev cat is SP */
 
 /* phy types (returned by WLC_GET_PHYTPE) */
 #define	WLC_PHY_TYPE_A		0
@@ -2767,7 +2759,15 @@ enum wl_cnt_xtlv_id {
 	WL_CNT_XTLV_GE88_UCODE_RX_U32_V2 = 0x100a,	/* corerev >= 88 ucode macstats V2 - rx */
 	WL_CNT_XTLV_DYN_BW_STATS_V1 = 0x100b,		/* Deprecated */
 	WL_CNT_XTLV_DYN_BW_STATS = 0x100c,		/* corerev >= 88 DynBW stats */
-	WL_CNT_XTLV_SLIM_SCAN_STATS = 0x100d		/* Slim Scan stats */
+	WL_CNT_XTLV_SLIM_SCAN_STATS = 0x100d,		/* Slim Scan stats */
+	/* For use in ecounters: maps to wl_cnt_ge88mcst_tx_wrap_v1_t */
+	WL_CNT_XTLV_GE88_UCODE_TX_LNKSTAT_WRAP_V1 = 0x100e,
+	/* For use in ecounters: maps to wl_cnt_ge88mcst_rx_wrap_v1_t */
+	WL_CNT_XTLV_GE88_UCODE_RX_LNKSTAT_WRAP_V1 = 0x100f,
+	/* For use in ecounters: maps to wl_cnt_ge88mcst_tx_u32_wrap_v1_t */
+	WL_CNT_XTLV_GE88_UCODE_TX_LNKSTAT_WRAP_U32_V1 = 0x1010,
+	/* For use in ecounters: maps to wl_cnt_ge88mcst_rx_u32_wrap_v1_t */
+	WL_CNT_XTLV_GE88_UCODE_RX_LNKSTAT_WRAP_U32_V1 = 0x1011
 };
 
 /* bitmap for clm_flags iovar */

@@ -197,6 +197,7 @@ enum dhd_bus_devreset_type {
 #define DHD_BUS_BUSY_IN_SYSFS_DUMP		0x80000
 #define DHD_BUS_BUSY_IN_PM_CALLBACK		0x100000
 #define DHD_BUS_BUSY_IN_BT_FW_DWNLD		0x200000
+#define DHD_BUS_BUSY_IN_SSSR			0x400000
 
 #define DHD_BUS_BUSY_SET_IN_TX(dhdp) \
 	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_TX
@@ -242,6 +243,8 @@ enum dhd_bus_devreset_type {
 	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_PM_CALLBACK
 #define DHD_BUS_BUSY_SET_IN_BT_FW_DWNLD(dhdp) \
 	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_BT_FW_DWNLD
+#define DHD_BUS_BUSY_SET_IN_SSSR(dhdp) \
+	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_SSSR
 
 #define DHD_BUS_BUSY_CLEAR_IN_TX(dhdp) \
 	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_TX
@@ -287,6 +290,8 @@ enum dhd_bus_devreset_type {
 	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_PM_CALLBACK
 #define DHD_BUS_BUSY_CLEAR_IN_BT_FW_DWNLD(dhdp) \
 	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_BT_FW_DWNLD
+#define DHD_BUS_BUSY_CLEAR_IN_SSSR(dhdp) \
+	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_SSSR
 
 #define DHD_BUS_BUSY_CHECK_IN_TX(dhdp) \
 	((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_TX)
@@ -328,6 +333,9 @@ enum dhd_bus_devreset_type {
 	((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_DUMP_DONGLE_MEM)
 #define DHD_BUS_BUSY_CHECK_IN_SYSFS_DUMP(dhdp) \
 	((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_SYSFS_DUMP)
+#define DHD_BUS_BUSY_CHECK_IN_SSSR(dhdp) \
+	((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_SSSR)
+
 #define DHD_BUS_BUSY_CHECK_IDLE(dhdp) \
 	((dhdp)->dhd_bus_busy_state == 0)
 
@@ -715,7 +723,8 @@ enum dhd_hang_reason {
 	HANG_REASON_PCIE_CTO_DETECT			= 0x8809,
 	HANG_REASON_SLEEP_FAILURE			= 0x880A,
 	HANG_REASON_DS_SKIP_TIMEOUT			= 0x880B,
-	HANG_REASON_MAX					= 0x880C
+	HANG_REASON_IOCTL_TXNID_MISMATCH		= 0x880C,
+	HANG_REASON_MAX					= 0x880D
 };
 
 #define WLC_E_DEAUTH_MAX_REASON 0x0FFF
@@ -2079,6 +2088,10 @@ typedef struct dhd_pub {
 #endif /* DHD_SSSR_DUMP_BEFORE_SR */
 	uint *sssr_saqm_buf_after;
 	bool skip_logdmp;
+#ifdef DHD_TREAT_D3ACKTO_AS_LINKDWN
+	bool no_pcie_access_during_dump;
+#endif /* DHD_TREAT_D3ACKTO_AS_LINKDWN */
+	uint *sssr_srcb_buf_after;
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -3686,7 +3699,6 @@ static INLINE int dhd_check_module_mac(dhd_pub_t *dhdp) { return 0; }
 #endif /* READ_MACADDR || WRITE_MACADDR || USE_CID_CHECK || GET_MAC_FROM_OTP */
 
 #ifdef DHD_USE_CISINFO
-int dhd_read_cis(dhd_pub_t *dhdp);
 int dhd_read_otp_sw_rgn(dhd_pub_t *dhdp);
 void dhd_clear_cis(dhd_pub_t *dhdp);
 int dhd_alloc_cis(dhd_pub_t *dhdp);
@@ -3719,7 +3731,6 @@ extern int concate_nvram_by_vid(dhd_pub_t *dhdp, char *nv_path, char *chipstr);
 #error Please use USE_CID_CHECK/USE_DIRECT_VID_TAG exclusively
 #endif /* USE_CID_CHECK && USE_DIRECT_VID_TAG */
 #else
-static INLINE int dhd_read_cis(dhd_pub_t *dhdp) { return 0; }
 static INLINE int dhd_read_otp_sw_rgn(dhd_pub_t *dhdp) { return 0; }
 static INLINE void dhd_clear_cis(dhd_pub_t *dhdp) { }
 static INLINE int dhd_alloc_cis(dhd_pub_t *dhdp) { return 0; }
@@ -4207,71 +4218,7 @@ extern void dhd_lb_stats_rxc_percpu_cnt_incr(dhd_pub_t *dhdp);
 extern void dhd_schedule_macdbg_dump(dhd_pub_t *dhdp);
 #endif /* BCMDBG */
 
-#ifdef DHD_SSSR_DUMP
-#ifdef DHD_SSSR_DUMP_BEFORE_SR
-#define DHD_SSSR_MEMPOOL_SIZE	(2 * 1024 * 1024) /* 2MB size */
-#else
-#define DHD_SSSR_MEMPOOL_SIZE	(1 * 1024 * 1024) /* 1MB size */
-#endif /* DHD_SSSR_DUMP_BEFORE_SR */
-
-/* used in sssr_dump_mode */
-#define SSSR_DUMP_MODE_SSSR	0	/* dump both *before* and *after* files */
-#define SSSR_DUMP_MODE_FIS	1	/* dump *after* files only */
-
-typedef struct sssr_header {
-	uint32 magic; /* should be 53535352 = 'SSSR' */
-	uint16 header_version; /* version number of this SSSR header */
-	uint16 sr_version; /* version of SR version. This is to differentiate changes in SR ASM. */
-	/*
-	 * Header length from the next field ?data_len? and upto the start of
-	 * binary_data[]. This is 20 bytes for version 0
-	 */
-	uint32 header_len;
-	uint32 data_len;  /* number of bytes in binary_data[] */
-	uint16 chipid;     /* chipid */
-	uint16 chiprev;    /* chiprev */
-	/*
-	 * For D11 MAC/sAQM cores, the coreid, coreunit &  WAR_signature in the dump belong
-	 * to respective cores. For the DIG SSSR dump these fields are extracted from the ARM core.
-	 */
-	uint16 coreid;
-	uint16 coreunit;
-
-	uint32 war_reg; /* Value of WAR register */
-	uint32 flags;	/* For future use */
-
-	uint8  binary_data[];
-} sssr_header_t;
-#define SSSR_HEADER_MAGIC 0x53535352u /* SSSR */
-
-extern int dhd_sssr_mempool_init(dhd_pub_t *dhd);
-extern void dhd_sssr_mempool_deinit(dhd_pub_t *dhd);
-extern int dhd_sssr_dump_init(dhd_pub_t *dhd, bool fis_dump);
-extern void dhd_sssr_dump_deinit(dhd_pub_t *dhd);
-extern int dhdpcie_sssr_dump(dhd_pub_t *dhd);
-extern void dhd_sssr_print_filepath(dhd_pub_t *dhd, char *path);
-extern int dhd_sssr_reg_info_init(dhd_pub_t *dhd);
-extern void dhd_sssr_reg_info_deinit(dhd_pub_t *dhd);
-extern uint dhd_sssr_dig_buf_size(dhd_pub_t *dhdp);
-extern uint dhd_sssr_dig_buf_addr(dhd_pub_t *dhdp);
-extern uint dhd_sssr_mac_buf_size(dhd_pub_t *dhdp, uint8 core_idx);
-extern uint dhd_sssr_mac_xmtaddress(dhd_pub_t *dhdp, uint8 core_idx);
-extern uint dhd_sssr_mac_xmtdata(dhd_pub_t *dhdp, uint8 core_idx);
-extern int dhd_sssr_mac_war_reg(dhd_pub_t *dhdp, uint8 core_idx, uint32 *war_reg);
-extern int dhd_sssr_arm_war_reg(dhd_pub_t *dhdp, uint32 *war_reg);
-extern int dhd_sssr_saqm_war_reg(dhd_pub_t *dhdp, uint32 *war_reg);
-extern int dhd_sssr_sr_asm_version(dhd_pub_t *dhdp, uint16 *sr_asm_version);
-extern uint dhd_sssr_saqm_buf_size(dhd_pub_t *dhdp);
-extern uint dhd_sssr_saqm_buf_addr(dhd_pub_t *dhdp);
-
-#define DHD_SSSR_MEMPOOL_INIT(dhdp)	dhd_sssr_mempool_init(dhdp)
-#define DHD_SSSR_MEMPOOL_DEINIT(dhdp) dhd_sssr_mempool_deinit(dhdp)
-#define DHD_SSSR_DUMP_INIT(dhdp)	dhd_sssr_dump_init(dhdp, FALSE)
-#define DHD_SSSR_DUMP_DEINIT(dhdp) dhd_sssr_dump_deinit(dhdp)
-#define DHD_SSSR_PRINT_FILEPATH(dhdp, path) dhd_sssr_print_filepath(dhdp, path)
-#define DHD_SSSR_REG_INFO_INIT(dhdp)	dhd_sssr_reg_info_init(dhdp)
-#define DHD_SSSR_REG_INFO_DEINIT(dhdp) dhd_sssr_reg_info_deinit(dhdp)
-#else
+#ifndef DHD_SSSR_DUMP
 #define DHD_SSSR_MEMPOOL_INIT(dhdp)		do { /* noop */ } while (0)
 #define DHD_SSSR_MEMPOOL_DEINIT(dhdp)		do { /* noop */ } while (0)
 #define DHD_SSSR_DUMP_INIT(dhdp)		do { /* noop */ } while (0)
@@ -4279,7 +4226,7 @@ extern uint dhd_sssr_saqm_buf_addr(dhd_pub_t *dhdp);
 #define DHD_SSSR_PRINT_FILEPATH(dhdp, path)	do { /* noop */ } while (0)
 #define DHD_SSSR_REG_INFO_INIT(dhdp)		do { /* noop */ } while (0)
 #define DHD_SSSR_REG_INFO_DEINIT(dhdp)		do { /* noop */ } while (0)
-#endif /* DHD_SSSR_DUMP */
+#endif /* !DHD_SSSR_DUMP */
 
 #ifdef DHD_SDTC_ETB_DUMP
 #define DHD_SDTC_ETB_MEMPOOL_SIZE (64 * 1024)

@@ -80,7 +80,8 @@ typedef enum dhd_log_type {
 	LOG_TYPE_EVENTS		= 1,
 	LOG_TYPE_PCIE_IPC	= 2,
 	LOG_TYPE_ERROR		= 3, /* Error messages like FW trap ..etc */
-	LOG_TYPE_DATA_PKT	= 4
+	LOG_TYPE_DATA_PKT	= 4,
+	LOG_TYPE_EVENT_LOGS	= 5
 } dhd_log_type_t;
 
 /*
@@ -127,6 +128,9 @@ dhd_log_msgtype(dhd_logger_t *pdl, driver_state_t *driver_state,
 
 int32
 dhd_log_route_events(dhd_logger_t *pdl, void *pkt, uint32 len);
+
+int32 dhd_log_infobuf_eventlogs(dhd_logger_t *pdl, void *pkt);
+int32 dhd_log_edl_eventlogs(dhd_logger_t *pdl, uint8 *msg);
 
 #define DHD_LOG_IOCTL_REQ(pdl, cmd, action, ifidx, \
 		trans_id, output_buf_len, ioct_buf, input_buf_len) \
@@ -178,6 +182,19 @@ do { \
 		} \
 	} while (0)
 
+#define DHD_LOG_INFOBUF_EVENTLOGS(pdl, pkt) \
+	do { \
+		if (dhd_logger == TRUE) { \
+			dhd_log_infobuf_eventlogs(pdl, pkt); \
+		} \
+	} while (0)
+
+#define DHD_LOG_EDL_EVENTLOGS(pdl, msg) \
+	do { \
+		if (dhd_logger == TRUE) { \
+			dhd_log_edl_eventlogs(pdl, msg); \
+		} \
+	} while (0)
 
 /* Log Filter APIs */
 int32
@@ -249,6 +266,8 @@ dhd_log_pkt(dhd_logger_t *pdl, uint32 type, void *pkt, uint32 len)
 		BCM_REFERENCE(driver_state); \
 	} while (0)
 #define DHD_LOG_ROUTE_EVENTS(pdl, pkt, len)
+#define DHD_LOG_INFOBUF_EVENTLOGS(pdl, pkt)
+#define DHD_LOG_EDL_EVENTLOGS(pdl, msg)
 
 /* Log Filter APIs */
 static INLINE int32
@@ -300,6 +319,18 @@ dhd_log_show_route_events(dhd_logger_t *pdl)
 
 static INLINE int32
 dhd_log_set_route_events(dhd_logger_t *pdl, bool route_events)
+{
+	return 0;
+}
+
+static INLINE int32
+dhd_log_infobuf_eventlogs(dhd_logger_t *pdl, void *pkt)
+{
+	return 0;
+}
+
+static INLINE int32
+dhd_log_edl_eventlogs(dhd_logger_t *pdl, uint8 *msg)
 {
 	return 0;
 }

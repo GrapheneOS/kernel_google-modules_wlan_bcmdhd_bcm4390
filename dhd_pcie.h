@@ -471,6 +471,7 @@ typedef struct dhd_bus {
 	uint32 d0_inform_in_use_cnt;
 #ifdef DHD_TREAT_D3ACKTO_AS_LINKDWN
 	uint32 d3ackto_as_linkdwn_cnt;
+	uint32 iovarto_as_linkdwn_cnt;
 #endif
 	uint8 force_suspend;
 	uint8 is_linkdown;
@@ -577,9 +578,9 @@ typedef struct dhd_bus {
 #if defined(PCIE_OOB) || defined(PCIE_INB_DW)
 	bool  ds_enabled;
 #endif
-#ifdef DHD_PCIE_RUNTIMEPM
+#ifdef OEM_ANDROID
 	bool chk_pm;	/* To avoid counting of wake up from Runtime PM */
-#endif /* DHD_PCIE_RUNTIMEPM */
+#endif /* OEM_ANDROID */
 #if defined(PCIE_INB_DW)
 	bool calc_ds_exit_latency;
 	bool deep_sleep; /* Indicates deep_sleep set or unset by the DHD IOVAR deep_sleep */
@@ -947,21 +948,6 @@ extern int tegra_pcie_pm_resume(void);
 #endif /* CONFIG_ARCH_TEGRA */
 
 extern int dhd_buzzz_dump_dngl(dhd_bus_t *bus);
-#ifdef IDLE_TX_FLOW_MGMT
-extern int dhd_bus_flow_ring_resume_request(struct dhd_bus *bus, void *arg);
-extern void dhd_bus_flow_ring_resume_response(struct dhd_bus *bus, uint16 flowid, int32 status);
-extern int dhd_bus_flow_ring_suspend_request(struct dhd_bus *bus, void *arg);
-extern void dhd_bus_flow_ring_suspend_response(struct dhd_bus *bus, uint16 flowid, uint32 status);
-extern void dhd_flow_ring_move_to_active_list_head(struct dhd_bus *bus,
-	flow_ring_node_t *flow_ring_node);
-extern void dhd_flow_ring_add_to_active_list(struct dhd_bus *bus,
-	flow_ring_node_t *flow_ring_node);
-extern void dhd_flow_ring_delete_from_active_list(struct dhd_bus *bus,
-	flow_ring_node_t *flow_ring_node);
-extern void __dhd_flow_ring_delete_from_active_list(struct dhd_bus *bus,
-	flow_ring_node_t *flow_ring_node);
-#endif /* IDLE_TX_FLOW_MGMT */
-
 extern int dhdpcie_send_mb_data(dhd_bus_t *bus, uint32 h2d_mb_data, const char *context);
 
 #ifdef DHD_WAKE_STATUS
@@ -974,6 +960,7 @@ int bcmpcie_set_get_wake_pkt_dump(struct dhd_bus *bus, int wake_pkt_dump);
 extern void dhd_dump_bus_mmio_trace(dhd_bus_t *bus, struct bcmstrbuf *strbuf);
 #endif /* defined(DHD_MMIO_TRACE) */
 extern void dhd_dump_bus_ds_trace(dhd_bus_t *bus, struct bcmstrbuf *strbuf);
+void dhd_dump_ds_trace_console(dhd_pub_t *dhdp);
 extern bool dhdpcie_bus_get_pcie_hostready_supported(dhd_bus_t *bus);
 extern void dhd_bus_hostready(struct  dhd_bus *bus);
 #ifdef PCIE_OOB
@@ -1115,4 +1102,12 @@ void dhd_dump_intr_counters(dhd_pub_t *dhd, struct bcmstrbuf *strbuf);
 /* Host Platform quirk callbacks */
 extern void dhdpcie_set_pmu_min_res_mask(void *bus, uint min_res_mask);
 extern int dhdpcie_skip_xorcsum_request(void *dhd_bus_p);
+
+void dhd_sbreg_op(dhd_pub_t *dhd, uint addr, uint *val, bool read);
+uint serialized_backplane_access(dhd_bus_t *bus, uint addr, uint size, uint *val, bool read);
+dhd_pcie_link_state_type_t dhdpcie_get_link_state(dhd_bus_t *bus);
+void dhd_bus_pcie_pwr_req_wl_domain(struct dhd_bus *bus, uint offset, bool enable);
+#ifdef DHD_FW_COREDUMP
+int dhdpcie_get_mem_dump(dhd_bus_t *bus);
+#endif /* DHD_FW_COREDUMP */
 #endif /* dhd_pcie_h */

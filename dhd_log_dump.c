@@ -42,6 +42,9 @@
 #if defined(WL_CFG80211)
 #include <wl_cfg80211.h>
 #endif
+#ifdef DHD_SSSR_DUMP
+#include <dhd_pcie_sssr_dump.h>
+#endif /* DHD_SSSR_DUMP */
 
 extern char dhd_version[];
 extern char fw_version[];
@@ -2234,12 +2237,12 @@ dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd)
 
 	if (!dhdp) {
 		DHD_ERROR(("dhdp is NULL !\n"));
-		return;
+		goto exit;
 	}
 
 	if (subcmd >= CMD_MAX || subcmd < CMD_DEFAULT) {
 		DHD_ERROR(("%s : Invalid subcmd \n", __FUNCTION__));
-		return;
+		goto exit;
 	}
 
 	current_time_sec = DIV_U64_BY_U32(OSL_LOCALTIME_NS(), NSEC_PER_SEC);
@@ -2251,7 +2254,7 @@ dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd)
 	if ((current_time_sec - dhdp->debug_dump_time_sec) < DEBUG_DUMP_TRIGGER_INTERVAL_SEC) {
 		DHD_ERROR(("%s : Last debug dump triggered(%lld) within %d seconds, so SKIP\n",
 			__FUNCTION__, dhdp->debug_dump_time_sec, DEBUG_DUMP_TRIGGER_INTERVAL_SEC));
-		return;
+		goto exit;
 	}
 
 	clear_debug_dump_time(dhdp->debug_dump_time_str);
@@ -2273,7 +2276,7 @@ dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd)
 		dhd_schedule_log_dump(dhdp, flush_type);
 	} else {
 		DHD_ERROR(("%s Fail to malloc flush_type\n", __FUNCTION__));
-		return;
+		goto exit;
 	}
 #endif /* DHD_DUMP_FILE_WRITE_FROM_KERNEL */
 
@@ -2297,6 +2300,10 @@ dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd)
 		dhd_bus_mem_dump(dhdp);
 	}
 #endif /* BCMPCIE && DHD_FW_COREDUMP */
+
+exit:
+	dhdp->skip_memdump_map_read = FALSE;
+	return;
 }
 
 

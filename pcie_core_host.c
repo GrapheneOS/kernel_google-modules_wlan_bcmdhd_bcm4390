@@ -30,11 +30,15 @@
 #include <pcicfg.h>
 #include <hndsoc.h>
 #include <sbchipc.h>
+#include <dhd_dbg.h>
 
 /* To avoid build error for dongle standalone test, define CAN_SLEEP if not defined */
 #ifndef CAN_SLEEP
 #define CAN_SLEEP()	(FALSE)
 #endif
+
+#define CC_RESET_DELAY 2			/* 2 ms */
+#define SS_RESET_ST_TIMEOUT 10000	/* 10 ms */
 
 #ifndef USEC_PER_MSEC
 #define USEC_PER_MSEC	1000
@@ -61,6 +65,9 @@ void pcie_watchdog_reset(osl_t *osh, si_t *sih, uint32 wd_mask, uint32 wd_val)
 		PCIECFGREG_REG_BAR3_CONFIG};
 	const sbpcieregs_t *pcieregs = NULL;
 	uint32 origidx = si_coreidx(sih);
+#ifdef BCMQT_HW
+	uint32 ss_control;
+#endif
 
 	/* Switch to PCIE2 core */
 	pcieregs = (sbpcieregs_t *)si_setcore(sih, PCIE2_CORE_ID, 0);
@@ -76,7 +83,16 @@ void pcie_watchdog_reset(osl_t *osh, si_t *sih, uint32 wd_mask, uint32 wd_val)
 	if (CCREV(sih->ccrev) >= 65) {
 		si_corereg(sih, SI_CC_IDX, CC_REG_OFF(WatchdogCounter), wd_mask, wd_val);
 		si_corereg(sih, SI_CC_IDX, CC_REG_OFF(WatchdogCounter), WD_COUNTER_MASK, 4);
-		CAN_SLEEP() ? OSL_SLEEP(2) : OSL_DELAY(2 * USEC_PER_MSEC); /* 2 ms */
+		CAN_SLEEP() ? OSL_SLEEP(CC_RESET_DELAY) : OSL_DELAY(CC_RESET_DELAY * USEC_PER_MSEC);
+#ifdef BCMQT_HW
+		/* for 4387C3 zebu, WL BP is still in reset after 2 ms delay */
+		SPINWAIT((((ss_control = OSL_PCI_READ_CONFIG(osh, PCIE_CFG_SUBSYSTEM_CONTROL,
+			sizeof(uint32))) & (1 << PCIE_SSRESET_STATUS_BIT)) != 0),
+			SS_RESET_ST_TIMEOUT);
+		if ((ss_control & (1 << PCIE_SSRESET_STATUS_BIT)) != 0) {
+			DHD_PRINT(("WL SS is still in reset - ss_control 0x%8x\n", ss_control));
+		}
+#endif /* BCMQT_HW */
 		val = si_corereg(sih, SI_CC_IDX, CC_REG_OFF(IntStatus), 0, 0);
 		si_corereg(sih, SI_CC_IDX, CC_REG_OFF(IntStatus),
 			wd_mask, val & wd_mask);

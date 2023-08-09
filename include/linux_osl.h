@@ -465,6 +465,32 @@ extern void dhd_plat_l1_exit_io(void);
 #ifndef IL_BIGENDIAN
 #ifdef CONFIG_64BIT
 /* readq is defined only for 64 bit platform */
+#ifdef NIC_PCIE_DEDICATED_WINDOWS
+/* Need to avoid shadowing __osl_v */
+extern uintptr __osl_v;
+#define NO_WIN_CHECK_R_REG(osh, r, addr) (\
+	SELECT_BUS_READ(osh, \
+		({ \
+			os_l1_exit_io; \
+			BCM_REFERENCE(osh);	\
+			switch (sizeof(*(r))) { \
+				case sizeof(uint8):	__osl_v = \
+					readb((volatile uint8*)(addr)); break; \
+				case sizeof(uint16):	__osl_v = \
+					readw((volatile uint16*)(addr)); break; \
+				case sizeof(uint32):	__osl_v = \
+					readl((volatile uint32*)(addr)); break; \
+				case sizeof(uint64):	__osl_v = \
+					/* Cast to uint32 * because host addresses are 64 bits */ \
+					/* but these addresses are used to access backplane */ \
+					/* registers, which are 32bits wide */ \
+					readq((volatile uint32*)(addr)); break; \
+			} \
+			((__typeof(*(r)))__osl_v); \
+		}), \
+		OSL_READ_REG(osh, r)) \
+)
+#else
 #define NO_WIN_CHECK_R_REG(osh, r, addr) (\
 	SELECT_BUS_READ(osh, \
 		({ \
@@ -485,6 +511,7 @@ extern void dhd_plat_l1_exit_io(void);
 		}), \
 		OSL_READ_REG(osh, r)) \
 )
+#endif /* NIC_PCIE_DEDICATED_WINDOWS */
 #else /* !CONFIG_64BIT */
 #define R_REG(osh, r) (\
 	SELECT_BUS_READ(osh, \
@@ -506,6 +533,28 @@ extern void dhd_plat_l1_exit_io(void);
 
 #ifdef CONFIG_64BIT
 /* writeq is defined only for 64 bit platform */
+#ifdef NIC_PCIE_DEDICATED_WINDOWS
+#define NO_WIN_CHECK_W_REG(osh, r, addr, v) do { \
+	SELECT_BUS_WRITE(osh, \
+		({ \
+			os_l1_exit_io; \
+			switch (sizeof(*(r))) { \
+				case sizeof(uint8):	writeb((uint8)(v), \
+					(volatile uint8*)(addr)); break; \
+				case sizeof(uint16):	writew((uint16)(v), \
+					(volatile uint16*)(addr)); break; \
+				case sizeof(uint32):	writel((uint32)(v), \
+					(volatile uint32*)(addr)); break; \
+				case sizeof(uint64):	writeq((uint64)(v), \
+					/* Cast to uint32 * because host addresses are 64 bits */ \
+					/* but these addresses are used to access backplane */ \
+					/* registers, which are 32bits wide */ \
+					(volatile uint32*)(addr)); break; \
+			} \
+		 }), \
+		(OSL_WRITE_REG(osh, r, v))); \
+	} while (0)
+#else
 #define NO_WIN_CHECK_W_REG(osh, r, addr, v) do { \
 	SELECT_BUS_WRITE(osh, \
 		({ \
@@ -523,6 +572,7 @@ extern void dhd_plat_l1_exit_io(void);
 		 }), \
 		(OSL_WRITE_REG(osh, r, v))); \
 	} while (0)
+#endif /* NIC_PCIE_DEDICATED_WINDOWS */
 #else /* !CONFIG_64BIT */
 #define W_REG(osh, r, v) do { \
 	SELECT_BUS_WRITE(osh, \

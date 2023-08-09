@@ -5123,6 +5123,8 @@ typedef struct {
 	uint32  rco_passthrough;	/**< hw rco required but passthrough */
 	uint32	rco_normal;	/**< hw rco hdr for normal process */
 	uint32	rxnodatabuf;	/**< # of nobuf failure due to rxdata buf non-availability */
+	uint32	txmlprobereq;	/* No of ML probe requests sent */
+	uint32	rxmlprobersp;	/* No of ML probe response recieved */
 	/* Do not remove or rename in the middle of this struct.
 	 * All counter variables have to be of uint32.
 	 */
@@ -6262,25 +6264,29 @@ typedef struct wl_macst_tx_ge88mcst_u32 {
 /* wrapper structure contain link_idx values which might not be same as the actual array ix */
 typedef struct wl_cnt_ge88mcst_rx_wrap_v1 {
 	uint8	link_idx;
-	uint8	pad[3];
+	uint8	d11_cntr_idx;		/* shmem counter block  identifier 0 or 1 */
+	uint8	pad[2];
 	wl_cnt_ge88mcst_rx_v2_t cnt;
 } wl_cnt_ge88mcst_rx_wrap_v1_t;
 
 typedef struct wl_cnt_ge88mcst_tx_wrap_v1 {
 	uint8	link_idx;
-	uint8	pad[3];
+	uint8	d11_cntr_idx;		/* shmem counter block  identifier 0 or 1 */
+	uint8	pad[2];
 	wl_cnt_ge88mcst_tx_v2_t cnt;
 } wl_cnt_ge88mcst_tx_wrap_v1_t;
 
 typedef struct wl_cnt_ge88mcst_rx_u32_wrap_v1 {
 	uint8	link_idx;
-	uint8	pad[3];
+	uint8	d11_cntr_idx;		/* shmem counter block  identifier 0 or 1 */
+	uint8	pad[2];
 	wl_cnt_ge88mcst_rx_u32_v1_t cnt;
 } wl_cnt_ge88mcst_rx_u32_wrap_v1_t;
 
 typedef struct wl_cnt_ge88mcst_tx_u32_wrap_v1 {
 	uint8	link_idx;
-	uint8	pad[3];
+	uint8	d11_cntr_idx;		/* shmem counter block  identifier 0 or 1 */
+	uint8	pad[2];
 	wl_cnt_ge88mcst_tx_u32_v1_t cnt;
 } wl_cnt_ge88mcst_tx_u32_wrap_v1_t;
 
@@ -11078,7 +11084,8 @@ typedef enum tx_pwr_tlv_id {
 	TX_PWR_RPT_RU_RATE_INFO_ID = 64u,
 	TX_PWR_RPT_RUPDOFFSET_ID   = 65u,
 	TX_PWR_RPT_DEV_CAT_ID      = 66u,
-	TX_PWR_RPT_PAMODE_ID	   = 67u
+	TX_PWR_RPT_PAMODE_ID	   = 67u,
+	TX_PWR_RPT_LPC_OFFSET_ID   = 68u
 } tx_pwr_tlv_id_t;
 
 #include <packed_section_start.h>
@@ -25029,6 +25036,7 @@ enum {
 	WL_MLO_CMD_LINK_DORMANT_BMAP	= 9u,	/* Bitmap to configure dormant state for links */
 	WL_MLO_CMD_REC_LINK_BMAP	= 10u,	/* Bitmap to configure recommended links */
 	WL_MLO_CMD_CONFIG_PREF		= 11u,	/* Configure mlo mode and band preferences */
+	WL_MLO_CMD_MAX_MLO_LINKS	= 12u,	/* set/get max MLO links supported */
 	/* Add new sub command IDs here... */
 
 	/* debug/test related sub-commands, mogrify? */
@@ -26804,6 +26812,12 @@ typedef struct sssr_reg_info_v5 {
 	uint32 fis_enab;
 	uint16 sr_asm_version; /* SR ASM version to help SSSR extraction scripts */
 	uint16 PAD;
+
+	struct {
+		uint32 war_reg;
+		uint32 srcb_sssr_addr;
+		uint32 srcb_sssr_size;
+	} srcb_mem_info;
 } sssr_reg_info_v5_t;
 
 /* A wrapper structure for all versions of SSSR register information structures */
@@ -26815,6 +26829,32 @@ typedef union sssr_reg_info {
 	sssr_reg_info_v4_t rev4;
 	sssr_reg_info_v5_t rev5;
 } sssr_reg_info_cmn_t;
+
+typedef struct sssr_header {
+	uint32 magic; /* should be 53535352 = 'SSSR' */
+	uint16 header_version; /* version number of this SSSR header */
+	uint16 sr_version; /* version of SR version. This is to differentiate changes in SR ASM. */
+	/*
+	 * Header length from the next field ?data_len? and upto the start of
+	 * binary_data[]. This is 20 bytes for version 0
+	 */
+	uint32 header_len;
+	uint32 data_len;  /* number of bytes in binary_data[] */
+	uint16 chipid;     /* chipid */
+	uint16 chiprev;    /* chiprev */
+	/*
+	 * For D11 MAC/sAQM cores, the coreid, coreunit &  WAR_signature in the dump belong
+	 * to respective cores. For the DIG SSSR dump these fields are extracted from the ARM core.
+	 */
+	uint16 coreid;
+	uint16 coreunit;
+
+	uint32 war_reg; /* Value of WAR register */
+	uint32 flags;	/* For future use */
+
+	uint8  binary_data[];
+} sssr_header_t;
+#define SSSR_HEADER_MAGIC 0x53535352u /* SSSR */
 
 /* ADaptive Power Save(ADPS) structure definition */
 #define WL_ADPS_IOV_MAJOR_VER	1
@@ -28260,12 +28300,16 @@ typedef struct wl_avs_info_v2 {
 	int16 ro_margin_idx;	/* -1 when avsdump_internal=1 is not in nvram */
 	uint16 voltage_ndv;	/* current NDV voltage in mV */
 	uint16 voltage_ldv;	/* current LDV voltage in mV */
-	uint16 hist_entry_num;	/* 0 when avsdump_internal=1 is not in nvram */
+	uint8 dvfs_state;	/* Current DVFS state */
+	uint8 hist_entry_num;	/* 0 when avsdump_internal=1 is not in nvram */
 	wl_avs_hist_entry_t hist[AVS_HIST_ENTRY_NUM];
 } wl_avs_info_v2_t;
 
 #define WL_AVS_INFO_VER_1	1
 #define WL_AVS_INFO_VER_2	2
+
+#define DVFS_STATE_LDV		0u
+#define DVFS_STATE_NDV		1u
 
 /* SC (scan core) command IDs */
 enum wl_sc_cmd {
@@ -30286,7 +30330,8 @@ typedef enum uwbcx_cmd_id {
 	WL_UWBCX_CMD_TEST_MODE = 7,
 	WL_UWBCX_CMD_TEST_PARAMS = 8,
 	WL_UWBCX_CMD_GET_STATS = 9,
-	WL_UWBCX_CMD_CLEAR_STATS = 10
+	WL_UWBCX_CMD_CLEAR_STATS = 10,
+	WL_UWBCX_CMD_MIN_IDLE_TIMER = 11 /* uint8 param range <0 - 250> */
 } uwbcx_cmd_id_t;
 
 #define UWBCX_GPIO_OUT_ENABLED		0x01u
@@ -30306,7 +30351,7 @@ typedef enum uwbcx_cmd_id {
 #define UWBCX_ADV_REQ_TIMER_MAX			(30u)
 
 #define UWBCX_MAX_GRANT_TIMER_DEFAULT	(30u)
-
+#define UWBCX_MIN_IDLE_TIMER_DEFAULT	(10u)
 
 /* Version of wlc_uwbcx_stats_t structure.
  * Increment whenever a change is made to wlc_uwbcx_stats_t

@@ -78,4 +78,19 @@ typedef struct bcmpcie_msg_type_header_info {
  */
 #define MSG_TYPE_DRIVER_STATE 0u
 
+#define BCMWIFI_EVENTLOGS_OPCODE 0xa5a500000000000du /* 8 bytes */
+/* To be compatable with the existing material this 4 bytes must be zero */
+#define EVENT_LOGS_HEADER 0x00000000u
+
+/**
+ * FW infobuf/edl eventlogs format:-
+ * --------------------------------------------------
+ * | bcm_eventlogs_header_info |  event log buf     |
+ * --------------------------------------------------
+ */
+typedef struct bcm_eventlogs_header_info {
+	uint64 opcode; /* BCMWIFI_EVENTLOGS_OPCODE */
+	uint32 header;
+} __attribute__ ((packed)) log_bcm_eventlogs_t;
+
 #endif /* _BCM_WIFISHARK_H_ */

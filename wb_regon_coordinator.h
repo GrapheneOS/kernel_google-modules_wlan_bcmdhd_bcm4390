@@ -68,6 +68,7 @@ typedef struct wbrc_ext_msg {
 #define WBRC_MSG_BUF_MAXLEN (sizeof(wbrc_ext_msg_t) + (WBRC_BT_FW_MAXSIZE))
 
 #define WBRC_WAIT_TIMEOUT 6000u /* 6s */
+#define WBRC_WAIT_BT_RESET_ACK_TIMEOUT 12000u /* 12s */
 
 #define WBRC_HEADER_DIR_WBRC2BT 0x01u
 #define WBRC_HEADER_DIR_BT2WBRC 0x02u
@@ -120,29 +121,5 @@ int wbrc2wl_wlan_dwnld_bt_fw(void *dhd_pub, void *fw_blob, uint len);
 int wbrc_init(void);
 void wbrc_exit(void);
 #endif /* BCMDHD_MODULAR */
-
-#ifdef WBRC_TEST
-typedef struct wbrc_test_iovar {
-	char name[128];
-	int val;
-} wbrc_test_iovar_t;
-
-typedef enum wbrc_test_induce_error_code {
-	WBRC_NO_ERROR = 0,
-	WBRC_BT_FW_DWNLD_FAIL = 1,
-	WBRC_WLAN_FW_DWNLD_FAIL = 2,
-	WBRC_WLAN_PCIE_LINK_REQ_FAIL = 3,
-	WBRC_DELAY_WLAN_OFF = 4,
-	WBRC_DELAY_BT_FW_DWNLD = 5,
-	WBRC_WLAN_TRAP_ON_LOAD = 6,
-	WBRC_BT_FW_DWNLD_SIM = 7,
-	WBRC_SLOWDOWN_BT_FW_DWNLD = 8
-} wbrc_test_induce_error_code_t;
-
-void *wbrc_get_fops(void);
-int wl2wbrc_iovar(void *wl_hdl, wbrc_test_iovar_t *iov);
-int wbrc_test_get_error(void);
-int wbrc_test_is_verify_bt_dwnld(void);
-#endif /* WBRC_TEST */
 
 #endif /* __WB_REGON_COORDINATOR__ */

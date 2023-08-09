@@ -227,10 +227,6 @@ extern uint32 dhd_bus_max_h2d_queues(struct dhd_bus *bus);
 extern int dhd_bus_schedule_queue(struct dhd_bus *bus, uint16 flow_id, bool txs,
 		uint32 bound, bool *is_qempty);
 
-#ifdef IDLE_TX_FLOW_MGMT
-extern void dhd_bus_flow_ring_resume_response(struct dhd_bus *bus, uint16 flowid, int32 status);
-#endif /* IDLE_TX_FLOW_MGMT */
-
 #ifdef BCMDBG
 extern void
 dhd_bus_flow_ring_cnt_update(struct dhd_bus *bus, uint16 flowid, uint32 txstatus);
@@ -382,12 +378,6 @@ extern int dhd_dump_flowrings(dhd_pub_t *dhdp, char *buf, int buflen);
 #endif /* BCMPCIE */
 
 extern bool dhd_bus_force_bt_quiesce_enabled(struct dhd_bus *bus);
-
-#ifdef DHD_SSSR_DUMP
-extern int dhd_bus_fis_trigger(dhd_pub_t *dhd);
-extern int dhd_bus_fis_dump(dhd_pub_t *dhd);
-extern bool dhd_bus_fis_fw_triggered_check(dhd_pub_t *dhd);
-#endif /* DHD_SSSR_DUMP */
 
 #ifdef BCMPCIE
 extern bool dhd_bus_cto_triggered(dhd_pub_t *dhd);

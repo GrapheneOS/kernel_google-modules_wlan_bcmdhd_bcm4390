@@ -1652,4 +1652,8 @@ extern uint64 div_1M(uint64 q);
 
 #define NS_PER_MS			(1000000u)
 
+/* Stringizing */
+#define _BCM_STR(x) #x
+#define BCM_STR(x) _BCM_STR(x)
+
 #endif	/* _bcmutils_h_ */

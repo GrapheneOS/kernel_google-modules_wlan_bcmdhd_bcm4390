@@ -205,7 +205,7 @@ static int dhdpcie_resume_host_dev(dhd_bus_t *bus);
 static int dhdpcie_suspend_host_dev(dhd_bus_t *bus);
 static int dhdpcie_resume_dev(struct pci_dev *dev);
 static int dhdpcie_suspend_dev(struct pci_dev *dev);
-#ifdef DHD_PCIE_RUNTIMEPM
+#ifdef OEM_ANDROID
 static int dhdpcie_pm_suspend(struct device *dev);
 static int dhdpcie_pm_prepare(struct device *dev);
 static int dhdpcie_pm_resume(struct device *dev);
@@ -219,7 +219,7 @@ static int dhdpcie_pci_suspend(struct device * dev);
 static int dhdpcie_pci_resume(struct device * dev);
 static int dhdpcie_pci_resume_early(struct device * dev);
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
-#endif /* DHD_PCIE_RUNTIMEPM */
+#endif /* OEM_ANDROID */
 
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 static int dhdpcie_pm_runtime_suspend(struct device * dev);
@@ -262,7 +262,7 @@ static struct pci_device_id dhdpcie_pci_devid[] __devinitdata = {
 MODULE_DEVICE_TABLE(pci, dhdpcie_pci_devid);
 
 /* Power Management Hooks */
-#ifdef DHD_PCIE_RUNTIMEPM
+#ifdef OEM_ANDROID
 static const struct dev_pm_ops dhd_pcie_pm_ops = {
 	.prepare = dhdpcie_pm_prepare,
 	.suspend = dhdpcie_pm_suspend,
@@ -282,7 +282,7 @@ static const struct dev_pm_ops dhd_pcie_pm_ops = {
 	.resume	= dhdpcie_pci_resume,
 	.resume_early = dhdpcie_pci_resume_early,
 };
-#endif /* DHD_PCIE_RUNTIMEPM */
+#endif /* OEM_ANDROID */
 
 static struct pci_driver dhdpcie_driver = {
 	node:		{&dhdpcie_driver.node, &dhdpcie_driver.node},
@@ -801,7 +801,7 @@ dhd_bus_aer_config(dhd_bus_t *bus)
 	}
 }
 
-#ifdef DHD_PCIE_RUNTIMEPM
+#ifdef OEM_ANDROID
 static int dhdpcie_pm_suspend(struct device *dev)
 {
 	int ret = 0;
@@ -1052,7 +1052,7 @@ static int dhdpcie_pci_resume(struct device *dev)
 	return ret;
 }
 
-#endif /* DHD_PCIE_RUNTIMEPM */
+#endif /* OEM_ANDROID */
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 static int dhdpcie_set_suspend_resume(dhd_bus_t *bus, bool state, bool byint)
 #else
@@ -3180,10 +3180,10 @@ static irqreturn_t wlan_oob_irq(int irq, void *data)
 
 	bus->oob_intr_count++;
 #ifdef DHD_WAKE_STATUS
-#ifdef DHD_PCIE_RUNTIMEPM
+#ifdef OEM_ANDROID
 	/* This condition is for avoiding counting of wake up from Runtime PM */
 	if (bus->chk_pm)
-#endif /* DHD_PCIE_RUNTIMPM */
+#endif /* OEM_ANDROID */
 	{
 		bcmpcie_set_get_wake(bus, 1);
 	}
@@ -3770,51 +3770,6 @@ dhd_bus_check_driver_up(void)
 #define ADDR_SIZE 4u
 
 #ifdef BT_FW_DWNLD
-#ifdef WBRC_TEST
-static bool
-dhd_bt_fw_verify_read_back(dhd_pub_t *dhdp, const char* buf, size_t len)
-{
-	bool verify = true;
-	int ret = 0;
-	uint32 address = 0;
-	uint8 read_len;
-	uint8 read_buf[255];
-	uint8 *buf_ptr = (uint8 *)buf;
-
-	while (len > 0 && ret == 0) {
-		/* save data len */
-		read_len = (*(uint8_t *)buf_ptr) - ADDR_SIZE;
-		buf_ptr++;
-		len--;
-		/* save address */
-		address = *(uint32 *)(buf_ptr);
-		buf_ptr += ADDR_SIZE;
-		len -= ADDR_SIZE;
-		DHD_INFO(("%s: address 0x%X, write_len %u\n", __FUNCTION__,
-			address, read_len));
-		ret = dhdpcie_bus_membytes(dhdp->bus, FALSE, DHD_PCIE_MEM_BAR2,
-			(BT_BASE | address), read_buf, read_len);
-		/* compare */
-		if (0 != memcmp(buf_ptr, read_buf, read_len))
-		{
-			DHD_ERROR_RLMT(("%s: Read back failed at address : 0x%X, with len : %u\n",
-				__FUNCTION__, address, read_len));
-			verify = false;
-			break;
-		}
-
-		buf_ptr += read_len;
-		len -= read_len;
-	}
-
-	if (verify) {
-		DHD_ERROR(("%s: Read back verified successfully\n", __FUNCTION__));
-	}
-
-	return verify;
-}
-#endif /* WBRC_TEST */
-
 int
 dhd_bt_fw_dwnld_blob(void *wl_hdl, char* buf, size_t len)
 {
@@ -3876,18 +3831,7 @@ dhd_bt_fw_dwnld_blob(void *wl_hdl, char* buf, size_t len)
 		write_buf += write_len;
 		len -= write_len;
 
-#ifdef WBRC_TEST
-		if (wbrc_test_get_error() == WBRC_SLOWDOWN_BT_FW_DWNLD) {
-			OSL_DELAY(500000);
-		}
-#endif /* WBRC_TEST */
 	}
-
-#ifdef WBRC_TEST
-	if (wbrc_test_is_verify_bt_dwnld()) {
-		dhd_bt_fw_verify_read_back(dhdp, buf, total_len);
-	}
-#endif /* WBRC_TEST */
 
 	DHD_INFO(("%s: clearing pwr_req\n", __FUNCTION__));
 	dhd_bt_dwnld_pwr_req_clear(dhdp->bus);

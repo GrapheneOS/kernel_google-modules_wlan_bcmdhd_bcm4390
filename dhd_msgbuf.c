@@ -52,6 +52,7 @@
 #include <pcie_core.h>
 #include <bcmpcie.h>
 #include <dhd_pcie.h>
+#include <dhd_plat.h>
 #ifdef DHD_TIMESYNC
 #include <dhd_timesync.h>
 #endif /* DHD_TIMESYNC */
@@ -86,6 +87,10 @@
 #if defined(DHD_MESH)
 #include <dhd_mesh_route.h>
 #endif /* defined(DHD_MESH) */
+
+#ifdef DHD_SSSR_DUMP
+#include <dhd_pcie_sssr_dump.h>
+#endif /* DHD_SSSR_DUMP */
 
 extern char dhd_version[];
 extern char fw_version[];
@@ -1793,8 +1798,21 @@ BCMFASTPATH(dhd_prot_d2h_sync_xorcsum)(dhd_pub_t *dhd, msgbuf_ring_t *ring,
 			 * complete message has arrived.
 			 */
 			if (msg->epoch == ring_seqnum) {
+#ifdef DHD_SKIP_XORCSUM_HIGH_TPUT
+				/* Based on customer request, to avoid tput regression
+				 * skip xorcsum for high tput case
+				 */
+				bool use_big_core = dhd_plat_pcie_enable_big_core();
+				if (use_big_core) {
+					prot_checksum = 0;
+				} else {
+					prot_checksum = bcm_compute_xor32((volatile uint32 *)msg,
+						num_words);
+				}
+#else
 				prot_checksum = bcm_compute_xor32((volatile uint32 *)msg,
-					num_words);
+						num_words);
+#endif /* DHD_SKIP_XORCSUM_HIGH_TPUT */
 				if (prot_checksum == 0U) { /* checksum is OK */
 					ring->seqnum++; /* next expected sequence number */
 					/* Check for LIVELOCK induce flag, which is set by firing
@@ -1874,7 +1892,7 @@ BCMFASTPATH(dhd_prot_d2h_sync_edl)(dhd_pub_t *dhd, msgbuf_ring_t *ring,
 {
 	uint32 tries;
 	int msglen = 0, len = 0;
-	uint32 ring_seqnum = ring->seqnum % D2H_EPOCH_MODULO;
+	uint32 ring_seqnum;
 	dhd_prot_t *prot = dhd->prot;
 	uint32 step = 0;
 	uint32 delay = PCIE_D2H_SYNC_DELAY;
@@ -1911,6 +1929,7 @@ BCMFASTPATH(dhd_prot_d2h_sync_edl)(dhd_pub_t *dhd, msgbuf_ring_t *ring,
 			 * that the complete message has arrived.
 			 */
 			valid_msg = FALSE;
+			ring_seqnum = ring->seqnum % D2H_EPOCH_MODULO;
 			if (msg->epoch == ring_seqnum &&
 				msg->msg_type == MSG_TYPE_INFO_PYLD &&
 				msg->request_id > 0 &&
@@ -1965,19 +1984,19 @@ BCMFASTPATH(dhd_prot_d2h_sync_edl)(dhd_pub_t *dhd, msgbuf_ring_t *ring,
 	} /* for PCIE_D2H_SYNC_NUM_OF_STEPS */
 
 	DHD_ERROR(("%s: EDL header check fails !\n", __FUNCTION__));
-	DHD_ERROR(("%s: header: seqnum=%u; expected-seqnum=%u"
+	DHD_ERROR(("%s: header: dongle-seqnum=%u; host-expected-seqnum=%u:%u"
 		" msgtype=0x%x; expected-msgtype=0x%x"
 		" length=%u; expected-max-length=%u", __FUNCTION__,
-		msg->epoch, ring_seqnum, msg->msg_type, MSG_TYPE_INFO_PYLD,
+		msg->epoch, ring->seqnum, ring_seqnum, msg->msg_type, MSG_TYPE_INFO_PYLD,
 		msg->request_id, ring->item_len));
 	dhd_prhex("msg header bytes: ", (volatile uchar *)msg, sizeof(*msg), DHD_ERROR_VAL);
 	if (trailer && msglen > 0 &&
 			(msglen + sizeof(cmn_msg_hdr_t)) <= ring->item_len) {
-		DHD_ERROR(("%s: trailer: seqnum=%u; expected-seqnum=%u"
+		DHD_ERROR(("%s: trailer: dongle-seqnum=%u; host-expected-seqnum=%u:%u"
 			" msgtype=0x%x; expected-msgtype=0x%x"
 			" length=%u; expected-length=%u", __FUNCTION__,
-			trailer->epoch, ring_seqnum, trailer->msg_type, MSG_TYPE_INFO_PYLD,
-			trailer->request_id, msg->request_id));
+			trailer->epoch, ring->seqnum, ring_seqnum, trailer->msg_type,
+			MSG_TYPE_INFO_PYLD, trailer->request_id, msg->request_id));
 		dhd_prhex("msg trailer bytes: ", (volatile uchar *)trailer,
 			sizeof(*trailer), DHD_ERROR_VAL);
 	}
@@ -6050,17 +6069,19 @@ dhd_prot_init_edl_rings(dhd_pub_t *dhd)
 		return ret;
 	}
 
+	prot->d2hring_edl->seqnum = D2H_EPOCH_INIT_VAL;
+	prot->d2hring_edl->current_phase = BCMPCIE_CMNHDR_PHASE_BIT_INIT;
+	OSL_SMP_WMB();
+
 	DHD_ERROR_MEM(("trying to send create d2h edl ring: idx %d\n", prot->d2hring_edl->idx));
 	ret = dhd_send_d2h_ringcreate(dhd, prot->d2hring_edl,
 		BCMPCIE_D2H_RING_TYPE_EDL, DHD_D2H_DBGRING_REQ_PKTID);
-	if (ret != BCME_OK)
+	if (ret != BCME_OK) {
 		return ret;
-
-	prot->d2hring_edl->seqnum = D2H_EPOCH_INIT_VAL;
-	prot->d2hring_edl->current_phase = BCMPCIE_CMNHDR_PHASE_BIT_INIT;
+	}
 
 	return BCME_OK;
-} /* dhd_prot_init_btlog_rings */
+} /* dhd_prot_init_edl_rings */
 
 static void
 dhd_prot_detach_edl_rings(dhd_pub_t *dhd)
@@ -6197,9 +6218,7 @@ int dhd_sync_with_dongle(dhd_pub_t *dhd)
 	/* Post buffers for packet reception */
 	dhd_msgbuf_rxbuf_post(dhd, FALSE); /* alloc pkt ids */
 
-	dhd_process_cid_mac(dhd, TRUE);
 	ret = dhd_preinit_ioctls(dhd);
-	dhd_process_cid_mac(dhd, FALSE);
 
 #if defined(DHD_H2D_LOG_TIME_SYNC)
 #ifdef DHD_HP2P
@@ -7812,14 +7831,12 @@ dhd_prot_process_edl_complete(dhd_pub_t *dhd, void *evt_decode_data)
 			ring->curr_rd += 1;
 		}
 
-		if (err != BCME_OK) {
-			return 0;
-		}
-
-		/* process the edl work item, i.e, the event log */
-		err = dhd_event_logtrace_process_edl(dhd, msg_addr, evt_decode_data);
-		if (err == BCME_NOTUP) {
-			return 0;
+		if (err == BCME_OK) {
+			/* process the edl work item, i.e, the event log */
+			err = dhd_event_logtrace_process_edl(dhd, msg_addr, evt_decode_data);
+			if (err == BCME_NOTUP) {
+				return 0;
+			}
 		}
 
 		/* Dummy sleep so that scheduler kicks in after processing any logprints */
@@ -8172,10 +8189,21 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, int ringtype, uint32 
 
 				pkt = DHD_PKTID_TO_NATIVE(dhd, prot->pktid_rx_map, pktid, pa,
 				        len, dmah, secdma, PKTTYPE_DATA_RX);
+				if (!pkt) {
+					DHD_ERROR(("%s: received with NULL pkt\n", __FUNCTION__));
+					DHD_ERROR(("%s: ring<%s> curr_rd<%d> rd<%d> wr<%d>\n",
+						__FUNCTION__, ring->name, ring->curr_rd,
+						ring->rd, ring->wr));
+					dhd_prhex("dhd_prot_process_msgbuf_rxcpl:",
+						(volatile uchar *)msg,
+						D2HRING_RXCMPLT_ITEMSIZE, DHD_ERROR_VAL);
+					msg_len -= item_len;
+					msg_addr += item_len;
+					continue;
+				}
 #ifndef CUSTOMER_HW6
 				/* Sanity check of shinfo nrfrags */
-				if (!pkt || (dhd_check_shinfo_nrfrags(dhd, pkt, &pa, pktid)
-					!= BCME_OK)) {
+				if (dhd_check_shinfo_nrfrags(dhd, pkt, &pa, pktid) != BCME_OK) {
 					msg_len -= item_len;
 					msg_addr += item_len;
 					continue;
@@ -9059,7 +9087,10 @@ dhd_prot_ioctcmplt_process(dhd_pub_t *dhd, void *msg)
 	pkt = retbuf.va;
 #endif /* !IOCTLRESP_USE_CONSTMEM */
 	if (!pkt) {
+		msgbuf_ring_t *ring = &dhd->prot->d2hring_ctrl_cpln;
 		DHD_ERROR(("%s: received ioctl response with NULL pkt\n", __FUNCTION__));
+		DHD_ERROR(("%s: ring<%s> curr_rd<%d> rd<%d> wr<%d>\n",
+			__FUNCTION__, ring->name, ring->curr_rd, ring->rd, ring->wr));
 		dhd_prhex("dhd_prot_ioctcmplt_process:",
 			(volatile uchar *)msg, D2HRING_CTRL_CMPLT_ITEMSIZE, DHD_ERROR_VAL);
 		return;
@@ -9087,6 +9118,13 @@ dhd_prot_ioctcmplt_process(dhd_pub_t *dhd, void *msg)
 #else
 		ASSERT(0);
 #endif /* DHD_FW_COREDUMP */
+
+#ifdef OEM_ANDROID
+	/* Send HANG event to Android Framework for recovery */
+	dhd->hang_reason = HANG_REASON_IOCTL_TXNID_MISMATCH;
+	dhd_os_check_hang(dhd, 0, -EREMOTEIO);
+#endif /* OEM_ANDROID */
+
 		dhd_schedule_reset(dhd);
 		goto exit;
 	}
@@ -9432,6 +9470,8 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 
 
 		DHD_ERROR(("%s: received txstatus with NULL pkt\n", __FUNCTION__));
+		DHD_ERROR(("%s: ring<%s> curr_rd<%d> rd<%d> wr<%d>\n",
+			__FUNCTION__, ring->name, ring->curr_rd, ring->rd, ring->wr));
 		dhd_prhex("dhd_prot_txstatus_process:", (volatile uchar *)msg,
 			D2HRING_TXCMPLT_ITEMSIZE, DHD_ERROR_VAL);
 #ifdef DHD_FW_COREDUMP
@@ -9604,6 +9644,7 @@ dhd_prot_event_process(dhd_pub_t *dhd, void *msg)
 	int ifidx = 0;
 	void* pkt;
 	dhd_prot_t *prot = dhd->prot;
+	msgbuf_ring_t *ring = &dhd->prot->d2hring_ctrl_cpln;
 
 	/* Event complete header */
 	evnt = (wlevent_req_msg_t *)msg;
@@ -9634,6 +9675,10 @@ dhd_prot_event_process(dhd_pub_t *dhd, void *msg)
 
 	if (!pkt) {
 		DHD_ERROR(("%s: pkt is NULL for pktid %d\n", __FUNCTION__, bufid));
+		DHD_ERROR(("%s: ring<%s> curr_rd<%d> rd<%d> wr<%d>\n",
+			__FUNCTION__, ring->name, ring->curr_rd, ring->rd, ring->wr));
+		dhd_prhex("dhd_prot_txstatus_process:", (volatile uchar *)msg,
+			D2HRING_CTRL_CMPLT_ITEMSIZE, DHD_ERROR_VAL);
 		return;
 	}
 
@@ -11639,6 +11684,7 @@ void
 dhd_msgbuf_iovar_timeout_dump(dhd_pub_t *dhd)
 {
 	uint32 intstatus;
+
 	if (dhd->is_sched_error) {
 		DHD_ERROR(("%s: ROT due to scheduling problem\n", __FUNCTION__));
 	}
@@ -11708,9 +11754,22 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 	}
 #endif /* DHD_RECOVER_TIMEOUT */
 
+#ifdef DHD_TREAT_D3ACKTO_AS_LINKDWN
+	if ((prot->ioctl_received == 0) && (timeleft == 0)) {
+		DHD_ERROR(("%s: Treating IOVAR timeout as PCIe linkdown !\n", __FUNCTION__));
+		dhd_plat_pcie_skip_config_set(TRUE);
+		dhd->bus->is_linkdown = 1;
+		dhd->bus->iovarto_as_linkdwn_cnt++;
+		dhd->hang_reason = HANG_REASON_PCIE_LINK_DOWN_RC_DETECT;
+		dhd_os_send_hang_message(dhd);
+	}
+#endif /* DHD_TREAT_D3ACKTO_AS_LINKDWN */
+
 	if (timeleft == 0 && (!dhd->dongle_trap_data) && (!dhd_query_bus_erros(dhd))) {
 		/* Dump iovar name */
 		dhd_msgbuf_dump_iovar_name(dhd);
+		/* dump deep-sleep trace */
+		dhd_dump_ds_trace_console(dhd);
 		dhd_validate_pcie_link_cbp_wlbp(dhd->bus);
 		if (dhd->bus->link_state != DHD_PCIE_ALL_GOOD) {
 			DHD_ERROR(("%s: bus->link_state:%d\n",
@@ -14647,6 +14706,13 @@ void dhd_prot_print_flow_ring(dhd_pub_t *dhd, void *msgbuf_flow_info, bool h2d,
 	msgbuf_ring_t *flow_ring = (msgbuf_ring_t *)msgbuf_flow_info;
 	uint16 rd, wr, drd = 0, dwr = 0;
 	uint32 dma_buf_len = flow_ring->max_items * flow_ring->item_len;
+
+#ifdef DHD_TREAT_D3ACKTO_AS_LINKDWN
+	if (dhd->no_pcie_access_during_dump) {
+		DHD_PRINT(("%s: no_pcie_access_during_dump is set, return \n", __FUNCTION__));
+		return;
+	}
+#endif /* DHD_TREAT_D3ACKTO_AS_LINKDWN */
 
 	if (fmt == NULL) {
 		fmt = default_fmt;

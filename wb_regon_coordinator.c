@@ -201,9 +201,6 @@ wbrc_bt_dev_write(struct file *filep, const char *buffer,
 	int err = 0;
 	wbrc_ext_msg_t *extmsg = NULL;
 #endif /* BT_FW_DWNLD */
-#ifdef WBRC_TEST
-	unsigned char stub_msg = FALSE;
-#endif
 
 	WBRC_LOCK(wbrc_mutex);
 	wbrc_data = g_wbrc_data;
@@ -220,19 +217,7 @@ wbrc_bt_dev_write(struct file *filep, const char *buffer,
 		goto exit;
 	}
 
-#ifdef WBRC_TEST
-	BCM_REFERENCE(stub_msg);
-	if (offset && *offset == 0xDEADFACE) {
-		memcpy(&msg, buffer, WBRC_MSG_LEN);
-		pr_err("%s: msg from wbrc stub: %x %x %x %x \n", __func__,
-			msg.hdr, msg.len, msg.type, msg.val);
-		stub_msg = TRUE;
-	} else {
-		err_count = copy_from_user(&msg, buffer, WBRC_MSG_LEN);
-	}
-#else
 	err_count = copy_from_user(&msg, buffer, WBRC_MSG_LEN);
-#endif /* WBRC_TEST */
 	if (err_count) {
 		pr_err("%s: copy_from_user failed:%d\n", __func__, err_count);
 		ret = -EFAULT;
@@ -249,17 +234,7 @@ wbrc_bt_dev_write(struct file *filep, const char *buffer,
 	if (msg.len & WBRC_EXT_MSG_LEN) {
 #ifdef BT_FW_DWNLD
 		/* copy the full ext msg including BT FW blob */
-#ifdef WBRC_TEST
-		if (stub_msg) {
-			memcpy_s(wbrc_data->bt2wbrc_ext_msgbuf, WBRC_MSG_BUF_MAXLEN,
-				buffer, len);
-		} else {
-			err_count = copy_from_user(wbrc_data->bt2wbrc_ext_msgbuf,
-				buffer, len);
-		}
-#else
 		err_count = copy_from_user(wbrc_data->bt2wbrc_ext_msgbuf, buffer, len);
-#endif /* WBRC_TEST */
 		extmsg = (wbrc_ext_msg_t *)wbrc_data->bt2wbrc_ext_msgbuf;
 		if (extmsg->type == WBRC_TYPE_BT2WBRC_CMD) {
 			if (err_count) {
@@ -782,13 +757,6 @@ bt2wbrc_bt_fw_dwnld(struct wbrc_pvt_data *wbrc_data, void *fwblob, uint len)
 		ret = WBRC_ERR;
 	}
 
-#ifdef WBRC_TEST
-	if (wbrc_test_get_error() == WBRC_DELAY_BT_FW_DWNLD) {
-		pr_err("%s: induce_error DELAY_BT_FW_DWNLD, sleep 5s \n", __func__);
-		msleep(5000);
-	}
-#endif /* WBRC_TEST */
-
 	/* change state back to IDLE */
 	WBRC_STATE_LOCK(wbrc_data);
 	wbrc_data->state = IDLE;
@@ -840,13 +808,6 @@ wl2wbrc_wlan_off(void)
 	wbrc_data->state = WLAN_OFF_IN_PROGRESS;
 	pr_err("%s: state -> WLAN_OFF_IN_PROGRESS \n", __func__);
 	WBRC_STATE_UNLOCK(wbrc_data);
-
-#ifdef WBRC_TEST
-	if (wbrc_test_get_error() == WBRC_DELAY_WLAN_OFF) {
-		pr_err("%s: induce_error DELAY_WLAN_OFF, sleep 3s \n", __func__);
-		msleep(3000);
-	}
-#endif /* WBRC_TEST */
 
 	return ret;
 }
@@ -905,7 +866,8 @@ wl2wbrc_req_bt_reset(void)
 	wbrc2bt_cmd_bt_reset(wbrc_data);
 	WBRC_UNLOCK(wbrc_mutex);
 
-	tmo_ret = wbrc_wait_on_condition(&wbrc_data->bt_reset_waitq, WBRC_WAIT_TIMEOUT,
+	tmo_ret = wbrc_wait_on_condition(&wbrc_data->bt_reset_waitq,
+		WBRC_WAIT_BT_RESET_ACK_TIMEOUT,
 		&wbrc_data->bt_reset_ack, TRUE);
 	if (tmo_ret <= 0) {
 		pr_err("%s: BT reset ack timeout !\n", __func__);
@@ -916,14 +878,6 @@ wl2wbrc_req_bt_reset(void)
 
 	return ret;
 }
-
-#ifdef WBRC_TEST
-void *
-wbrc_get_fops(void)
-{
-	return &wbrc_bt_dev_fops;
-}
-#endif /* WBRC_TEST */
 
 #ifdef WBRC_HW_QUIRKS
 void

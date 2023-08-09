@@ -57,6 +57,19 @@
 #define GCC_SUPPRESS_FALLTHROUGH_WARNING
 #endif
 
+/* Linux kenrel already defined "fallthrough" as macro
+ * so, GCC_SUPPRESS_FALLTHROUGH_WARNIN macro could not be used in driver
+ * GCC supports the __fallthrough__ attribute since 7.1.
+ * Clang supports the __fallthrough__ Statement Attributes since 10.0.0
+ */
+#if (defined(__GNUC__) && \
+	(__GNUC__ > 7 || (__GNUC__ == 7 && __GNUC_MINOR__ >= 1)) || \
+	(defined(__clang__) && __clang_major__ >= 10))
+#define BCM_FALLTHROUGH __attribute__ ((__fallthrough__))
+#else
+#define BCM_FALLTHROUGH
+#endif /* __GNUC__ */
+
 /* GNU GCC 4.6+ supports selectively turning off a warning.
  * Define these diagnostic macros to help suppress cast-qual warning
  * until all the work can be done to fix the casting issues.
@@ -73,15 +86,6 @@
 	_Pragma("GCC diagnostic push")			 \
 	_Pragma("GCC diagnostic ignored \"-Wnull-dereference\"")
 
-#if !defined(__clang__) || __clang_major__ >= 13
-#define GCC_DIAGNOSTIC_PUSH_SUPPRESS_FN_TYPE()           \
-	_Pragma("GCC diagnostic push")			 \
-	_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
-#else
-#define GCC_DIAGNOSTIC_PUSH_SUPPRESS_FN_TYPE()           \
-	_Pragma("GCC diagnostic push")
-#endif // !__clang__ || __clang_major__ >= 13
-
 #define GCC_DIAGNOSTIC_POP()                             \
 	_Pragma("GCC diagnostic pop")
 
@@ -92,15 +96,33 @@
 	__pragma(warning(disable:4090))
 #define GCC_DIAGNOSTIC_PUSH_SUPPRESS_NULL_DEREF()	 \
 	__pragma(warning(push))
-#define GCC_DIAGNOSTIC_PUSH_SUPPRESS_FN_TYPE()           \
-	__pragma(warning(push))
 #define GCC_DIAGNOSTIC_POP()                             \
 	__pragma(warning(pop))
 #else
 #define GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST()
 #define GCC_DIAGNOSTIC_PUSH_SUPPRESS_NULL_DEREF()
-#define GCC_DIAGNOSTIC_PUSH_SUPPRESS_FN_TYPE()
 #define GCC_DIAGNOSTIC_POP()
+#endif   /* Diagnostic macros not defined */
+
+#if (defined(__GNUC__) && defined(STRICT_GCC_WARNINGS) && \
+	(__GNUC__ > 8 || (__GNUC__ == 8 && __GNUC_MINOR__ >= 1)) || \
+	defined(__clang__))
+
+#if !defined(__clang__) || __clang_major__ >= 13
+#define GCC_DIAGNOSTIC_PUSH_SUPPRESS_FN_TYPE()           \
+	_Pragma("GCC diagnostic push")			 \
+	_Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
+#else
+#define GCC_DIAGNOSTIC_PUSH_SUPPRESS_FN_TYPE()           \
+	_Pragma("GCC diagnostic push")
+#endif // !__clang__ || __clang_major__ >= 13
+
+#elif defined(_MSC_VER)
+
+#define GCC_DIAGNOSTIC_PUSH_SUPPRESS_FN_TYPE()           \
+	__pragma(warning(push))
+#else
+#define GCC_DIAGNOSTIC_PUSH_SUPPRESS_FN_TYPE()
 #endif   /* Diagnostic macros not defined */
 
 /* Macros to allow Coverity modeling contructs in source code */
@@ -174,12 +196,6 @@ extern bool bcm_postattach_part_reclaimed;
 
 /* Explicitly place data in .rodata section so it can be write-protected after attach */
 #define BCMRODATA(_data)	__attribute__ ((__section__ (".shrodata." #_data))) _data
-
-#ifdef _WIN32
-#define BCMSIZEOFDATA(_data)	_data
-#else
-#define BCMSIZEOFDATA(_data)	__attribute__ ((__section__ (".shrodata." #_data))) _data
-#endif
 
 #ifdef BCMDBG_SR
 /*
@@ -264,11 +280,6 @@ extern bool bcm_postattach_part_reclaimed;
 #define BCM_SRM_ATTACH_FN(_fn)		_fn
 /* BCMRODATA data is written into at attach time so it cannot be in .rodata */
 #define BCMRODATA(_data)	__attribute__ ((__section__ (".data." #_data))) _data
-#ifdef _WIN32
-#define BCMSIZEOFDATA(_data)	_data
-#else
-#define BCMSIZEOFDATA(_data)	__attribute__ ((__section__ (".data." #_data))) _data
-#endif
 #define BCMPREATTACHDATA(_data)		_data
 #define BCMPREATTACHFN(_fn)		_fn
 #define BCMPOSTATTACHDATA(_data)	_data
@@ -1047,27 +1058,6 @@ void* BCM_ASLR_CODE_FNPTR_RELOCATOR(void *func_ptr);
 #else
 	#define PHYS_ADDR_N(name) name
 #endif
-
-/* As we modify struct sizes during the natural course of development, existing
- * ROM functions that malloc, memset, bzero or memcpy such structs using the
- * sizeof operator are invalidated. Such functions are rarely patchable. Here we
- * mitigate this. A struct's size, computed at compile time, is to be stored in
- * a constant to which a macro then refers.
- */
-#ifdef ROM_ENAB_RUNTIME_CHECK
-#define SIZEOF_MACRO_USE
-#endif /* ROM_ENAB_RUNTIME_CHECK */
-#ifdef SIZEOF_MACRO_USE
-#define VAR_SIZEOF(t)	static uint16 BCMSIZEOFDATA(sizeof_##t) = sizeof(t)
-#define VAR_SIZEOF_STRUCT(t)	static uint16 BCMSIZEOFDATA(sizeof_##t) = sizeof(struct t)
-#define SIZEOF_DYN(t)	(sizeof_##t)
-#define SIZEOF_STRUCT_DYN(t)	SIZEOF_DYN(t)
-#else /* SIZEOF_MACRO_USE */
-#define VAR_SIZEOF(t)
-#define VAR_SIZEOF_STRUCT(t)
-#define SIZEOF_DYN(t)	(sizeof(t))
-#define SIZEOF_STRUCT_DYN(t)	(sizeof(struct t))
-#endif /* SIZEOF_MACRO_USE */
 
 /* Disable function inlining. */
 #define BCM_NOINLINE	__attribute__ ((__noinline__))
