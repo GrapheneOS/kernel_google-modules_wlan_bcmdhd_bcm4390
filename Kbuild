@@ -100,7 +100,7 @@ endif
 DHDCFLAGS += -DBCMUTILS_ERR_CODES -DUSE_NEW_RSPEC_DEFS -DBCM_FLEX_ARRAY
 DHDCFLAGS += -DPMU_NEW_ACCESS_MACROS -DCHIPC_NEW_ACCESS_MACROS \
   -DSR_NEW_ACCESS_MACROS -DPCIE_NEW_ACCESS_MACROS
-DHDCFLAGS += -Wall -Wstrict-prototypes -Wno-parentheses-equality -Dlinux -DLINUX -DBCMDRIVER \
+DHDCFLAGS += -Wall -Werror -Wstrict-prototypes -Wno-parentheses-equality -Dlinux -DLINUX -DBCMDRIVER \
 	-DBCMDONGLEHOST -DBCMDMA32 -DBCMFILEIMAGE \
 	-DDHDTHREAD -DSHOW_EVENTS -DWLP2P \
 	-DWIFI_ACT_FRAME -DARP_OFFLOAD_SUPPORT \
@@ -334,7 +334,7 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
 	DHDCFLAGS += -DRESCHED_STREAK_MAX_HIGH=20
 	DHDCFLAGS += -DRESCHED_STREAK_MAX_LOW=2
 	DHDCFLAGS += -DCLEAN_IRQ_AFFINITY_HINT
-	DHDCFLAGS += -DIRQ_AFFINITY_BIG_CORE=7
+	DHDCFLAGS += -DIRQ_AFFINITY_BIG_CORE=8
 	DHDCFLAGS += -DIRQ_AFFINITY_SMALL_CORE=7
 	DHDCFLAGS += -DDHD_BUS_BUSY_TIMEOUT=5000
 	# MSI supported in GOOGLE SOC
@@ -353,7 +353,7 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
         DHDCFLAGS += -DDHD_RECOVER_TIMEOUT
 	ifeq ($(BCMDHD),4398)
             # PCIE CPL TIMEOUT WAR
-            DHDCFLAGS += -DDHD_TREAT_D3ACKTO_AS_LINKDWN
+            # DHDCFLAGS += -DDHD_TREAT_D3ACKTO_AS_LINKDWN
 	endif
 	# Skip xorcsum for high throughput case
 	DHDCFLAGS += -DDHD_SKIP_XORCSUM_HIGH_TPUT
@@ -381,6 +381,8 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
     ifeq ($(BCMDHD),4390)
         # ch_switch_notify back port changes
         DHDCFLAGS += -DWL_CH_SWITCH_BKPORT
+        # External auth request back port changes
+        # DHDCFLAGS += -DWL_EXT_AUTH_BKPORT
     endif
     DHDCFLAGS := $(filter-out -DDHD_DUMP_FILE_WRITE_FROM_KERNEL ,$(DHDCFLAGS))
 endif
@@ -388,7 +390,6 @@ endif
 # CUSTOMER2 flags
 
 # Basic / Common Feature
-DHDCFLAGS += -DDHDTCPACK_SUPPRESS
 DHDCFLAGS += -DUSE_WL_FRAMEBURST
 DHDCFLAGS += -DUSE_WL_TXBF
 DHDCFLAGS += -DSOFTAP_UAPSD_OFF
@@ -464,7 +465,10 @@ DHDCFLAGS += -DWL_P2P_RAND
 DHDCFLAGS += -DWL_CUSTOM_MAPPING_OF_DSCP
 # Enable below define for production
 ifneq ($(CONFIG_SOC_GOOGLE),)
-#DHDCFLAGS += -DMACADDR_PROVISION_ENFORCED
+  # temporary disable for 4383. Must be enabled for production.
+  ifeq ($(CONFIG_BCM4383),)
+    DHDCFLAGS += -DMACADDR_PROVISION_ENFORCED
+  endif
 endif
 ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DDHD_WAKE_STATUS
@@ -566,8 +570,6 @@ endif
 DHDCFLAGS += -DCUSTOM_TDLS_IDLE_MODE_SETTING=10000
 DHDCFLAGS += -DCUSTOM_TDLS_RSSI_THRESHOLD_HIGH=-80
 DHDCFLAGS += -DCUSTOM_TDLS_RSSI_THRESHOLD_LOW=-85
-DHDCFLAGS += -DCUSTOM_TCPACK_SUPP_RATIO=15
-DHDCFLAGS += -DCUSTOM_TCPACK_DELAY_TIME=10
 DHDCFLAGS += -DD3_ACK_RESP_TIMEOUT=4000
 DHDCFLAGS += -DIOCTL_RESP_TIMEOUT=5000
 DHDCFLAGS += -DMAX_DTIM_ALLOWED_INTERVAL=925
@@ -684,7 +686,7 @@ DHDCFLAGS += -DESCAN_RESULT_PATCH
 DHDCFLAGS += -DDUAL_ESCAN_RESULT_BUFFER
 
 # NAN
-DHDCFLAGS += -DWL_NAN -DWL_NAN_DISC_CACHE -DWL_NANP2P -DNAN_DAM_ANDROID
+DHDCFLAGS += -DWL_NAN -DWL_NAN_DISC_CACHE -DWL_NANP2P -DNAN_DAM_ANDROID -DWL_NAN_6G
 # NAN 3.1 specific
 DHDCFLAGS += -DWL_NAN_INSTANT_MODE
 
@@ -798,9 +800,6 @@ DHDCFLAGS += -DMAX_PFN_LIST_COUNT=16
 # Enable idsup for 4-way HS offload
 DHDCFLAGS += -DBCMSUP_4WAY_HANDSHAKE -DWL_ENABLE_IDSUP
 
-# Softap authentication offload - configurable by module param. Disabled by default.
-DHDCFLAGS += -DWL_IDAUTH
-
 # STA DUMP
 DHDCFLAGS += -DWL_BSS_STA_INFO
 
@@ -863,7 +862,7 @@ ifneq ($(filter y, $(CONFIG_BCM4389) $(CONFIG_BCM4398) $(CONFIG_BCM4390) $(CONFI
     ifneq ($(CONFIG_BCMDHD_PCIE),)
         DHDCFLAGS += -DPCIE_FULL_DONGLE -DBCMPCIE -DCUSTOM_DPC_PRIO_SETTING=-1
 	# NCI
-        DHDCFLAGS += -DSOCI_NCI_BUS -DBOOKER_NIC400_INF
+        DHDCFLAGS += -DSOCI_NCI_BUS
         # tput enhancement
         DHDCFLAGS += -DCUSTOM_AMPDU_BA_WSIZE=64
         DHDCFLAGS += -DPROP_TXSTATUS_VSDB
@@ -955,6 +954,11 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
 	    BCM_WLAN_CHIP_SUFFIX = 4383
 	    DHDCFLAGS += -DBCMPCI_DEV_ID=0x4449
 	    DHDCFLAGS += -DBCMPCI_NOOTP_DEV_ID=0x4383 -DBCM4383_CHIP_DEF
+
+	    # for max tput, enable ack suppress only for 4383
+	    DHDCFLAGS += -DDHDTCPACK_SUPPRESS
+	    DHDCFLAGS += -DCUSTOM_TCPACK_SUPP_RATIO=15
+	    DHDCFLAGS += -DCUSTOM_TCPACK_DELAY_TIME=10
       endif
     endif
     ifneq ($(CONFIG_BCMDHD_PCIE),)
@@ -999,9 +1003,9 @@ endif
 
 DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \
     dhd_linux.o dhd_linux_sched.o dhd_cfg80211.o dhd_linux_wq.o aiutils.o \
-    bcmevent.o bcmutils.o bcmwifi_channels.o hndpmu_dhd.o linux_osl.o linux_pkt.o \
-    siutils.o siutils_host.o wl_android.o wl_cfg80211.o wl_cfgscan.o wl_cfgp2p.o \
-	wl_cfgvif.o wl_cfg_btcoex.o wldev_common.o wl_linux_mon.o dhd_linux_platdev.o \
+    bcmevent.o bcmutils.o bcmwifi_channels.o bcmwifi_channels_shared.o hndpmu_dhd.o \
+	linux_osl.o linux_pkt.o siutils.o siutils_host.o wl_android.o wl_cfg80211.o wl_cfgscan.o \
+	wl_cfgp2p.o wl_cfgvif.o wl_cfg_btcoex.o wldev_common.o wl_linux_mon.o dhd_linux_platdev.o \
     dhd_pno.o dhd_rtt.o dhd_linux_pktdump.o wl_cfg_btcoex.o hnd_pktq.o bcmcapext.o\
     hnd_pktpool.o wl_cfgvendor.o bcmxtlv.o bcm_app_utils.o dhd_debug.o frag.o \
     dhd_debug_linux.o wl_cfgnan.o dhd_mschdbg.o bcmbloom.o dhd_dbg_ring.o bcmstdlib_s.o \
@@ -1058,7 +1062,7 @@ ifneq ($(CONFIG_BCMDHD_SDIO),)
 endif
 
 ifneq ($(CONFIG_BCMDHD_PCIE),)
-    DHDOFILES += dhd_pcie.o dhd_pcie_linux.o dhd_msgbuf.o dhd_flowring.o
+    DHDOFILES += dhd_pcie.o dhd_pcie_dumps.o dhd_pcie_linux.o dhd_msgbuf.o dhd_flowring.o
     DHDOFILES += pcie_core_host.o
 endif
 

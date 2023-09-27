@@ -323,7 +323,8 @@ typedef union bcm_event_msg_u {
 #define WLC_E_CSI_DATA			209	/* CSI data available */
 
 
-#define WLC_E_LAST			211	/* highest val + 1 for range checking */
+#define WLC_E_CSA_IGNORED		211	/* CSA IE is ignored */
+#define WLC_E_LAST			212	/* highest val + 1 for range checking */
 
 /* define an API for getting the string name of an event */
 extern const char *bcmevent_get_name(uint event_type);
@@ -637,6 +638,11 @@ typedef struct wl_event_sdb_trans {
 #define WLC_E_SUP_GTK_BAD_KEY_IDX	34u	/* Bad GTK key index */
 #define WLC_E_SUP_IGTK_BAD_KEY_IDX	35u	/* Bad IGTK key index */
 #define WLC_E_SUP_BIGTK_BAD_KEY_IDX	36u	/* Bad BIGTK key index */
+#define WLC_E_SUP_BCN_PROT_DISABLED_AP	37u	/* Beacon Protection is disabled in the AP */
+#define WLC_E_SUP_GTK_BAD_LINK_ID	38u	/* Bad GTK link id */
+#define WLC_E_SUP_IGTK_BAD_LINK_ID	39u	/* Bad IGTK link id */
+#define WLC_E_SUP_BIGTK_BAD_LINK_ID	40u	/* Bad BIGTK link id */
+#define WLC_E_SUP_FT_ELEM_CNT_MISMATCH	41u	/* Element cnt mismatch with num of elem in FTIE */
 
 /* event msg for WLC_E_SUP_PTK_UPDATE */
 typedef struct wlc_sup_ptk_update {
@@ -1097,6 +1103,7 @@ typedef enum wl_nan_events {
 	WL_NAN_EVENT_SUSPENSION_IND		= 56,	/* Suspension Start/Stop status Indicatin */
 	WL_NAN_EVENT_TETHER_PEER_ADD		= 57,	/* NAN Tether client added on peer side */
 	WL_NAN_EVENT_TETHER_PEER_DEL		= 58,	/* NAN Tether client deleted on peer side */
+	WL_NAN_EVENT_UNENCRYPTED_AF_RECV	= 59,	/* Unencrypted Rx on secured link */
 	/* keep WL_NAN_EVENT_INVALID as the last element */
 	WL_NAN_EVENT_INVALID				/* delimiter for max value */
 } nan_app_events_e;
@@ -1685,6 +1692,7 @@ typedef struct wl_event_dynsar {
 #define BCN_MUTE_MITI_END	2u	/* Sent when beacon is received */
 #define BCN_MUTE_MITI_TIMEOUT	3u	/* Mitigation period is reached */
 #define BCN_MUTE_MITI_FAILED	4u	/* Mitigation attempt failed */
+#define BCN_MUTE_MITI_ML_INFO	5u	/* Other ML link is receiving beacon */
 
 /* Status code for sending event */
 #define BCN_MUTE_MITI_UNKNOWN			0u /* Mitigation status unknown */
@@ -1712,6 +1720,8 @@ typedef struct wl_event_dynsar {
 						     */
 #define BCN_MUTE_MITI_CSA			15u /* Mitigation end due to CSA */
 #define BCN_MUTE_MITI_SA_QUERY_FAIL		16u /* Mitigation failed due to SA query failure */
+#define BCN_MUTE_MITI_OTHER_ML_BCN_RCVD		17u /* The Other ML link receives the beacon */
+#define BCN_MUTE_MITI_OTHER_ML_NO_BCN		18u /* The Other ML link has no beacons */
 
 /* bcn_mute_miti event data */
 #define WLC_BCN_MUTE_MITI_EVENT_DATA_VER_1	1u
@@ -1730,6 +1740,15 @@ typedef struct wlc_bcn_mute_miti_event_data_v2 {
 	int8	rssi;		/* Mitigation Probe response RSSI */
 	uint8	PAD[1];		/* Pad to fit to 32 bit alignment */
 } wlc_bcn_mute_miti_event_data_v2_t;
+
+#define WLC_BCN_MUTE_MITI_EVENT_DATA_VER_3	3u
+typedef struct wlc_bcn_mute_miti_event_data_v3 {
+	uint16	version;	/* Structure version number */
+	uint16	length;		/* Length of the whole struct */
+	uint16	uatbtt_count;	/* Number of UATBTT during mitigation */
+	int8	rssi;		/* Probe response RSSI */
+	uint8	ml_idx;		/* MLD local link index */
+} wlc_bcn_mute_miti_event_data_v3_t;
 
 /* bcn_drift event data */
 #define WLC_BCN_DRIFT_EVENT_DATA_VER_1	(1u)
@@ -1756,6 +1775,14 @@ typedef struct wl_csa_event {
 	uint32 switch_time;		/**< csa switch time: TSF + BI * count, msec */
 } wl_csa_event_t;
 
+/** Ignored CSA notification event */
+typedef struct wl_ignored_csa_event {
+	uint8 mode;		/**< value 0 or 1 */
+	uint8 count;	/**< count # of beacons before switching */
+	chanspec_t chspec;	/**< chanspec */
+	uint32 ignored_csa_cnt;	/* count for ignored CSA IE */
+} wl_ignored_csa_event_t;
+
 /* SIB sub events */
 
 /* Event structure for WLC_E_MSCS */
@@ -1773,9 +1800,10 @@ typedef struct wl_event_mscs {
 #define WL_MLO_LINK_INFO_EVENT_VERSION_1	(1u)
 
 typedef enum wl_mlo_link_info_opcode {
-	WL_MLO_LINK_INFO_OPCODE_ADD	= 1,	/* MLO links addition */
-	WL_MLO_LINK_INFO_OPCODE_DEL	= 2,	/* MLO links deletion */
-	WL_MLO_LINK_INFO_OPCODE_UPDATE	= 3	/* Asynchronous Upate of MLO links */
+	WL_MLO_LINK_INFO_OPCODE_ADD		= 1,	/* MLO links addition */
+	WL_MLO_LINK_INFO_OPCODE_DEL		= 2,	/* MLO links deletion */
+	WL_MLO_LINK_INFO_OPCODE_UPDATE		= 3,	/* Asynchronous Upate of MLO links */
+	WL_MLO_LINK_INFO_OPCODE_PREF_BAND	= 4	/* MLO preferred band */
 } wl_mlo_link_info_opcode_t;
 
 typedef enum wl_mlo_link_info_role {
@@ -1795,14 +1823,16 @@ typedef struct wl_mlo_per_link_info_v1 {
 
 /* MLO link information event structure */
 typedef struct wl_mlo_link_info_event_v1 {
-	uint16				version;	/* structure version */
-	uint16				length;		/* length of this structure */
-	uint8				opcode;		/* link opcode - wl_mlo_link_info_opcode */
-	uint8				role;		/* link role - wl_mlo_link_info_role */
-	struct ether_addr		mld_addr;	/* mld address */
-	uint8				num_links;	/* number of operative links */
-	uint8				PAD[3];
-	wl_mlo_per_link_info_v1_t	link_info[];	/* per link information */
+	uint16				version;	    /* structure version */
+	uint16				length;		    /* length of this structure */
+	uint8				opcode;		    /* link opcode - wl_mlo_link_info_opcode
+							     */
+	uint8				role;		    /* link role - wl_mlo_link_info_role */
+	struct ether_addr		mld_addr;	    /* mld address */
+	uint8				num_links;	    /* number of operative links */
+	uint8				pref_band_link_idx; /* MLO Preferred Band Link index */
+	uint8				PAD[2];
+	wl_mlo_per_link_info_v1_t	link_info[];	    /* per link information */
 } wl_mlo_link_info_event_v1_t;
 
 /* ===== C2C event definitions ===== */

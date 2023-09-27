@@ -516,7 +516,8 @@ enum wl_ftm_csi_ranging_params_flags {
 	CSI_RNG_PARAM_FLAG_BIT_SLTF	= 1u, /* secure LTF */
 	CSI_RNG_PARAM_FLAG_BIT_NTB	= 2u, /* 11az NTB ranging */
 	CSI_RNG_PARAM_FLAG_BIT_TB	= 3u, /* 11az TB ranging */
-	CSI_RNG_PARAM_FLAG_BIT_PSV	= 4u  /* 11az Passive ranging */
+	CSI_RNG_PARAM_FLAG_BIT_PSV	= 4u, /* 11az Passive ranging */
+	CSI_RNG_PARAM_FLAG_BIT_MC	= 5u  /* 11mc ranging */
 };
 #define CSI_RNG_PARAM_FLAG(_bit)	(1u << CSI_RNG_PARAM_FLAG_BIT_##_bit)
 
@@ -525,6 +526,7 @@ enum wl_ftm_csi_ranging_params_flags {
 #define CSI_RNG_NTB(_params)		((_params)->flags & CSI_RNG_PARAM_FLAG(NTB))
 #define CSI_RNG_TB(_params)		((_params)->flags & CSI_RNG_PARAM_FLAG(TB))
 #define CSI_RNG_PSV(_params)		((_params)->flags & CSI_RNG_PARAM_FLAG(PSV))
+#define CSI_RNG_MC(_params)		((_params)->flags & CSI_RNG_PARAM_FLAG(MC))
 
 /* negotiated ranging parameters for CSI data */
 typedef struct wl_ftm_csi_ranging_params {

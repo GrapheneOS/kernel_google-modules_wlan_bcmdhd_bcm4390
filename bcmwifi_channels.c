@@ -160,36 +160,11 @@ static const uint8 wf_5g_160m_chans[] = {
 };
 #define WF_NUM_5G_160M_CHANS ARRAYSIZE(wf_5g_160m_chans)
 
-/** 80MHz channels in 6GHz band */
-#define WF_NUM_6G_80M_CHANS 14
-
-/** 160MHz channels in 6GHz band */
-#define WF_NUM_6G_160M_CHANS 7	/* TBD */
-
-/** 320MHz channels in 6GHz band */
-#define WF_NUM_6G_320M_CHANS 6
-/* valid channels: 0,1,2,4,5,6, channel 3 invalid as given in
- * wf_chspec_6G_id320_to_ch
- */
-#define WF_NUM_6G_320M_CHAN_ID_MIN 0
-#define WF_NUM_6G_320M_CHAN_ID_MAX 6
-
 /* 320Mhz Center chan to Chan Id map */
 static const int8 map_320m_cc_chanid[] = {
 	0,    /* CC 31 */
 	1,    /* CC 95 */
 	2,    /* CC 159 */
-};
-
-/* 320Mhz Chan Id to Center Channel map */
-static const uint8 BCMPOST_TRAP_RODATA(map_320m_chanid_cc)[] = {
-	31,    /* CC 31 */
-	95,    /* CC 63 */
-	159,   /* CC 95 */
-	0,     /* INVALCHAN */
-	63,    /* CC 127 */
-	127,   /* CC 159 */
-	191,   /* CC 191 */
 };
 
 typedef struct {
@@ -469,44 +444,6 @@ wf_chspec_6G_id80_to_ch(uint8 chan_80MHz_id)
 	}
 
 	return ch;
-}
-
-/**
- * This function returns the the 6GHz 320MHz center channel for the given chanspec 320MHz ID
- *
- * @param    chan_320MHz_id    320MHz chanspec ID
- *
- * @return   Return the center channel number, or 0 on error.
- *
- */
-static uint8
-BCMPOSTTRAPFN(wf_chspec_6G_id320_to_ch)(uint8 chan_320MHz_id)
-{
-	uint8 ch = 0;
-
-	if (chan_320MHz_id <= WF_NUM_6G_320M_CHAN_ID_MAX) {
-		/* The 6GHz center channels have a spacing of 64
-		 * starting from the first 320MHz center
-		 */
-		if (chan_320MHz_id < ARRAYSIZE(map_320m_chanid_cc)) {
-			return map_320m_chanid_cc[chan_320MHz_id];
-		}
-	}
-
-	return ch;
-}
-
-/* Retrive the chan_id and convert it to center channel */
-uint8
-BCMPOSTTRAPFN(wf_chspec_320_id2cch)(chanspec_t chanspec)
-{
-	if (CHSPEC_BAND(chanspec) == WL_CHANSPEC_BAND_6G &&
-	    CHSPEC_BW(chanspec) == WL_CHANSPEC_BW_320) {
-		uint8 ch_id = WL_CHSPEC_320_CHAN(chanspec);
-
-		return wf_chspec_6G_id320_to_ch(ch_id);
-	}
-	return 0;
 }
 
 /**
@@ -3257,25 +3194,6 @@ wf_6g_get_center_chan_from_primary(uint primary_channel, chanspec_bw_t bw,
 	}
 	return center;
 }
-
-#ifdef BCMWIFI_BW320MHZ
-/*
- * Returns center channel for a contiguous chanspec and
- * INVCHANNEL for non-contiguous chanspec.
- */
-uint8
-BCMPOSTTRAPFN(wf_chspec_center_channel)(chanspec_t chspec)
-{
-	uint8 cc;
-	if (CHSPEC_IS8080(chspec)) {
-		cc = INVCHANNEL;
-	} else {
-		cc = CHSPEC_IS320(chspec) ? wf_chspec_320_id2cch(chspec):
-			CHSPEC_CHANNEL(chspec);
-	}
-	return cc;
-}
-#endif /* BCMWIFI_BW320MHZ */
 
 uint8
 wf_chspec_get_primary_sb(chanspec_t chspec)

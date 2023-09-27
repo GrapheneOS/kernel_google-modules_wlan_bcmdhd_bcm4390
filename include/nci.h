@@ -34,6 +34,7 @@ struct nci_info;	/* public opaque type, contents private to nciutils.c */
 void nci_uninit(void *nci);
 uint32 nci_scan(si_t *sih);
 void nci_dump_erom(void *nci);
+void nci_cores_to_ai_cores(si_t *sih);
 void* nci_init(si_t *sih, chipcregs_t *cc, uint bustype);
 volatile void *nci_setcore(si_t *sih, uint coreid, uint coreunit);
 volatile void *nci_setcoreidx(const si_t *sih, uint coreidx);

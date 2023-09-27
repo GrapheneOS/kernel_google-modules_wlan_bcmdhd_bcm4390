@@ -590,14 +590,6 @@ module_param_string(ucode_path, ucode_path, MOD_PARAM_PATHLEN, 0660);
 #endif /* DHD_UCODE_DOWNLOAD */
 
 /* wl event forwarding */
-#ifdef WL_EVENT_ENAB
-uint wl_event_enable = true;
-#else
-uint wl_event_enable = false;
-#endif /* WL_EVENT_ENAB */
-module_param(wl_event_enable, uint, 0660);
-
-/* wl event forwarding */
 #ifdef LOGTRACE_PKT_SENDUP
 uint logtrace_pkt_sendup = true;
 #else
@@ -924,6 +916,9 @@ int dhd_ioctl_timeout_msec = IOCTL_RESP_TIMEOUT;
 
 /* DS Exit response timeout */
 int ds_exit_timeout_msec = DS_EXIT_TIMEOUT;
+
+/* D0 Exit response timeout */
+int d0_exit_timeout_msec = D0_EXIT_TIMEOUT;
 
 /* Idle timeout for backplane clock */
 int dhd_idletime = DHD_IDLETIME_TICKS;
@@ -2035,16 +2030,24 @@ dhd_is_sta_htput(void *pub, int ifidx, void *ea)
 	dhd_if_t *ifp;
 	unsigned long flags;
 	bool htput = FALSE;
+	dhd_pub_t *dhd = (dhd_pub_t *)pub;
+
+	/* For 4383 which is 80MHz chip, htput needs to be enabled to get tput */
+	if (dhd->htput_force_sta) {
+		DHD_PRINT(("%s: htput_force_sta, set htput\n", __FUNCTION__));
+		htput = TRUE;
+		return htput;
+	}
 
 	/* For non-AP role, chanspec will not be updated and always use htput */
-	if (!DHD_IF_ROLE_AP((dhd_pub_t *)pub, ifidx)) {
-		DHD_ERROR(("%s: non-AP role, set htput\n", __FUNCTION__));
+	if (!DHD_IF_ROLE_AP(dhd, ifidx)) {
+		DHD_PRINT(("%s: non-AP role, set htput\n", __FUNCTION__));
 		htput = TRUE;
 		return htput;
 	}
 
 	ASSERT(ea != NULL);
-	ifp = dhd_get_ifp((dhd_pub_t *)pub, ifidx);
+	ifp = dhd_get_ifp(dhd, ifidx);
 	if (ifp == NULL) {
 		DHD_ERROR(("%s: NULL ifp for ifidx:%d\n", __FUNCTION__, ifidx));
 		return htput;
@@ -2063,7 +2066,7 @@ dhd_is_sta_htput(void *pub, int ifidx, void *ea)
 		 * This will be removed after FW fix.
 		 */
 		else if ((sta->peer_info != NULL) && (sta->peer_info->num_links > 0)) {
-			DHD_ERROR(("Associated to MLO capable STA, enabling htput\n"));
+			DHD_PRINT(("Associated to MLO capable STA, enabling htput\n"));
 			htput = TRUE;
 		}
 #endif /* WL_MLO */
@@ -3300,8 +3303,8 @@ dhd_ifdel_event_handler(void *handle, void *event_info, u8 event)
 #else
 	/* For non-cfg80211 drivers */
 	dhd_remove_if(&dhd->pub, ifidx, TRUE);
-
 #endif /* WL_CFG80211 && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
+
 
 done:
 	MFREE(dhd->pub.osh, if_event, sizeof(dhd_if_event_t));
@@ -5256,7 +5259,7 @@ static bool dhd_check_hang(struct net_device *net, dhd_pub_t *dhdp, int error)
 #ifdef BCMPCIE
 		DHD_ERROR(("%s: Event HANG send up due to  re=%d te=%d d3acke=%d e=%d s=%d\n",
 			__FUNCTION__, dhdp->rxcnt_timeout, dhdp->txcnt_timeout,
-			dhdp->d3ackcnt_timeout, error, dhdp->busstate));
+			dhdp->d3d0ackcnt_timeout, error, dhdp->busstate));
 #else
 		DHD_ERROR(("%s: Event HANG send up due to  re=%d te=%d e=%d s=%d\n", __FUNCTION__,
 			dhdp->rxcnt_timeout, dhdp->txcnt_timeout, error, dhdp->busstate));
@@ -5265,7 +5268,7 @@ static bool dhd_check_hang(struct net_device *net, dhd_pub_t *dhdp, int error)
 			if (dhdp->dongle_trap_occured) {
 				dhdp->hang_reason = HANG_REASON_DONGLE_TRAP;
 #ifdef BCMPCIE
-			} else if (dhdp->d3ackcnt_timeout) {
+			} else if (dhdp->d3d0ackcnt_timeout) {
 				dhdp->hang_reason = dhdp->is_sched_error ?
 					HANG_REASON_D3_ACK_TIMEOUT_SCHED_ERROR :
 					HANG_REASON_D3_ACK_TIMEOUT;
@@ -6481,7 +6484,7 @@ dhd_stop(struct net_device *net)
 	dhd->pub.txcnt_timeout = 0;
 
 #ifdef BCMPCIE
-	dhd->pub.d3ackcnt_timeout = 0;
+	dhd->pub.d3d0ackcnt_timeout = 0;
 #endif /* BCMPCIE */
 	/* Synchronize between the stop and rx path */
 	dhd->pub.stop_in_progress = true;
@@ -7203,16 +7206,16 @@ dhd_open(struct net_device *net)
 #endif /* CONFIG_IPV6 && IPV6_NDO_SUPPORT */
 		}
 #if defined(DHDTCPACK_SUPPRESS) && defined(BCMSDIO)
-	dhd_tcpack_suppress_set(&dhd->pub, TCPACK_SUP_DELAYTX);
+		dhd_tcpack_suppress_set(&dhd->pub, TCPACK_SUP_DELAYTX);
 #endif /* DHDTCPACK_SUPPRESS */
 #if defined(DHD_CONTROL_PCIE_ASPM_WIFI_TURNON)
-	dhd_bus_aspm_enable_rc_ep(dhd->pub.bus, TRUE);
+		dhd_bus_aspm_enable_rc_ep(dhd->pub.bus, TRUE);
 #endif /* DHD_CONTROL_PCIE_ASPM_WIFI_TURNON */
 #if defined(DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON)
-	dhd_irq_set_affinity(&dhd->pub, cpumask_of(0));
+		dhd_irq_set_affinity(&dhd->pub, cpumask_of(0));
 #endif /* DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON */
 #if defined(BCMPCIE) && defined(DHDTCPACK_SUPPRESS)
-		dhd_tcpack_suppress_set(&dhd->pub, TCPACK_SUP_OFF);
+		dhd_tcpack_suppress_set(&dhd->pub, TCPACK_SUP_HOLD);
 #endif /* BCMPCIE && DHDTCPACK_SUPPRESS */
 #if defined(NUM_SCB_MAX_PROBE)
 		dhd_set_scb_probe(&dhd->pub);
@@ -7229,13 +7232,6 @@ dhd_open(struct net_device *net)
 	dhd_bus_inform_ep_loaded_to_rc(&dhd->pub, dhd->pub.up);
 #endif /* BCMPCIE && CONFIG_ARCH_MSM  && CONFIG_SEC_PCIE_L1SS */
 	DHD_START_RPM_TIMER(&dhd->pub);
-
-	if (wl_event_enable) {
-		/* For wl utility to receive events */
-		dhd->pub.wl_event_enabled = true;
-	} else {
-		dhd->pub.wl_event_enabled = false;
-	}
 
 	if (logtrace_pkt_sendup) {
 		/* For any deamon to receive logtrace */
@@ -7938,7 +7934,7 @@ fail:
 
 void dhd_unregister_net(struct net_device *net, bool need_rtnl_lock)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)) && defined(WL_CFG80211)
 	if (need_rtnl_lock) {
 		rtnl_lock();
 		cfg80211_unregister_netdevice(net);
@@ -7959,7 +7955,7 @@ void dhd_unregister_net(struct net_device *net, bool need_rtnl_lock)
 int dhd_register_net(struct net_device *net, bool need_rtnl_lock)
 {
 	int err = 0;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)) && defined(WL_CFG80211)
 	if (need_rtnl_lock) {
 		rtnl_lock();
 		err = cfg80211_register_netdevice(net);
@@ -9268,6 +9264,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	init_waitqueue_head(&dhd->d3ack_wait);
 #ifdef PCIE_INB_DW
 	init_waitqueue_head(&dhd->ds_exit_wait);
+	init_waitqueue_head(&dhd->d0_exit_wait);
 #endif /* PCIE_INB_DW */
 	init_waitqueue_head(&dhd->ctrl_wait);
 	init_waitqueue_head(&dhd->dhd_bus_busy_state_wait);
@@ -9693,7 +9690,6 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	INIT_DELAYED_WORK(&dhd->edl_dispatcher_work, dhd_edl_process_work);
 #endif
 
-	DHD_COREDUMP_MEMPOOL_INIT(&dhd->pub);
 	DHD_SSSR_MEMPOOL_INIT(&dhd->pub);
 	DHD_SSSR_REG_INFO_INIT(&dhd->pub);
 
@@ -9715,6 +9711,11 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 		DHD_ERROR(("%s: Failed to alloc memdump memory !\n", __FUNCTION__));
 		goto fail;
 	}
+
+	/* Allocate core dump size after each section len is set up
+	 * coredump consist of hdr, socram, sssr, sdtc and coex
+	 */
+	DHD_COREDUMP_MEMPOOL_INIT(&dhd->pub);
 
 	dhd_init_sock_flows_buf(dhd, dhd_watchdog_ms);
 
@@ -14761,6 +14762,23 @@ void dhd_detach(dhd_pub_t *dhdp)
 		 */
 		OSL_SLEEP(100);
 	}
+
+#ifdef SHOW_LOGTRACE
+	/* Release the skbs from queue for WLC_E_TRACE event */
+	dhd_event_logtrace_flush_queue(dhdp);
+
+	/* Wait till event logtrace context finishes */
+	dhd_cancel_logtrace_process_sync(dhd);
+
+	/* Remove ring proc entries */
+	dhd_dbg_ring_proc_destroy(&dhd->pub);
+
+	if (dhd->dhd_state & DHD_ATTACH_LOGTRACE_INIT) {
+		dhd_free_event_data_fmts_buf(dhd);
+		dhd->dhd_state &= ~DHD_ATTACH_LOGTRACE_INIT;
+	}
+#endif /* SHOW_LOGTRACE */
+
 #ifdef DHD_WET
 	dhd_free_wet_info(&dhd->pub, dhd->pub.wet_info);
 #endif /* DHD_WET */
@@ -14955,21 +14973,6 @@ void dhd_detach(dhd_pub_t *dhdp)
 		DHD_LB_STATS_DEINIT(&dhd->pub);
 	}
 #endif /* DHD_LB */
-#ifdef SHOW_LOGTRACE
-	/* Release the skbs from queue for WLC_E_TRACE event */
-	dhd_event_logtrace_flush_queue(dhdp);
-
-	/* Wait till event logtrace context finishes */
-	dhd_cancel_logtrace_process_sync(dhd);
-
-	/* Remove ring proc entries */
-	dhd_dbg_ring_proc_destroy(&dhd->pub);
-
-	if (dhd->dhd_state & DHD_ATTACH_LOGTRACE_INIT) {
-		dhd_free_event_data_fmts_buf(dhd);
-		dhd->dhd_state &= ~DHD_ATTACH_LOGTRACE_INIT;
-	}
-#endif /* SHOW_LOGTRACE */
 
 #if defined(DNGL_AXI_ERROR_LOGGING) && defined(DHD_USE_WQ_FOR_DNGL_AXI_ERROR)
 	dhd_cancel_work_sync(&dhd->axi_error_dispatcher_work);
@@ -15686,6 +15689,32 @@ dhd_os_ds_exit_wake(dhd_pub_t *pub)
 	dhd_info_t *dhd = (dhd_info_t *)(pub->info);
 
 	wake_up_all(&dhd->ds_exit_wait);
+	return 0;
+}
+
+int
+dhd_os_d0_exit_wait(dhd_pub_t *pub, uint *condition)
+{
+	dhd_info_t * dhd = (dhd_info_t *)(pub->info);
+	int timeout;
+
+	/* Convert timeout in millsecond to jiffies */
+	timeout = msecs_to_jiffies(d0_exit_timeout_msec);
+#ifdef BCMSLTGT
+	timeout *= htclkratio;
+#endif /* BCMSLTGT */
+
+	timeout = wait_event_timeout(dhd->d0_exit_wait, (*condition), timeout);
+
+	return timeout;
+}
+
+int
+dhd_os_d0_exit_wake(dhd_pub_t *pub)
+{
+	dhd_info_t *dhd = (dhd_info_t *)(pub->info);
+
+	wake_up_all(&dhd->d0_exit_wait);
 	return 0;
 }
 
@@ -19986,51 +20015,6 @@ err1:
 }
 #endif /* DHD_RND_DEBUG */
 
-#ifdef TX_FLOW_RING_INDICES_TRACE
-/* Dump TX flowrings indices trace */
-void
-dhd_tx_flowring_indices_trace_dump(dhd_info_t *dhd)
-{
-	char *tracebuf;
-	struct bcmstrbuf b;
-	struct bcmstrbuf *strbuf = &b;
-	uint32 tracebuf_size;
-
-	if (!dhd) {
-		DHD_ERROR(("%s dhd_info_t not yet inited\n", __FUNCTION__));
-		return;
-	}
-
-	tracebuf_size = dhd_prot_get_flow_ring_trace_len(&dhd->pub);
-	if (!tracebuf_size) {
-		DHD_ERROR(("%s() not collected \n", __FUNCTION__));
-		return;
-	}
-
-	tracebuf = VMALLOCZ(dhd->pub.osh, tracebuf_size);
-
-	if (!tracebuf) {
-		DHD_ERROR(("%s: tracebuf alloc failed\n", __FUNCTION__));
-		return;
-	} else {
-		bcm_binit(strbuf, tracebuf, tracebuf_size);
-		dhd_prot_tx_flow_ring_trace_dump(&dhd->pub, strbuf);
-		if (write_dump_to_file(&dhd->pub, b.origbuf, (b.origsize - b.size),
-			"dhd_tx_flowring_indices_trace_dump")) {
-			DHD_ERROR(("%s: writing flowring indices trace to file failed\n",
-				__FUNCTION__));
-		}
-	}
-	VMFREE(dhd->pub.osh, tracebuf, tracebuf_size);
-}
-#else
-void
-dhd_tx_flowring_indices_trace_dump(dhd_info_t *dhd)
-{
-	return;
-}
-#endif /* TX_FLOW_RING_INDICES_TRACE */
-
 #ifdef DHD_FW_COREDUMP
 bool dhd_memdump_is_scheduled(dhd_pub_t *dhdp)
 {
@@ -20182,6 +20166,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	bool collect_coredump = FALSE;
 #endif /* DHD_COREDUMP */
 	uint32 memdump_type;
+#ifdef DHD_SSSR_DUMP
+	uint32 collect_sssr;
+#endif /* DHD_SSSR_DUMP */
 	bool set_linkdwn_cto = FALSE;
 
 	DHD_PRINT(("%s: ENTER \n", __FUNCTION__));
@@ -20199,6 +20186,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 
 	/* keep it locally to avoid overwriting in other contexts */
 	memdump_type = dhdp->memdump_type;
+#ifdef DHD_SSSR_DUMP
+	collect_sssr = dhdp->collect_sssr;
+#endif /* DHD_SSSR_DUMP */
 
 	DHD_GENERAL_LOCK(dhdp, flags);
 	if (DHD_BUS_CHECK_DOWN_OR_DOWN_IN_PROGRESS(dhdp)) {
@@ -20215,9 +20205,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	}
 
 #ifdef DHD_SSSR_DUMP
-	DHD_PRINT(("%s: sssr_enab=%d dhdp->sssr_inited=%d dhdp->collect_sssr=%d\n",
-		__FUNCTION__, sssr_enab, dhdp->sssr_inited, dhdp->collect_sssr));
-	if (sssr_enab && dhdp->sssr_inited && dhdp->collect_sssr) {
+	DHD_PRINT(("%s: sssr_enab=%d dhdp->sssr_inited=%d collect_sssr=%d\n",
+		__FUNCTION__, sssr_enab, dhdp->sssr_inited, collect_sssr));
+	if (sssr_enab && dhdp->sssr_inited && collect_sssr) {
 		uint32 arr_len[DUMP_SSSR_DUMP_MAX_COUNT];
 		bool fis_fw_triggered = FALSE;
 
@@ -20297,6 +20287,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 #endif /* DHD_SSSR_DUMP */
 #ifdef DHD_SDTC_ETB_DUMP
 	DHD_PRINT(("%s: collect_sdtc = %d\n", __FUNCTION__, dhdp->collect_sdtc));
+
 	if (dhdp->collect_sdtc) {
 		dhd_sdtc_etb_dump(dhdp);
 		dhdp->collect_sdtc = FALSE;
@@ -20367,20 +20358,20 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 
 #ifdef DHD_SSSR_COREDUMP
 	if (dhd_is_coredump_reqd(dhdp->memdump_str,
-		strnlen(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN), dhdp)) {
+		strnlen(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN), dhdp) &&
+		sssr_enab && collect_sssr) {
+
 		ret = dhd_collect_coredump(dhdp, dump);
 		if (ret == BCME_ERROR) {
 			DHD_ERROR(("%s: dhd_collect_coredump() failed.\n",
 				__FUNCTION__));
 			goto exit;
-		} else if (ret == BCME_UNSUPPORTED) {
-			DHD_LOG_MEM(("%s: Unable to collect SSSR dumps. Skip it.\n",
-				__FUNCTION__));
 		}
 		collect_coredump = TRUE;
 	} else {
-		DHD_PRINT(("%s: coredump not collected, dhd_is_coredump_reqd returns false\n",
-			__FUNCTION__));
+		DHD_PRINT(("%s: coredump not collected, dhd_is_coredump_reqd returns false "
+			"or sssr is not enabled sssr_enab:%d collect_sssr:%d\n",
+			__FUNCTION__, sssr_enab, collect_sssr));
 	}
 #endif /* DHD_SSSR_COREDUMP */
 	if (memdump_type == DUMP_TYPE_BY_SYSDUMP) {
@@ -20409,7 +20400,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	 * Since SSSR dump cannot be collected multiple times for the same error,
 	 * reset collect_sssr flag here.
 	 */
-	if (dhdp->collect_sssr == TRUE) {
+	if (collect_sssr == TRUE) {
 		dhdp->collect_sssr = FALSE;
 	}
 #endif /* DHD_SSSR_DUMP */
@@ -20431,7 +20422,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	}
 #endif /* D2H_MINIDUMP */
 	/* TX flowirngs trace dump */
-	dhd_tx_flowring_indices_trace_dump(dhd);
+	dhd_tx_flowring_indices_trace_dump(&dhd->pub);
 
 #ifndef BCMQT_HW
 	/* skip memdump for QT in dhd. user will collect through upload in chunks */
@@ -20584,173 +20575,6 @@ dhd_d2h_minidump(dhd_pub_t *dhdp)
 	}
 }
 #endif /* D2H_MINIDUMP */
-
-#if defined(DHD_SDTC_ETB_DUMP)
-#define SDTC_ETB_DUMP_FILENAME "sdtc_etb_dump"
-static int
-dhd_sdtc_write_ewp_etb_dump(dhd_pub_t *dhdp)
-{
-	int size = 0;
-
-	size = dhd_bus_get_ewp_etb_dump(dhdp->bus, dhdp->sdtc_etb_mempool,
-		DHD_SDTC_ETB_MEMPOOL_SIZE);
-	if (size < 0) {
-		dhdp->sdtc_etb_dump_len = 0;
-		return size;
-	}
-
-	/* sdtc_etb_dump_len should be set for HAL pull
-	 * of etb dump
-	 */
-	dhdp->sdtc_etb_dump_len = size;
-#ifdef DHD_DUMP_FILE_WRITE_FROM_KERNEL
-	if (write_dump_to_file(dhdp, dhdp->sdtc_etb_mempool,
-		size, SDTC_ETB_DUMP_FILENAME)) {
-		DHD_ERROR(("%s: failed to dump %s file\n",
-			__FUNCTION__, SDTC_ETB_DUMP_FILENAME));
-	}
-#endif /* DHD_DUMP_FILE_WRITE_FROM_KERNEL */
-
-	return BCME_OK;
-}
-
-static int
-dhd_write_etb_dump(dhd_pub_t *dhdp)
-{
-	int size = 0;
-
-	DHD_TRACE(("Enter %s \n", __FUNCTION__));
-	size = dhd_bus_get_etb_dump(dhdp->bus, dhdp->sdtc_etb_mempool,
-		DHD_SDTC_ETB_MEMPOOL_SIZE);
-	if (size < 0) {
-		dhdp->sdtc_etb_dump_len = 0;
-		return size;
-	}
-
-	/* sdtc_etb_dump_len should be set for HAL pull
-	 * of etb dump
-	 */
-	dhdp->sdtc_etb_dump_len = size;
-#ifdef DHD_DUMP_FILE_WRITE_FROM_KERNEL
-	if (write_dump_to_file(dhdp, dhdp->sdtc_etb_mempool,
-		size, SDTC_ETB_DUMP_FILENAME)) {
-		DHD_ERROR(("%s: failed to dump %s file\n",
-			__FUNCTION__, SDTC_ETB_DUMP_FILENAME));
-	}
-#endif /* DHD_DUMP_FILE_WRITE_FROM_KERNEL */
-
-	return BCME_OK;
-}
-
-void
-dhd_sdtc_etb_dump(dhd_pub_t *dhd)
-{
-	etb_info_t etb_info;
-	uint8 *sdtc_etb_dump;
-	uint8 *sdtc_etb_mempool;
-	int ret = 0;
-
-	if (!dhd->sdtc_etb_inited) {
-		DHD_ERROR(("%s, SDTC ETB dump not supported\n", __FUNCTION__));
-		return;
-	}
-
-	/* if newer ewp etb method is enabled, use that */
-	if (dhd->ewp_etb_enabled) {
-		ret = dhd_sdtc_write_ewp_etb_dump(dhd);
-		if (ret != BCME_OK) {
-			DHD_ERROR(("%s: failed to write ewp etb dump err=%d\n",
-				__FUNCTION__, ret));
-		}
-		return;
-	}
-
-#if defined(DHD_SDTC_ETB_DUMP)
-	/* if dap etb iovar based dump is enabled */
-	if (dhd->etb_dump_inited) {
-		ret = dhd_write_etb_dump(dhd);
-		if (ret != BCME_OK) {
-			DHD_ERROR(("%s: failed to write etb dump err=%d\n",
-				__FUNCTION__, ret));
-		}
-		return;
-	}
-#endif /* DHD_SDTC_ETB_DUMP */
-
-	bzero(&etb_info, sizeof(etb_info));
-
-	if ((ret = dhd_bus_get_etb_info(dhd, dhd->etb_addr_info.etbinfo_addr, &etb_info))) {
-		DHD_ERROR(("%s: failed to get etb info %d\n", __FUNCTION__, ret));
-		return;
-	}
-
-	if (etb_info.addr == (uint32)-1) {
-		DHD_ERROR(("%s: invalid etbinfo.addr 0x%x Hence donot collect SDTC ETB\n",
-			__FUNCTION__, etb_info.addr));
-		return;
-	}
-
-	if (etb_info.read_bytes == 0) {
-		DHD_ERROR(("%s ETB is of zero size. Hence donot collect SDTC ETB\n", __FUNCTION__));
-		return;
-	}
-
-	DHD_PRINT(("%s etb_info ver:%d len:%d rwp:%d etb_full:%d etb:addr:0x%x, len:%d\n",
-		__FUNCTION__, etb_info.version, etb_info.len,
-		etb_info.read_write_p, etb_info.etb_full,
-		etb_info.addr, etb_info.read_bytes));
-
-	/*
-	 * etb mempool format = etb_info + etb
-	 */
-	dhd->sdtc_etb_dump_len = etb_info.read_bytes + sizeof(etb_info);
-	if (dhd->sdtc_etb_dump_len > DHD_SDTC_ETB_MEMPOOL_SIZE) {
-		DHD_ERROR(("%s etb_dump_len: %d is more than the alloced %d.Hence cannot collect\n",
-			__FUNCTION__, dhd->sdtc_etb_dump_len, DHD_SDTC_ETB_MEMPOOL_SIZE));
-		return;
-	}
-	sdtc_etb_mempool = dhd->sdtc_etb_mempool;
-	memcpy(sdtc_etb_mempool, &etb_info, sizeof(etb_info));
-	sdtc_etb_dump = sdtc_etb_mempool + sizeof(etb_info);
-	if ((ret = dhd_bus_get_sdtc_etb(dhd, sdtc_etb_dump, etb_info.addr, etb_info.read_bytes))) {
-		DHD_ERROR(("%s: error to get SDTC ETB ret: %d\n", __FUNCTION__, ret));
-		return;
-	}
-
-	dhd_print_buf_addr(dhd, SDTC_ETB_DUMP_FILENAME,
-		(uint8 *)sdtc_etb_mempool, dhd->sdtc_etb_dump_len);
-	/*
-	 * If kernel does not have file write access enabled
-	 * then skip writing dumps to files.
-	 * The dumps will be pushed to HAL layer which will
-	 * write into files
-	 */
-#ifdef DHD_DUMP_FILE_WRITE_FROM_KERNEL
-	if (write_dump_to_file(dhd, (uint8 *)sdtc_etb_mempool,
-		dhd->sdtc_etb_dump_len, SDTC_ETB_DUMP_FILENAME)) {
-		DHD_ERROR(("%s: failed to dump sdtc_etb to file\n",
-			__FUNCTION__));
-	}
-#endif /* DHD_DUMP_FILE_WRITE_FROM_KERNEL */
-}
-
-int
-dhd_sdtc_etb_hal_file_dump(void *dev, const void *user_buf, uint32 len)
-{
-	dhd_info_t *dhd_info = *(dhd_info_t **)netdev_priv((struct net_device *)dev);
-	dhd_pub_t *dhdp = &dhd_info->pub;
-	int pos = 0, ret = BCME_ERROR;
-
-	if (dhdp->sdtc_etb_dump_len) {
-		ret = dhd_export_debug_data((char *)dhdp->sdtc_etb_mempool,
-			NULL, user_buf, dhdp->sdtc_etb_dump_len, &pos);
-	} else {
-		DHD_ERROR(("%s ETB is of zero size. Hence donot collect SDTC ETB\n", __FUNCTION__));
-	}
-	DHD_PRINT(("%s, done ret: %d\n", __FUNCTION__, ret));
-	return ret;
-}
-#endif /* DHD_SDTC_ETB_DUMP */
 
 /* This function writes data to the file pointed by fp, OR
  * copies data to the user buffer sent by upper layer(HAL).

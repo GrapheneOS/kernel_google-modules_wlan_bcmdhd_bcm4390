@@ -101,7 +101,7 @@ typedef struct chip_rev_table {
 chip_rev_table_t chip_revs[] = {
 	{0x4383, {"a0", "a1", "a3", "\0", "\0", "\0", "\0", "\0", "\0", "\0"}},
 	{0x4398, {"a0", "b0", "c0", "d0", "\0", "\0", "\0", "\0", "\0", "\0"}},
-	{0x4390, {"a0", "\0", "\0", "\0", "\0", "\0", "\0", "\0", "\0", "\0"}},
+	{0x4390, {"a0", "b0", "\0", "\0", "\0", "\0", "\0", "\0", "\0", "\0"}},
 	/* 4389 - not yet supported for now */
 	{0x4389, {"\0", "\0", "\0", "\0", "\0", "\0", "\0", "\0", "\0", "\0"}},
 };
@@ -151,6 +151,11 @@ vid_info_t vid_naming_table_4390[] = {
 	{ 3, { 0x10, 0x63, }, { "_USI_G6BB_6310_V10" } },
 	{ 3, { 0x11, 0x63, }, { "_USI_G6BB_6311_V11" } },
 	{ 3, { 0x13, 0x63, }, { "_USI_G6BB_6313_V13" } },
+	{ 3, { 0x21, 0x63, }, { "_USI_G6BB_6321_V21" } },
+
+	/* 4390b0 */
+	{ 3, { 0x23, 0x63, }, { "_USI_G6BB_6323_V23" } },
+	{ 3, { 0x25, 0x63, }, { "_USI_G6BB_6325_V25" } },
 };
 
 #ifdef DHD_USE_CISINFO
@@ -2294,3 +2299,284 @@ dhd_check_stored_module_info(char *vid)
 }
 #endif /* USE_DIRECT_VID_TAG */
 #endif /* DHD_USE_CISINFO */
+
+
+#if defined(SUPPORT_MULTIPLE_REVISION)
+static int concate_revision_bcm4358(dhd_bus_t *bus, char *fw_path, char *nv_path)
+{
+	uint32 chiprev;
+#if defined(SUPPORT_MULTIPLE_CHIPS)
+	char chipver_tag[20] = "_4358";
+#else
+	char chipver_tag[10] = {0, };
+#endif /* SUPPORT_MULTIPLE_CHIPS */
+
+	chiprev = bus->sih->chiprev;
+	if (chiprev == 0) {
+		DHD_PRINT(("----- CHIP 4358 A0 -----\n"));
+		strcat(chipver_tag, "_a0");
+	} else if (chiprev == 1) {
+		DHD_PRINT(("----- CHIP 4358 A1 -----\n"));
+#if defined(SUPPORT_MULTIPLE_CHIPS) || defined(SUPPORT_MULTIPLE_MODULE_CIS)
+		strcat(chipver_tag, "_a1");
+#endif /* defined(SUPPORT_MULTIPLE_CHIPS) || defined(SUPPORT_MULTIPLE_MODULE_CIS) */
+	} else if (chiprev == 3) {
+		DHD_PRINT(("----- CHIP 4358 A3 -----\n"));
+#if defined(SUPPORT_MULTIPLE_CHIPS)
+		strcat(chipver_tag, "_a3");
+#endif /* SUPPORT_MULTIPLE_CHIPS */
+	} else {
+		DHD_ERROR(("----- Unknown chip version, ver=%x -----\n", chiprev));
+	}
+
+	strcat(fw_path, chipver_tag);
+
+#if defined(SUPPORT_MULTIPLE_MODULE_CIS) && defined(USE_CID_CHECK)
+	if (chiprev == 1 || chiprev == 3) {
+		int ret = dhd_check_module_b85a();
+		if ((chiprev == 1) && (ret < 0)) {
+			bzero(chipver_tag, sizeof(chipver_tag));
+			strcat(chipver_tag, "_b85");
+			strcat(chipver_tag, "_a1");
+		}
+	}
+
+	DHD_PRINT(("%s: chipver_tag %s \n", __FUNCTION__, chipver_tag));
+#endif /* defined(SUPPORT_MULTIPLE_MODULE_CIS) && defined(USE_CID_CHECK) */
+
+#if defined(SUPPORT_MULTIPLE_BOARD_REV)
+	if (system_rev >= 10) {
+		DHD_PRINT(("----- Board Rev  [%d]-----\n", system_rev));
+		strcat(chipver_tag, "_r10");
+	}
+#endif /* SUPPORT_MULTIPLE_BOARD_REV */
+	strcat(nv_path, chipver_tag);
+
+	return 0;
+}
+
+static int concate_revision_bcm4359(dhd_bus_t *bus, char *fw_path, char *nv_path)
+{
+	uint32 chip_ver;
+	char chipver_tag[10] = {0, };
+#if defined(SUPPORT_MULTIPLE_MODULE_CIS) && defined(USE_CID_CHECK) && \
+	defined(SUPPORT_BCM4359_MIXED_MODULES)
+	int module_type = -1;
+#endif /* SUPPORT_MULTIPLE_MODULE_CIS && USE_CID_CHECK && SUPPORT_BCM4359_MIXED_MODULES */
+
+	chip_ver = bus->sih->chiprev;
+	if (chip_ver == 4) {
+		DHD_PRINT(("----- CHIP 4359 B0 -----\n"));
+		strncat(chipver_tag, "_b0", strlen("_b0"));
+	} else if (chip_ver == 5) {
+		DHD_PRINT(("----- CHIP 4359 B1 -----\n"));
+		strncat(chipver_tag, "_b1", strlen("_b1"));
+	} else if (chip_ver == 9) {
+		DHD_PRINT(("----- CHIP 4359 C0 -----\n"));
+		strncat(chipver_tag, "_c0", strlen("_c0"));
+	} else {
+		DHD_ERROR(("----- Unknown chip version, ver=%x -----\n", chip_ver));
+		return -1;
+	}
+
+#if defined(SUPPORT_MULTIPLE_MODULE_CIS) && defined(USE_CID_CHECK) && \
+	defined(SUPPORT_BCM4359_MIXED_MODULES)
+	module_type =  dhd_check_module_b90();
+
+	switch (module_type) {
+		case BCM4359_MODULE_TYPE_B90B:
+			strcat(fw_path, chipver_tag);
+			break;
+		case BCM4359_MODULE_TYPE_B90S:
+		default:
+			/*
+			 * .cid.info file not exist case,
+			 * loading B90S FW force for initial MFG boot up.
+			*/
+			if (chip_ver == 5) {
+				strncat(fw_path, "_b90s", strlen("_b90s"));
+			}
+			strcat(fw_path, chipver_tag);
+			strcat(nv_path, chipver_tag);
+			break;
+	}
+#else /* SUPPORT_MULTIPLE_MODULE_CIS && USE_CID_CHECK && SUPPORT_BCM4359_MIXED_MODULES */
+	strcat(fw_path, chipver_tag);
+	strcat(nv_path, chipver_tag);
+#endif /* SUPPORT_MULTIPLE_MODULE_CIS && USE_CID_CHECK && SUPPORT_BCM4359_MIXED_MODULES */
+
+	return 0;
+}
+
+#define NVRAM_FEM_MURATA	"_murata"
+#if defined(DHD_FW_COREDUMP) && defined(DHD_COREDUMP)
+extern char map_path[PATH_MAX];
+#endif /* DHD_FW_COREDUMP && DHD_COREDUMP */
+
+static int
+concate_revision_from_cisinfo(dhd_bus_t *bus, char *fw_path, char *nv_path)
+{
+	int ret = BCME_OK;
+#if defined(SUPPORT_MIXED_MODULES)
+#if defined(USE_CID_CHECK)
+	char module_type[MAX_VNAME_LEN];
+	naming_info_t *info = NULL;
+	bool is_murata_fem = FALSE;
+
+	bzero(module_type, sizeof(module_type));
+
+	if (dhd_check_module_bcm(module_type,
+			MODULE_NAME_INDEX_MAX, &is_murata_fem) == BCME_OK) {
+		info = dhd_find_naming_info(bus->dhd, module_type);
+	} else {
+		/* in case of .cid.info doesn't exists */
+		info = dhd_find_naming_info_by_chip_rev(bus->dhd, &is_murata_fem);
+	}
+
+#ifdef BCM4361_CHIP
+	if (bcmstrnstr(nv_path, PATH_MAX,  "_murata", 7)) {
+		is_murata_fem = FALSE;
+	}
+#endif /* BCM4361_CHIP */
+
+	if (info) {
+#ifdef BCM4361_CHIP
+		if (is_murata_fem) {
+			strncat(nv_path, NVRAM_FEM_MURATA, strlen(NVRAM_FEM_MURATA));
+		}
+#endif /* BCM4361_CHIP */
+		strncat(nv_path, info->nvram_ext, strlen(info->nvram_ext));
+#if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
+		dhd_set_platform_ext_name_for_chip_version(info->nvram_ext);
+#endif /* SUPPORT_MULTIPLE_NVRAM || SUPPORT_MULTIPLE_CLMBLOB */
+		strncat(fw_path, info->fw_ext, strlen(info->fw_ext));
+#if defined(DHD_COREDUMP) && defined(SUPPORT_MULTIPLE_REVISION_MAP)
+		if (!bcmstrnstr(map_path, PATH_MAX, info->fw_ext, strlen(info->fw_ext)))
+			strncat(map_path, info->fw_ext, strlen(info->fw_ext));
+#endif /* DHD_COREDUMP  && SUPPORT_MULTIPLE_REVISION_MAP */
+	} else {
+		DHD_ERROR(("%s:failed to find extension for nvram and firmware\n", __FUNCTION__));
+		ret = BCME_ERROR;
+	}
+#endif /* USE_CID_CHECK */
+#ifdef USE_DIRECT_VID_TAG
+	int revid = bus->sih->chiprev;
+	unsigned char chipstr[MAX_VID_LEN];
+
+	bzero(chipstr, sizeof(chipstr));
+	snprintf(chipstr, sizeof(chipstr), "_4389");
+
+	/* write chipstr/vid into nvram tag */
+	ret = concate_nvram_by_vid(bus->dhd, nv_path, chipstr);
+	/* write chiprev into FW tag */
+	if (ret == BCME_OK) {
+		if (revid == 1) {
+			strncat(fw_path, B0_REV, strlen(fw_path));
+			DHD_PRINT(("%s: fw_path : %s\n", __FUNCTION__, fw_path));
+		} else if (revid == 2) {
+			strncat(fw_path, C0_REV, strlen(fw_path));
+			DHD_PRINT(("%s: fw_path : %s\n", __FUNCTION__, fw_path));
+		} else if (revid == 3) {
+			strncat(fw_path, C1_REV, strlen(fw_path));
+			DHD_PRINT(("%s: fw_path : %s\n", __FUNCTION__, fw_path));
+
+		} else {
+			DHD_ERROR(("%s: INVALID CHIPREV %d\n", __FUNCTION__, revid));
+		}
+	}
+#endif /* USE_DIRECT_VID_TAG */
+#else /* SUPPORT_MIXED_MODULE */
+	char chipver_tag[10] = {0, };
+
+	strcat(fw_path, chipver_tag);
+	strcat(nv_path, chipver_tag);
+#endif /* SUPPORT_MIXED_MODULE */
+
+	return ret;
+}
+
+#ifdef CONCAT_DEF_REV_FOR_NOMATCH_VID
+#define DEF_REVISION "_c0"
+static int
+vendor_concat_revision(dhd_bus_t *bus, char *fw_path, char *nv_path)
+{
+	int ret = BCME_OK;
+	char *tag = DEF_REVISION;
+
+	DHD_PRINT(("%s:failed to find extension, use %s as default\n", __FUNCTION__, DEF_REVISION));
+	/* Failed to find info, use _c0 as default */
+	strlcat(nv_path, tag, PATH_MAX);
+	strlcat(fw_path, tag, PATH_MAX);
+#if defined(DHD_COREDUMP) && defined(SUPPORT_MULTIPLE_REVISION_MAP)
+	if (!bcmstrnstr(map_path, PATH_MAX, tag, strlen(tag))) {
+		strlcat(map_path, tag, PATH_MAX);
+	}
+#endif /* DHD_COREDUMP && SUPPORT_MULTIPLE_REVISION_MAP */
+	return ret;
+}
+#endif /* CONCAT_DEF_REV_FOR_NOMATCH_VID */
+
+#if defined(DHD_FW_COREDUMP) && defined(DHD_COREDUMP)
+extern char map_path[];
+#else
+char map_path[MAX_FILE_LEN] = {0};
+#endif
+
+int
+concate_revision(dhd_bus_t *bus, char *fw_path, char *nv_path)
+{
+	int res = 0;
+	uint chipid = 0, chiprev = 0;
+
+	if (!bus || !bus->sih) {
+		DHD_ERROR(("%s:Bus is Invalid\n", __FUNCTION__));
+		return -1;
+	}
+
+	if (!fw_path || !nv_path) {
+		DHD_ERROR(("fw_path or nv_path is null.\n"));
+		return res;
+	}
+
+	chiprev = bus->sih->chiprev;
+	chipid = si_chipid(bus->sih);
+	switch (chipid) {
+		case BCM43569_CHIP_ID:
+		case BCM4358_CHIP_ID:
+			res = concate_revision_bcm4358(bus, fw_path, nv_path);
+			break;
+		case BCM4355_CHIP_ID:
+		case BCM4359_CHIP_ID:
+			res = concate_revision_bcm4359(bus, fw_path, nv_path);
+			break;
+		case BCM4361_CHIP_ID:
+		case BCM4347_CHIP_ID:
+		case BCM4375_CHIP_ID:
+			res = concate_revision_from_cisinfo(bus, fw_path, nv_path);
+			break;
+		case BCM4389_CHIP_ID:
+		case BCM4397_CHIP_GRPID:
+		case BCM4383_CHIP_ID:
+		case BCM4390_CHIP_GRPID:
+			res = dhd_get_fw_nvram_names(bus->dhd, chipid, chiprev, fw_path,
+				nv_path, map_path);
+			if (res != BCME_OK) {
+				/* if OTP not programmed or VID naming table not present
+				 * fall back to default fw nvram names
+				 */
+				res = BCME_OK;
+			}
+			break;
+		default:
+			DHD_ERROR(("REVISION SPECIFIC feature is not required\n"));
+			return res;
+	}
+
+#ifdef CONCAT_DEF_REV_FOR_NOMATCH_VID
+	if (res != BCME_OK) {
+		res = vendor_concat_revision(bus, fw_path, nv_path);
+	}
+#endif /* CONCAT_DEF_REV_FOR_NOMATCH_VID */
+	return res;
+}
+#endif /* SUPPORT_MULTIPLE_REVISION */

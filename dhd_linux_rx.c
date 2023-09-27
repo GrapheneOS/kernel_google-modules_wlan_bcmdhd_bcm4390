@@ -174,6 +174,14 @@
 
 #include <net/ndisc.h>
 
+/* wl event forwarding */
+#ifdef WL_EVENT_ENAB
+uint wl_event_enable = TRUE;
+#else
+uint wl_event_enable = FALSE;
+#endif /* WL_EVENT_ENAB */
+module_param(wl_event_enable, uint, 0660);
+
 /* RX frame thread priority */
 int dhd_rxf_prio = CUSTOM_RXF_PRIO_SETTING;
 module_param(dhd_rxf_prio, int, 0);
@@ -910,7 +918,7 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 				continue;
 			}
 
-			if (dhdp->wl_event_enabled) {
+			if (wl_event_enable) {
 #ifdef DHD_USE_STATIC_CTRLBUF
 				/* If event bufs are allocated via static buf pool
 				 * and wl events are enabled, make a copy, free the

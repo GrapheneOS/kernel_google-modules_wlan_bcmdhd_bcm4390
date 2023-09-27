@@ -1818,3 +1818,42 @@ void dhd_flow_ring_delete_from_active_list(struct dhd_bus *bus, flow_ring_node_t
 	return;
 }
 #endif /* IDLE_TX_FLOW_MGMT */
+
+#ifdef TX_FLOW_RING_INDICES_TRACE
+/* Dump TX flowrings indices trace */
+void
+dhd_tx_flowring_indices_trace_dump(dhd_pub_t *dhdp)
+{
+	char *tracebuf;
+	struct bcmstrbuf b;
+	struct bcmstrbuf *strbuf = &b;
+	uint32 tracebuf_size;
+
+	if (!dhdp) {
+		DHD_ERROR(("%s dhdp not yet inited\n", __FUNCTION__));
+		return;
+	}
+
+	tracebuf_size = dhd_prot_get_flow_ring_trace_len(dhdp);
+	if (!tracebuf_size) {
+		DHD_ERROR(("%s() not collected \n", __FUNCTION__));
+		return;
+	}
+
+	tracebuf = VMALLOCZ(dhdp->osh, tracebuf_size);
+
+	if (!tracebuf) {
+		DHD_ERROR(("%s: tracebuf alloc failed\n", __FUNCTION__));
+		return;
+	} else {
+		bcm_binit(strbuf, tracebuf, tracebuf_size);
+		dhd_prot_tx_flow_ring_trace_dump(dhdp, strbuf);
+		if (write_dump_to_file(dhdp, b.origbuf, (b.origsize - b.size),
+			"dhd_tx_flowring_indices_trace_dump")) {
+			DHD_ERROR(("%s: writing flowring indices trace to file failed\n",
+				__FUNCTION__));
+		}
+	}
+	VMFREE(dhdp->osh, tracebuf, tracebuf_size);
+}
+#endif /* TX_FLOW_RING_INDICES_TRACE */

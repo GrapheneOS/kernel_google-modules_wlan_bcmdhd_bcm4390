@@ -103,6 +103,9 @@ enum {
 #define DBUS_BUFFER_SIZE_TX_NOAGG	2048
 #define DBUS_BUFFER_SIZE_RX_NOAGG	2048
 
+/* Size of USB data packets that are transmitted in CPUless mode */
+#define DBUS_PACKET_SIZE_CPULESS	(8u)
+
 /** DBUS types */
 enum {
 	DBUS_USB,
@@ -150,6 +153,7 @@ typedef struct {
 	int mtu;
 	int nchan; /**< Data Channels */
 	int has_2nd_bulk_in_ep;
+	int cpuless; /* boolean indicating device is operating in CPUless mode. */
 } dbus_attrib_t;
 
 /* FIX: Account for errors related to DBUS;
@@ -279,7 +283,7 @@ typedef struct {
 	int (*recv_irb_from_ep)(void *bus, struct dbus_irb_rx *rxirb, uint ep_idx);
 
 	int (*readreg)(void *bus, uint32 regaddr, int datalen, uint32 *value);
-
+	int (*writereg)(void *bus, uint32 regaddr, int datalen, uint32 data);
 	/* Add from the bottom */
 } dbus_intf_t;
 
@@ -351,6 +355,9 @@ extern int dbus_pnp_disconnect(dbus_pub_t *pub);
 
 extern int dbus_iovar_op(dbus_pub_t *pub, const char *name,
 	void *params, int plen, void *arg, int len, bool set);
+int dbus_readreg(dbus_pub_t *, uint32 regaddr, int datalen, uint32 *value);
+int dbus_writereg(dbus_pub_t *, uint32 regaddr, int datalen, uint32 data);
+
 #ifdef BCMDBG
 extern void dbus_hist_dump(dbus_pub_t *pub, struct bcmstrbuf *b);
 #endif /* BCMDBG */

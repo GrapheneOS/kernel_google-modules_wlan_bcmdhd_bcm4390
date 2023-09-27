@@ -637,9 +637,11 @@
 #define EVENT_LOG_TAG_SAQM_MGR_ERROR		479
 
 #define EVENT_LOG_TAG_PERIODIC_CNTRS_SEC	480
+#define EVENT_LOG_TAG_BI_LINK_SCORE		481
+#define EVENT_LOG_TAG_BI_LINK_SCORE_INFO	482
 
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			480
+#define EVENT_LOG_TAG_MAX			482
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

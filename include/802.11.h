@@ -457,6 +457,7 @@ typedef BWL_PRE_PACKED_STRUCT struct dot11_max_ie_cst {
 #define DOT11_TPE_INFO_MAX_TX_CNT_PSD_VAL_2                 2u
 #define DOT11_TPE_INFO_MAX_TX_CNT_PSD_VAL_3                 4u
 #define DOT11_TPE_INFO_MAX_TX_CNT_PSD_VAL_4                 8u
+#define DOT11_TPE_INFO_MAX_TX_CNT_PSD_VAL_5		    16u
 
 #define DOT11_TPE_MAX_TX_PWR_EIRP_MIN                    -128 /* 0.5 db step */
 #define DOT11_TPE_MAX_TX_PWR_EIRP_MAX                     126  /* 0.5 db step */
@@ -504,10 +505,14 @@ typedef struct dot11_extcap_ie dot11_extcap_ie_t;
 #define DOT11_EXT_RSN_CAP_RANGE_PMF_REQUIRED	DOT11_EXT_RSN_CAP_URNM_MFPR_X20 /* to be removed */
 #define DOT11_EXT_RSN_CAP_URNM_MFPR		15u	/* P802.11az/D4.1 */
 
+/* RCM */
+#define DOT11_EXT_RSN_CAP_RCM_DEV_ID		17u
+#define DOT11_EXT_RSN_CAP_RCM_IRM		18u
+
 /* Last bit in Extended RSN Capabilities defined in P802.11
  * Please update DOT11_EXT_RSN_CAP_LAST_BIT_IDX to the last bit when P802.11 inteoduced new bit
  */
-#define DOT11_EXT_RSN_CAP_LAST_BIT_IDX	DOT11_EXT_RSN_CAP_URNM_MFPR /* update this */
+#define DOT11_EXT_RSN_CAP_LAST_BIT_IDX DOT11_EXT_RSN_CAP_RCM_IRM /* update this */
 #define DOT11_EXT_RSN_CAP_NUM_BITS_MAX	(DOT11_EXT_RSN_CAP_LAST_BIT_IDX + 1) /* last bit idx + 1 */
 
 /* Please use DOT11_EXT_RSN_CAP_BYTE_LEN_MAX for any of RSNXE cap buffer size ONLY in ATTACH time.
@@ -1568,8 +1573,8 @@ enum dot11_tag_ids {
 #define DOT11_MNG_BSSCOLOR_CHANGE_ID		(DOT11_MNG_ID_EXT_ID + EXT_MNG_BSSCOLOR_CHANGE_ID)
 #define EXT_MNG_MAX_CST_ID			52u	/* Max channel switch time */
 #define DOT11_MNG_MAX_CST_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_MAX_CST_ID)
-#define OCV_EXTID_MNG_OCI_ID			54u     /* OCI element */
-#define DOT11_MNG_OCI_ID			(DOT11_MNG_ID_EXT_ID + OCV_EXTID_MNG_OCI_ID)
+#define EXT_MNG_OCI_ID				54u     /* Operating Channel Information */
+#define DOT11_MNG_OCI_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_OCI_ID)
 #define EXT_MNG_NON_INHERITANCE_ID		56u     /* Non-Inheritance element */
 #define DOT11_MNG_NON_INHERITANCE_ID		(DOT11_MNG_ID_EXT_ID + EXT_MNG_NON_INHERITANCE_ID)
 #define EXT_MNG_SHORT_SSID_ID			58u	/* SHORT SSID ELEMENT */
@@ -1640,12 +1645,19 @@ enum dot11_tag_ids {
 #define EXT_MNG_BW_IND_ID			135u	/* Bandwidth Indication */
 #define DOT11_MNG_BW_IND_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_BW_IND_ID)
 
+/* For RCM see Draft P802.11bh_D1.0.pdf */
+#define EXT_MNG_RCM_DEV_ID			136u	/* RCM Device ID */
+#define DOT11_MNG_RCM_DEV_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_RCM_DEV_ID)
+#define EXT_MNG_RCM_IRM				137u	/* RCM IRM */
+#define DOT11_MNG_RCM_IRM			(DOT11_MNG_ID_EXT_ID + EXT_MNG_RCM_IRM)
+
 /* deprecated definitions, do not use, to be deleted later */
 #define FILS_HLP_CONTAINER_EXT_ID		FILS_EXTID_MNG_HLP_CONTAINER_ID
 #define DOT11_ESP_EXT_ID			OCE_EXTID_MNG_ESP_ID
 #define FILS_REQ_PARAMS_EXT_ID			FILS_EXTID_MNG_REQ_PARAMS
 #define EXT_MNG_RAPS_ID				37u	/* OFDMA Random Access Parameter Set */
 #define DOT11_MNG_RAPS_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_RAPS_ID)
+#define OCV_EXTID_MNG_OCI_ID			54u     /* OCI element */
 /* End of deprecated definitions */
 
 #define DOT11_MNG_IE_ID_EXT_MATCH(_ie, _id) (\
@@ -1900,6 +1912,7 @@ typedef struct dot11_extcap dot11_extcap_t;
 /* EHT Action frames - Draft P802.11be D1.2 Table 9-51 Category values */
 #define DOT11_ACTION_CAT_EHT		36u	/* EHT action frame */
 #define DOT11_ACTION_CAT_EHTP		37u	/* Protected EHT action frame */
+#define DOT11_ACTION_CAT_RCM		38u	/* RCM action - Draft P802.11bh_D1.0.pdf */
 #define DOT11_ACTION_CAT_VSP		126	/* protected vendor specific */
 #define DOT11_ACTION_CAT_VS		127	/* category Vendor Specific */
 
@@ -2539,5 +2552,8 @@ typedef struct dot11_akm_suite_selector_ie dot11_akm_suite_selector_ie_t;
 #include <802.11u.h>
 #include <802.11z.h>
 #include <802.11owe.h>
+#ifdef WL_11BH
+#include <802.11bh.h>
+#endif /* WL_11BH */
 
 #endif /* _802_11_H_ */

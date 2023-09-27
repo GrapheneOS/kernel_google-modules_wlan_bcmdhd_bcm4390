@@ -2264,6 +2264,11 @@ dhd_set_aspm_enab(struct dhd_info *dhd, const char *buf, size_t count)
 #ifdef DHD_PCIE_RUNTIMEPM
 	dhdpcie_runtime_bus_wake(dhdp, TRUE, __builtin_return_address(0));
 #endif /* DHD_PCIE_RUNTIMEPM */
+	if (aspm_enab) {
+		DHD_ENABLE_RUNTIME_PM(dhdp);
+	} else {
+		DHD_DISABLE_RUNTIME_PM(dhdp);
+	}
 	dhd_bus_aspm_enable_rc_ep(dhdp->bus, aspm_enab);
 
 	return count;
@@ -2308,6 +2313,11 @@ dhd_set_l1ss_enab(struct dhd_info *dhd, const char *buf, size_t count)
 #ifdef DHD_PCIE_RUNTIMEPM
 	dhdpcie_runtime_bus_wake(dhdp, TRUE, __builtin_return_address(0));
 #endif /* DHD_PCIE_RUNTIMEPM */
+	if (l1ss_enab) {
+		DHD_ENABLE_RUNTIME_PM(dhdp);
+	} else {
+		DHD_DISABLE_RUNTIME_PM(dhdp);
+	}
 	dhd_bus_l1ss_enable_rc_ep(dhdp->bus, l1ss_enab);
 	return count;
 }

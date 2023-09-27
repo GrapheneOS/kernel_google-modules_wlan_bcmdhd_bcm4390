@@ -403,16 +403,6 @@ bool dhd_log_dump_ecntr_enabled(void);
 bool dhd_log_dump_rtt_enabled(void);
 void dhd_nla_put_sssr_dump_len(void *ndev, uint32 *arr_len);
 int dhd_get_debug_dump(void *dev, const void *user_buf, uint32 len, int type);
-#ifdef DHD_SSSR_DUMP_BEFORE_SR
-int
-dhd_sssr_dump_d11_buf_before(void *dhd_pub, const void *user_buf, uint32 len, int core);
-int
-dhd_sssr_dump_dig_buf_before(void *dhd_pub, const void *user_buf, uint32 len);
-#endif /* DHD_SSSR_DUMP_BEFORE_SR */
-int
-dhd_sssr_dump_d11_buf_after(void *dhd_pub, const void *user_buf, uint32 len, int core);
-int
-dhd_sssr_dump_dig_buf_after(void *dhd_pub, const void *user_buf, uint32 len);
 #ifdef DHD_PKT_LOGGING
 extern int dhd_os_get_pktlog_dump(void *dev, const void *user_buf, uint32 len);
 extern spinlock_t* dhd_os_get_pktlog_lock(dhd_pub_t *dhdp);

@@ -151,6 +151,7 @@
 #define CMD_DATARATE      "DATARATE"
 #define CMD_ASSOC_CLIENTS "ASSOCLIST"
 #define CMD_SET_CSA       "SETCSA"
+#define CMD_TRIG_REASSOC  "REASSOCIATE"
 #ifdef WL_SUPPORT_AUTO_CHANNEL
 #define CMD_SET_HAPD_AUTO_CHANNEL	"HAPD_AUTO_CHANNEL"
 #endif /* WL_SUPPORT_AUTO_CHANNEL */
@@ -891,7 +892,7 @@ static int priv_cmd_errors = 0;
 int dhd_net_bus_devreset(struct net_device *dev, uint8 flag);
 int dhd_dev_init_ioctl(struct net_device *dev);
 #ifdef WL_CFG80211
-int wl_cfg80211_get_p2p_dev_addr(struct net_device *net, struct ether_addr *p2pdev_addr);
+int wl_cfgp2p_get_p2p_dev_addr(struct net_device *net, struct ether_addr *p2pdev_addr);
 int wl_cfg80211_set_btcoex_dhcp(struct net_device *dev, dhd_pub_t *dhd, char *command);
 #ifdef WES_SUPPORT
 int wl_cfg80211_set_wes_mode(struct net_device *dev, int mode);
@@ -900,17 +901,17 @@ int wl_cfg80211_set_ncho_mode(struct net_device *dev, int mode);
 int wl_cfg80211_get_ncho_mode(struct net_device *dev);
 #endif /* WES_SUPPORT */
 #else
-int wl_cfg80211_get_p2p_dev_addr(struct net_device *net, struct ether_addr *p2pdev_addr)
+int wl_cfgp2p_get_p2p_dev_addr(struct net_device *net, struct ether_addr *p2pdev_addr)
 { return 0; }
-int wl_cfg80211_set_p2p_noa(struct net_device *net, char* buf, int len)
+int wl_cfgp2p_set_p2p_noa(struct net_device *net, char* buf, int len)
 { return 0; }
-int wl_cfg80211_get_p2p_noa(struct net_device *net, char* buf, int len)
+int wl_cfgp2p_get_p2p_noa(struct net_device *net, char* buf, int len)
 { return 0; }
-int wl_cfg80211_set_p2p_ps(struct net_device *net, char* buf, int len)
+int wl_cfgp2p_set_p2p_ps(struct net_device *net, char* buf, int len)
 { return 0; }
-int wl_cfg80211_set_p2p_ecsa(struct net_device *net, char* buf, int len)
+int wl_cfgp2p_set_p2p_ecsa(struct net_device *net, char* buf, int len)
 { return 0; }
-int wl_cfg80211_increase_p2p_bw(struct net_device *net, char* buf, int len)
+int wl_cfgp2p_increase_p2p_bw(struct net_device *net, char* buf, int len)
 { return 0; }
 #endif /* WK_CFG80211 */
 #if defined(WL_WTC) && defined(CUSTOMER_HW4_PRIVATE_CMD)
@@ -1173,6 +1174,9 @@ static int wl_android_uwbcx_get_prepare_time(struct net_device *dev, char *comma
 static int wl_android_set_softap_bw(struct net_device *ndev, char *command);
 static int wl_android_get_softap_bw(struct net_device *ndev, char *command, int total_len);
 #endif /* LIMIT_AP_BW */
+
+extern s32 wl_cfg80211_set_wps_p2p_ie(struct net_device *net, char *buf, int len,
+	enum wl_management_type type);
 
 /**
  * Local (static) functions and variables
@@ -2984,7 +2988,9 @@ wl_android_reassoc_chan(struct net_device *dev, char *command, int total_len)
 	struct ether_addr bssid;
 	chanspec_t chanspec;
 	char pcmd[WL_PRIV_CMD_LEN + 1];
+	wlcfg_assoc_info_t info;
 
+	bzero(&info, sizeof(wlcfg_assoc_info_t));
 	sscanf(command, "%"BCM_STR(WL_PRIV_CMD_LEN)"s *", pcmd);
 	if (total_len < (strlen(pcmd) + 1 + sizeof(android_wifi_reassoc_params_t))) {
 		WL_ERR(("Invalid parameters %s\n", command));
@@ -3006,7 +3012,11 @@ wl_android_reassoc_chan(struct net_device *dev, char *command, int total_len)
 
 	WL_INFORM_MEM(("Reassoc " MACDBG " Channel %d(0x%04x)\n",
 		MAC2STRDBG(bssid.octet), params->channel, chanspec));
-	error = wl_cfg80211_reassoc(dev, &bssid, chanspec);
+
+	eacopy(bssid.octet, info.bssid);
+	info.chanspecs[0] = chanspec;
+	info.chan_cnt = 1u;
+	error = wl_cfg80211_reassoc(dev, &info);
 	if (error) {
 		WL_ERR(("failed reassoc with channel, error=%d\n", error));
 	}
@@ -3022,6 +3032,9 @@ wl_android_reassoc_freq(struct net_device *dev, char *command, int total_len)
 	struct ether_addr bssid;
 	chanspec_t chanspec, frequency;
 	char pcmd[WL_PRIV_CMD_LEN + 1];
+	wlcfg_assoc_info_t info;
+
+	bzero(&info, sizeof(wlcfg_assoc_info_t));
 
 	sscanf(command, "%"BCM_STR(WL_PRIV_CMD_LEN)"s *", pcmd);
 	params = (command + strlen(pcmd) + 1);
@@ -3053,7 +3066,10 @@ wl_android_reassoc_freq(struct net_device *dev, char *command, int total_len)
 
 	WL_INFORM_MEM(("Reassoc " MACDBG " Frequency %d(0x%04x)\n",
 		MAC2STRDBG(bssid.octet), frequency, chanspec));
-	error = wl_cfg80211_reassoc(dev, &bssid, chanspec);
+	eacopy(bssid.octet, info.bssid);
+	info.chanspecs[0] = chanspec;
+	info.chan_cnt = 1u;
+	error = wl_cfg80211_reassoc(dev, &info);
 	if (error) {
 		WL_ERR(("failed reassoc with frequency, error=%d\n", error));
 	}
@@ -4559,7 +4575,7 @@ wl_android_rcroam_turn_on(struct net_device *dev, int rcroam_enab)
 	wlc_rcroam_info_v1_t *rcroam;
 	uint rcroamlen = sizeof(*rcroam) + RCROAM_HDRLEN;
 
-	WL_INFORM(("RCROAM mode %s\n", rcroam_enab ? "enable" : "disable"));
+	WL_DBG_MEM(("RCROAM mode %s\n", rcroam_enab ? "enable" : "disable"));
 
 	prcroam = (wlc_rcroam_t *)MALLOCZ(dhdp->osh, rcroamlen);
 	if (!prcroam) {
@@ -5020,7 +5036,7 @@ static int wl_android_get_p2p_dev_addr(struct net_device *ndev, char *command, i
 		return -1;
 	}
 
-	ret = wl_cfg80211_get_p2p_dev_addr(ndev, &p2pdev_addr);
+	ret = wl_cfgp2p_get_p2p_dev_addr(ndev, &p2pdev_addr);
 	if (ret) {
 		DHD_ERROR(("wl_android_get_p2p_dev_addr: Failed to get p2p dev addr\n"));
 		return -1;
@@ -5178,6 +5194,117 @@ wl_android_set_mac_address_filter(struct net_device *dev, char* str)
 exit:
 	MFREE(cfg->osh, list, sizeof(int) + sizeof(struct ether_addr) * macnum);
 
+	return ret;
+}
+
+int
+wl_parse_chanspec_list(char *list_str, chanspec_t *chanspec_list, int max_chanspec_num)
+{
+	int num = 0;
+	chanspec_t chanspec;
+	char *tok;
+
+	if (list_str == NULL) {
+		WL_ERR(("channel list is empty\n"));
+		return BCME_ERROR;
+	}
+
+	while ((tok = bcmstrtok(&list_str, ", ", NULL)) > 0) {
+
+		if (*tok == '-') {
+			/* If parsing reached next arg, exit */
+			WL_DBG(("hit next arg. exit\n"));
+			goto exit;
+		}
+
+		chanspec = wf_chspec_aton(tok);
+		if (chanspec == 0) {
+			if (!strcmp(tok, "2g0")) {
+				chanspec = WL_CHANSPEC_BW_20 | WL_CHANSPEC_BAND_2G;
+			} else if (!strcmp(tok, "5g0")) {
+				chanspec = WL_CHANSPEC_BW_20 | WL_CHANSPEC_BAND_5G;
+			} else if (!strcmp(tok, "6g0")) {
+				chanspec = WL_CHANSPEC_BW_20 | WL_CHANSPEC_BAND_6G;
+			} else {
+				WL_ERR(("could not parse chanspec starting at "
+					"\"%s\" in list:\n%s\n", tok, list_str));
+				return BCME_ERROR;
+			}
+		}
+
+		if (num == max_chanspec_num) {
+			WL_ERR(("too many chanspecs (more than %d) in chanspec list:\n%s\n",
+				max_chanspec_num, list_str));
+			return BCME_ERROR;
+		}
+		WL_DBG(("chanspec:0x%x str:%s\n", chanspec, tok));
+		chanspec_list[num++] = chanspec;
+	}
+exit:
+	return num;
+}
+
+static int wl_android_trigger_reassoc(struct net_device *ndev, char *command, int total_len)
+{
+	s32 ret = BCME_OK;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(ndev);
+	struct ether_addr bssid;
+	struct ether_addr mld;
+	char *pcmd = command;
+	char *pos;
+	s32 chan_cnt = 0;
+	wlcfg_assoc_info_t info;
+
+	bzero(&info, sizeof(wlcfg_assoc_info_t));
+	bzero(&mld, sizeof(struct ether_addr));
+	bzero(&bssid, sizeof(struct ether_addr));
+	pcmd += strlen(CMD_TRIG_REASSOC);
+
+	pos = pcmd;
+	pcmd = strnstr(pos, "-b ", strlen(pos));
+	if (pcmd) {
+		/* bssid/link_addr */
+		pcmd += strlen("-b ");
+		if (!pcmd || !bcm_ether_atoe(pcmd, &bssid)) {
+			WL_ERR(("Invalid bssid string %s\n", pcmd));
+			ret = -EINVAL;
+			goto exit;
+		}
+		eacopy(bssid.octet, info.bssid);
+	}
+
+	pcmd = strnstr(pos, "-m ", strlen(pos));
+	if (pcmd) {
+		/* mld_addr */
+		pcmd += strlen("-m ");
+		if (!pcmd || !bcm_ether_atoe(pcmd, &mld)) {
+			WL_ERR(("Invalid mld string %s\n", pcmd));
+			ret = -EINVAL;
+			goto exit;
+		}
+		eacopy(mld.octet, info.mld);
+	}
+
+
+	pcmd = strnstr(pos, "-c", strlen(pos));
+	if (pcmd) {
+		pcmd += strlen("-c ");
+		chan_cnt = wl_parse_chanspec_list(pcmd, info.chanspecs, MAX_ROAM_CHANNEL);
+		if ((chan_cnt < BCME_OK) || chan_cnt >= MAX_ROAM_CHANNEL) {
+			WL_ERR(("channel parsing failed pcmd:%s\n", pcmd));
+			return BCME_ERROR;
+		}
+		info.chan_cnt = chan_cnt;
+	}
+	WL_INFORM_MEM(("Reassoc bssid: " MACDBG " mld: " MACDBG " chan_cnt:%d\n",
+		MAC2STRDBG(bssid.octet), MAC2STRDBG(mld.octet), chan_cnt));
+
+	ret = wl_cfg80211_reassoc(ndev, &info);
+	if (ret) {
+		WL_ERR(("failed reassoc error=%d iovar_ver:%d\n",
+			ret, cfg->join_iovar_ver));
+	}
+exit:
 	return ret;
 }
 
@@ -5365,7 +5492,7 @@ int wl_android_wifi_on(struct net_device *dev)
 				/* if error during power on was NORESOURCE
 				 * do not collect debug_dump for any errors
 				 * seen during power off, because NORESOURCE
-				 * means dhd_prot_init has not yet occured
+				 * means dhd_prot_init has not yet occurred
 				 * and dhd_log_dump will try to fire iovars
 				 * to flush FW logs
 				 */
@@ -5450,7 +5577,7 @@ int wl_android_wifi_off(struct net_device *dev, bool force_off)
 #endif /* WBRC */
 
 	dhd_net_if_lock(dev);
-	if (g_wifi_on || force_off) {
+	if (g_wifi_on) {
 #if defined(BCMSDIO) || defined(BCMPCIE)
 		ret = dhd_net_bus_devreset(dev, TRUE);
 #ifdef BCMSDIO
@@ -5554,6 +5681,7 @@ wbrc2wl_wlan_on_request(void *dhd_pub)
 				dhd_net_bus_suspend(dev);
 			}
 			g_wifi_on = TRUE;
+			g_wifi_accel_on = TRUE;
 		} else {
 			/* if wlan on fails, turn it off to keep it in a sane state */
 			DHD_ERROR(("%s: wlan on failed! turning wlan off...\n", __FUNCTION__));
@@ -7504,10 +7632,9 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 #endif /* WL_CP_COEX */
 
 	/* Check whether AP is already operational */
-	wl_get_ap_chanspecs(cfg, &ap_oper_data);
-	if (ap_oper_data.count >= MAX_AP_IFACES) {
-		WL_ERR(("ACS request in multi AP case!! count:%d\n",
-			ap_oper_data.count));
+	ret = wl_get_ap_chanspecs(cfg, &ap_oper_data);
+	if (ret != BCME_OK) {
+		WL_ERR(("Failed to get ap chanspec, ret: %d\n", ret));
 		return -EINVAL;
 	}
 
@@ -13723,7 +13850,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 	}
 	else if (strnicmp(command, CMD_P2P_SET_NOA, strlen(CMD_P2P_SET_NOA)) == 0) {
 		int skip = strlen(CMD_P2P_SET_NOA) + 1;
-		bytes_written = wl_cfg80211_set_p2p_noa(net, command + skip,
+		bytes_written = wl_cfgp2p_set_p2p_noa(net, command + skip,
 			priv_cmd.total_len - skip);
 	}
 #ifdef WL_SDO
@@ -13756,17 +13883,17 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 #endif /* P2P_LISTEN_OFFLOADING */
 #if !defined WL_ENABLE_P2P_IF
 	else if (strnicmp(command, CMD_P2P_GET_NOA, strlen(CMD_P2P_GET_NOA)) == 0) {
-		bytes_written = wl_cfg80211_get_p2p_noa(net, command, priv_cmd.total_len);
+		bytes_written = wl_cfgp2p_get_p2p_noa(net, command, priv_cmd.total_len);
 	}
 #endif /* WL_ENABLE_P2P_IF */
 	else if (strnicmp(command, CMD_P2P_SET_PS, strlen(CMD_P2P_SET_PS)) == 0) {
 		int skip = strlen(CMD_P2P_SET_PS) + 1;
-		bytes_written = wl_cfg80211_set_p2p_ps(net, command + skip,
+		bytes_written = wl_cfgp2p_set_p2p_ps(net, command + skip,
 			priv_cmd.total_len - skip);
 	}
 	else if (strnicmp(command, CMD_P2P_ECSA, strlen(CMD_P2P_ECSA)) == 0) {
 		int skip = strlen(CMD_P2P_ECSA) + 1;
-		bytes_written = wl_cfg80211_set_p2p_ecsa(net, command + skip,
+		bytes_written = wl_cfgp2p_set_p2p_ecsa(net, command + skip,
 			priv_cmd.total_len - skip);
 	}
 	/* This command is not for normal VSDB operation but for only specific P2P operation.
@@ -13774,7 +13901,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 	 */
 	else if (strnicmp(command, CMD_P2P_INC_BW, strlen(CMD_P2P_INC_BW)) == 0) {
 		int skip = strlen(CMD_P2P_INC_BW) + 1;
-		bytes_written = wl_cfg80211_increase_p2p_bw(net,
+		bytes_written = wl_cfgp2p_increase_p2p_bw(net,
 				command + skip, priv_cmd.total_len - skip);
 	}
 #ifdef WL_CFG80211
@@ -14394,6 +14521,9 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 		bytes_written = wl_nan_ranging_bw(net, bw_cmd, command);
 	}
 #endif /* SUPPORT_NAN_RANGING_TEST_BW */
+	else if (strnicmp(command, CMD_TRIG_REASSOC, strlen(CMD_TRIG_REASSOC)) == 0) {
+		bytes_written = wl_android_trigger_reassoc(net, command, priv_cmd.total_len);
+	}
 	else if (strnicmp(command, CMD_GET_FACTORY_MAC, strlen(CMD_GET_FACTORY_MAC)) == 0) {
 		bytes_written = wl_android_get_factory_mac_addr(net, command, priv_cmd.total_len);
 	}
@@ -16301,3 +16431,77 @@ wl_cfg80211_get_bss_sta_info(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	MFREE(cfg->osh, buf, buf_len);
 }
 #endif /* WL_BSS_STA_INFO */
+
+s32
+wl_android_set_blacklist_bssid(struct net_device *dev, maclist_t *blacklist,
+    uint32 len, uint32 flush)
+{
+	s32 err;
+	s32 macmode;
+
+	if (blacklist) {
+		err = wldev_ioctl_set(dev, WLC_SET_MACLIST, (u8 *)blacklist, len);
+		if (err != BCME_OK) {
+			WL_ERR(("WLC_SET_MACLIST failed %d\n", err));
+			return err;
+		}
+	}
+	/* By default programming blacklist flushes out old values */
+	macmode = (flush && !blacklist) ? WLC_MACMODE_DISABLED : WLC_MACMODE_DENY;
+	err = wldev_ioctl_set(dev, WLC_SET_MACMODE, (u8 *)&macmode, sizeof(macmode));
+	if (err != BCME_OK) {
+		WL_ERR(("WLC_SET_MACMODE %d failed %d\n", macmode, err));
+	} else {
+		WL_INFORM_MEM(("WLC_SET_MACMODE %d applied\n", macmode));
+	}
+	return err;
+}
+
+s32
+wl_android_set_whitelist_ssid(struct net_device *dev, wl_ssid_whitelist_t *ssid_whitelist,
+    uint32 len, uint32 flush)
+{
+	s32 err;
+	u8 *buf;
+	u32 buf_len = WLC_IOCTL_MEDLEN;
+	wl_ssid_whitelist_t whitelist_ssid_flush;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
+
+	if (!ssid_whitelist) {
+		if (flush) {
+			ssid_whitelist = &whitelist_ssid_flush;
+			ssid_whitelist->ssid_count = 0;
+		} else {
+			WL_ERR(("%s : Nothing to do here\n", __FUNCTION__));
+			return BCME_BADARG;
+		}
+	}
+
+	buf = (char *)MALLOC(cfg->osh, buf_len);
+	if (buf == NULL) {
+		WL_ERR(("failed to allocated memory %d bytes\n",
+			WLC_IOCTL_MEDLEN));
+		return -ENOMEM;
+	}
+
+	if ((len + strlen("roam_exp_ssid_whitelist")) >= buf_len) {
+		WL_ERR(("unexpected len for ssid blklist:%d\n", len));
+		err = -EINVAL;
+		goto exit;
+	}
+
+	ssid_whitelist->version = SSID_WHITELIST_VERSION_1;
+	ssid_whitelist->flags = flush ? ROAM_EXP_CLEAR_SSID_WHITELIST : 0;
+	err = wldev_iovar_setbuf(dev, "roam_exp_ssid_whitelist",
+			(u8 *)ssid_whitelist, len, buf, buf_len, NULL);
+	if (err != BCME_OK) {
+		if (err == BCME_UNSUPPORTED) {
+			WL_ERR(("roam_exp_bssid_pref, UNSUPPORTED \n"));
+		} else {
+			WL_ERR(("Failed to execute roam_exp_bssid_pref %d\n", err));
+		}
+	}
+exit:
+	MFREE(cfg->osh, buf, buf_len);
+	return err;
+}

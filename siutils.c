@@ -270,9 +270,9 @@ BCMATTACHFN(si_buscore_setup)(si_info_t *sii, chipcregs_t *cc, uint bustype, uin
 			sii->pub.lhlrev = si_corereg(&sii->pub, GCI_CORE_IDX(&sii->pub),
 				OFFSETOF(gciregs_t, lhl_core_capab_adr), 0, 0) & LHL_CAP_REV_MASK;
 
-		} else
+		} else {
 			sii->pub.pmucaps = R_REG(sii->osh, PMU_REG_ADDR(cc, CoreCapabilities));
-
+		}
 		sii->pub.pmurev = sii->pub.pmucaps & PCAP_REV_MASK;
 	}
 
@@ -879,14 +879,37 @@ BCMATTACHFN(si_buscore_init)(si_info_t *sii, uint devid, osl_t *osh, volatile vo
 #endif /* BCM_BOOTLOADER */
 		}
 	} else if (CHIPTYPE(sii->pub.socitype) == SOCI_AI) {
+		bool erom_in_oobr = ai_erom_in_oobr(sii, (void *)(uintptr)cc);
 
-		SI_MSG(("Found chip type AI (0x%08x)\n", w));
+		SI_MSG(("Found chip type AI (0x%08x) EROM from OOBR %d\n", w, erom_in_oobr));
+
 		/* pass chipc address instead of original core base */
 		if ((si_alloc_wrapper(sii)) != BCME_OK) {
 			err_at = 8;
 			goto exit;
 		}
-		ai_scan(&sii->pub, (void *)(uintptr)cc, devid);
+
+		/* AI Chips with erom in OOBR, parse erom with nci_scan()
+		 * and convert nci->cores to sii->cores_info
+		 */
+		if (erom_in_oobr) {
+			/* alloc nci->info for erom parsing from OOBR */
+			sii->nci_info = nci_init(&sii->pub, (void*)(uintptr)cc, sii->pub.bustype);
+			if (nci_scan(sih) == 0u) {
+				err_at = 12;
+				goto exit;
+			}
+			/* convert nci->cores to sii->cores_info */
+			nci_cores_to_ai_cores(sih);
+
+			/* release nci->info after erom parsing from OOBR */
+			if (sii->nci_info) {
+				nci_uninit(sii->nci_info);
+				sii->nci_info = NULL;
+			}
+		} else {
+			ai_scan(&sii->pub, (void *)(uintptr)cc, devid);
+		}
 		/* make sure the wrappers are properly accounted for */
 		if (sii->axi_num_wrappers == 0) {
 			SI_ERROR(("FATAL: Wrapper count 0\n"));

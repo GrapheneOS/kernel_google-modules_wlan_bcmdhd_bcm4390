@@ -383,11 +383,14 @@ extern uint64 osl_sysuptime_ns(void);
 extern uint64 osl_localtime_ns(void);
 extern void osl_get_localtime(uint64 *sec, uint64 *usec);
 extern uint64 osl_systztime_us(void);
+#ifdef CUSTOM_PREFIX
 extern char* osl_get_rtctime(void);
+#define OSL_GET_RTCTIME()	osl_get_rtctime()
+#endif /* CUSTOM_PREFIX */
+
 #define OSL_LOCALTIME_NS()	osl_localtime_ns()
 #define OSL_GET_LOCALTIME(sec, usec)	osl_get_localtime((sec), (usec))
 #define OSL_SYSTZTIME_US()	osl_systztime_us()
-#define OSL_GET_RTCTIME()	osl_get_rtctime()
 uint64 osl_getcycles(void);
 
 /* RTC format %02d:%02d:%02d.%06lu, LEN including the trailing null space */

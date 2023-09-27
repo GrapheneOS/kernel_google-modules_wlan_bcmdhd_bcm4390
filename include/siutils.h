@@ -293,7 +293,7 @@ typedef void (*wci2_handler_t)(void *ctx, char *buf, int len);
 
 #define	SICF_CPUHALT		(0x0020)
 
-#define	ARMCR4_BSZ_MASK		0x7f
+#define	ARMCR4_BSZ_MASK		0xff
 #define	ARMCR4_BUNITSZ_MASK	0x200
 #define	ARMCR4_BSZ_8K		8192
 #define	ARMCR4_BSZ_1K		1024

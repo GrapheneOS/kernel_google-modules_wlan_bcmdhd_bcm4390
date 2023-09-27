@@ -2932,6 +2932,13 @@ static void _wl_cfgscan_cancel_scan(struct bcm_cfg80211 *cfg)
 		}
 	}
 
+	if (cfg->loc.in_progress) {
+		/* listen on channel uses passive scan */
+		wl_cfgscan_scan_abort(cfg);
+		WL_INFORM_MEM(("listen on channel aborted! \n"));
+		/* fall through to check scan states */
+	}
+
 	if (!cfg->scan_request && !cfg->sched_scan_req) {
 		/* No scans in progress */
 		WL_INFORM_MEM(("No scan in progress\n"));
@@ -5726,7 +5733,7 @@ wl_cfgscan_cancel_remain_on_channel(struct wiphy *wiphy,
 #ifdef P2PLISTEN_AP_SAMECHN
 	if (cfg && cfg->p2p_resp_apchn_status) {
 		dev = bcmcfg_to_prmry_ndev(cfg);
-		wl_cfg80211_set_p2p_resp_ap_chn(dev, 0);
+		wl_cfgp2p_set_p2p_resp_ap_chn(dev, 0);
 		cfg->p2p_resp_apchn_status = false;
 		WL_DBG(("p2p_resp_apchn_status Turn OFF \n"));
 	}
@@ -7139,11 +7146,11 @@ wl_cfgscan_acs(struct wiphy *wiphy,
 }
 #endif /* WL_SOFTAP_ACS */
 
-void
+int
 wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data)
 {
 	struct net_info *iter, *next;
-	u32 ch;
+	u32 ch = INVCHANSPEC;
 
 	bzero(ap_data, sizeof(wl_ap_oper_data_t));
 
@@ -7153,13 +7160,25 @@ wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data)
 		if ((iter->ndev) &&
 			(iter->ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_AP) &&
 			wl_get_drv_status(cfg, CONNECTED, iter->ndev)) {
-				if (wldev_iovar_getint(iter->ndev, "chanspec", (&ch)) == BCME_OK) {
-					ap_data->iface[ap_data->count].ndev = iter->ndev;
-					ap_data->iface[ap_data->count].chspec = (chanspec_t)ch;
-					ap_data->count++;
+			if (wldev_iovar_getint(iter->ndev, "chanspec", (&ch)) == BCME_OK) {
+				if (ch == INVCHANSPEC) {
+					WL_ERR(("Invalid chanspec retrieved on iface: %s\n",
+						iter->ndev->name));
+					return BCME_ERROR;
 				}
+				ap_data->iface[ap_data->count].ndev = iter->ndev;
+				ap_data->iface[ap_data->count].chspec = (chanspec_t)ch;
+				ap_data->count++;
+			}
 		}
 	}
+
+	if (ap_data->count > MAX_AP_IFACES) {
+		WL_ERR(("Not a valid case!! count:%d\n",
+			ap_data->count));
+		return BCME_ERROR;
+	}
+	return BCME_OK;
 }
 
 bool
@@ -7653,11 +7672,9 @@ wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg, drv_acs_params_t *para
 	 */
 
 	/* Check whether AP is already operational */
-	wl_get_ap_chanspecs(cfg, &ap_oper_data);
-
-	if (ap_oper_data.count >= MAX_AP_IFACES) {
-		WL_ERR(("ACS request in multi AP case!! count:%d\n",
-			ap_oper_data.count));
+	ret = wl_get_ap_chanspecs(cfg, &ap_oper_data);
+	if (ret != BCME_OK) {
+		WL_ERR(("Failed to get ap chanspec, ret: %d\n", ret));
 		return -EINVAL;
 	}
 
@@ -7721,6 +7738,7 @@ wl_is_channel_dynamic(struct bcm_cfg80211 *cfg, chanspec_t in_chspec)
 	u32 in_chan_band;
 	bool dyn_indoor = !!(cfg->dyn_chan_policy & DYN_CHAN_POLICY_INDOOR);
 	bool dyn_dfs = !!(cfg->dyn_chan_policy & DYN_CHAN_POLICY_DFS);
+	u8 max_num_chans = 0;
 
 	list = cfg->chan_info_list;
 	list_count = ((wl_chanspec_list_v1_t *)list)->count;
@@ -7743,10 +7761,14 @@ wl_is_channel_dynamic(struct bcm_cfg80211 *cfg, chanspec_t in_chspec)
 
 		if ((in_chan_band == CHSPEC_BAND(chspec)) &&
 				(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_20)) {
-			for (j = 0; j < MAX_20MHZ_CHANNELS; j++) {
+			max_num_chans =
+				MIN(wl_cfgscan_get_max_num_chans_per_bw(chspec),
+					MAX_20MHZ_CHANNELS);
+
+			for (j = 0; j < max_num_chans; j++) {
 				if (!chan_array[j]) {
 					/* if there are no more subband channels, exit the loop */
-					break;
+					continue;
 				}
 				WL_DBG(("sta_chanspec:%x chspec:%x channel:%d band:%d bw:%d\n",
 					in_chspec, chspec, chan_array[j],
@@ -7866,4 +7888,30 @@ wl_cfgscan_get_bw_chspec(chanspec_t *chspec, u32 bw)
 			cur_chspec, *chspec, bw,
 			wf_chspec_primary20_chan(*chspec)));
 	return BCME_OK;
+}
+
+u8 wl_cfgscan_get_max_num_chans_per_bw(chanspec_t chspec)
+{
+	u8 max_num_chans = 0;
+	switch (CHSPEC_BW(chspec)) {
+		case WL_CHANSPEC_BW_20:
+			max_num_chans = WF_NUM_SIDEBANDS_20MHZ;
+			break;
+		case WL_CHANSPEC_BW_40:
+			max_num_chans = WF_NUM_SIDEBANDS_40MHZ;
+			break;
+		case WL_CHANSPEC_BW_80:
+			max_num_chans = WF_NUM_SIDEBANDS_80MHZ;
+			break;
+		case WL_CHANSPEC_BW_160:
+			max_num_chans = WF_NUM_SIDEBANDS_160MHZ;
+			break;
+		case WL_CHANSPEC_BW_320:
+			max_num_chans = WF_NUM_SIDEBANDS_320MHZ;
+			break;
+		default:
+			WL_ERR(("Invalid chanspec\n"));
+
+	}
+	return max_num_chans;
 }

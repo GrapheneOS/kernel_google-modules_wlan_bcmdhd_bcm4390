@@ -83,7 +83,6 @@ uint fis_enab = FALSE;
 #ifdef DHD_COREDUMP
 extern dhd_coredump_t dhd_coredump_types[];
 #endif /* DHD_COREDUMP */
-int write_dump_to_file(dhd_pub_t *dhd, uint8 *buf, int size, char *fname);
 
 static int
 dhdpcie_get_sssr_fifo_dump(dhd_pub_t *dhd, uint *buf, uint fifo_size,
@@ -1494,7 +1493,7 @@ dhdpcie_validate_gci_chip_intstatus(dhd_pub_t *dhd)
 #define OOBR_CAP2_NUMTOPEXTRSRC_MASK	0x1Fu
 #define OOBR_CAP2_NUMTOPEXTRSRC_SHIFT	4u	 /* Bits 8:4 */
 
-static void
+static int
 dhdpcie_dump_oobr(dhd_pub_t *dhd, uint core_bmap, uint coreunit_bmap)
 {
 	si_t *sih = dhd->bus->sih;
@@ -1505,7 +1504,12 @@ dhdpcie_dump_oobr(dhd_pub_t *dhd, uint core_bmap, uint coreunit_bmap)
 	uint val = 0, idx = 0;
 
 	if (CHIPTYPE(sih->socitype) != SOCI_NCI) {
-		return;
+		return BCME_UNSUPPORTED;
+	}
+
+	if (dhd->bus->is_linkdown) {
+		DHD_ERROR(("%s: PCIe link is down\n", __FUNCTION__));
+		return BCME_NOTUP;
 	}
 
 	curcore = si_coreid(dhd->bus->sih);
@@ -1514,6 +1518,12 @@ dhdpcie_dump_oobr(dhd_pub_t *dhd, uint core_bmap, uint coreunit_bmap)
 		uint corecap2 = R_REG(dhd->osh, &reg->capability2);
 		uint numtopextrsrc = (corecap2 >> OOBR_CAP2_NUMTOPEXTRSRC_SHIFT) &
 			OOBR_CAP2_NUMTOPEXTRSRC_MASK;
+		if (corecap2 == (uint)-1) {
+			DHD_ERROR(("%s:corecap2=0x%x ! Bad value, set linkdown\n",
+				__FUNCTION__, corecap2));
+			dhd->bus->is_linkdown = TRUE;
+			return BCME_NOTUP;
+		}
 		/*
 		 * Convert the value (8:4) to a loop count to dump topextrsrcmap.
 		 * TopRsrcDestSel0 is accessible if NUM_TOP_EXT_RSRC > 0
@@ -1556,6 +1566,7 @@ dhdpcie_dump_oobr(dhd_pub_t *dhd, uint core_bmap, uint coreunit_bmap)
 	}
 
 	si_setcore(sih, curcore, 0);
+	return BCME_OK;
 }
 
 int
@@ -1721,7 +1732,12 @@ dhdpcie_sssr_dump(dhd_pub_t *dhd)
 		}
 
 		if (core_bmap) {
-			dhdpcie_dump_oobr(dhd, core_bmap, coreunit_bmap);
+			ret = dhdpcie_dump_oobr(dhd, core_bmap, coreunit_bmap);
+			if (ret == BCME_NOTUP) {
+				DHD_ERROR(("%s: dhdpcie_dump_oobr fails due to linkdown !\n",
+					__FUNCTION__));
+				goto exit;
+			}
 		}
 
 		dhd_bus_pcie_pwr_req_wl_domain(dhd->bus, CC_REG_OFF(PowerControl), TRUE);

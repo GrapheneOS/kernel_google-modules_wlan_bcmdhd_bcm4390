@@ -257,7 +257,7 @@ static struct pci_device_id dhdpcie_pci_devid[] __devinitdata = {
 	driver_data: 0,
 	},
 #endif /* BCMPCI_DEV_ID != PCI_ANY_ID && BCMPCI_NOOTP_DEV_ID */
-	{ 0, 0, 0, 0, 0, 0, 0}
+	{ 0 }
 };
 MODULE_DEVICE_TABLE(pci, dhdpcie_pci_devid);
 
@@ -286,7 +286,7 @@ static const struct dev_pm_ops dhd_pcie_pm_ops = {
 
 static struct pci_driver dhdpcie_driver = {
 	node:		{&dhdpcie_driver.node, &dhdpcie_driver.node},
-	name:		"pcieh",
+	name:		"dhdpcie",
 	id_table:	dhdpcie_pci_devid,
 	probe:		dhdpcie_pci_probe,
 	remove:		dhdpcie_pci_remove,

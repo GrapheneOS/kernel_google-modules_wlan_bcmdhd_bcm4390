@@ -1607,6 +1607,7 @@ osl_systztime_us(void)
 	return tzusec;
 }
 
+#ifdef CUSTOM_PREFIX
 char *
 osl_get_rtctime(void)
 {
@@ -1622,11 +1623,18 @@ osl_get_rtctime(void)
 			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec/NSEC_PER_USEC);
 	return timebuf;
 }
+#endif /* CUSTOM_PREFIX */
 
 uint64
 osl_getcycles(void)
 {
+#if defined(__i386__) || defined(__x86_64__)
 	return get_cycles();
+#else
+	/* NOTE: For now keeping the implemenatation same as KUDU. */
+	OSL_PRINT(("osl_getcycles: Un-supported platform for get cycles\n"));
+	return 0;
+#endif /* i386 || x86_64 */
 }
 
 /*

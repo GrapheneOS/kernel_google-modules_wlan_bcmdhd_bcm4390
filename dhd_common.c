@@ -78,6 +78,9 @@
 #ifdef RTT_SUPPORT
 #include <dhd_rtt.h>
 #endif
+#ifdef COEX_CPU
+#include <coex_shared_memfile.h>
+#endif /* COEX_CPU */
 
 #ifdef DNGL_EVENT_SUPPORT
 #include <dnglevent.h>
@@ -800,7 +803,7 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 	}
 
 #ifdef PCIE_FULL_DONGLE
-	if (dhdp->d3ack_timeout_occured) {
+	if (dhdp->d3d0ack_timeout_occured) {
 		DHD_ERROR_RLMT(("%s: Resumed on timeout for previous D3ACK, cannot proceed\n",
 			__FUNCTION__));
 		ret = TRUE;
@@ -895,7 +898,7 @@ dhd_clear_all_errors(dhd_pub_t *dhd)
 	dhd->hang_reason = 0;
 	dhd->iovar_timeout_occured = 0;
 #ifdef PCIE_FULL_DONGLE
-	dhd->d3ack_timeout_occured = 0;
+	dhd->d3d0ack_timeout_occured = 0;
 	dhd->livelock_occured = 0;
 	dhd->pktid_audit_failed = 0;
 	dhd->pktid_invalid_occured = 0;
@@ -926,20 +929,56 @@ dhd_coredump_t dhd_coredump_types[] = {
 	{DHD_COREDUMP_TYPE_SDTC_ETB_DUMP, 0, NULL},
 #endif /* DHD_SDTC_ETB_DUMP */
 	{DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_BEFORE, 0, NULL},
-	{DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_AFTER, 0, NULL}
+	{DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_AFTER, 0, NULL},
+#ifdef COEX_CPU
+	{DHD_COREDUMP_TYPE_COEX_DUMP, 0, NULL}
+#endif /* COEX_CPU */
 };
 #endif /* DHD_SSSR_DUMP */
 
 int
-dhd_coredump_mempool_init(dhd_pub_t *dhd)
+dhd_coredump_mempool_init(dhd_pub_t *dhdp)
 {
-	dhd->coredump_mem = (uint8*) VMALLOCZ(dhd->osh, DHD_MEMDUMP_BUFFER_SIZE);
-	if (dhd->coredump_mem == NULL) {
+	uint32 coredump_size = 0;
+#ifdef COEX_CPU
+	int coex_dump_size;
+#endif /* COEX_CPU */
+
+	/* coredump magic code */
+	coredump_size += DHD_COREDUMP_MAGIC_LEN;
+
+	/* socram */
+	coredump_size += TLV_TYPE_LENGTH_SIZE;
+	coredump_size += dhdp->soc_ram_length;
+
+#ifdef DHD_SSSR_DUMP
+	coredump_size += TLV_TYPE_LENGTH_SIZE;
+	coredump_size += DHD_SSSR_MEMPOOL_SIZE;
+#endif /* DHD_SSSR_DUMP */
+
+#ifdef DHD_SDTC_ETB_DUMP
+	coredump_size += TLV_TYPE_LENGTH_SIZE;
+	coredump_size += DHD_SDTC_ETB_MEMPOOL_SIZE;
+#endif /* DHD_SDTC_ETB_DUMP */
+
+#ifdef COEX_CPU
+	coex_dump_size = sizeof(coex_combined_fw_t) + sizeof(coex_fw_tlv_t) * 2u +
+		COEX_ITCM_SIZE + COEX_DTCM_SIZE;
+	coredump_size += TLV_TYPE_LENGTH_SIZE;
+	coredump_size += coex_dump_size;
+#endif /* COEX_CPU */
+
+	DHD_PRINT(("%s: coredump size:%u socram:%u sssr_mem:%u sdtc:%u\n",
+		__FUNCTION__, coredump_size, dhdp->soc_ram_length, DHD_SSSR_MEMPOOL_SIZE,
+		DHD_SDTC_ETB_MEMPOOL_SIZE));
+
+	dhdp->coredump_mem = (uint8*) VMALLOCZ(dhdp->osh, coredump_size);
+	if (dhdp->coredump_mem == NULL) {
 		DHD_ERROR(("%s: VMALLOCZ of coredump_mem failed\n", __FUNCTION__));
 		return BCME_ERROR;
 	}
 
-	dhd->coredump_len = DHD_MEMDUMP_BUFFER_SIZE;
+	dhdp->coredump_len = coredump_size;
 	return BCME_OK;
 }
 
@@ -947,11 +986,46 @@ void
 dhd_coredump_mempool_deinit(dhd_pub_t *dhd)
 {
 	if (dhd->coredump_mem) {
-		VMFREE(dhd->osh, dhd->coredump_mem, DHD_MEMDUMP_BUFFER_SIZE);
+		VMFREE(dhd->osh, dhd->coredump_mem, dhd->coredump_len);
 		dhd->coredump_mem = NULL;
 		dhd->coredump_len = 0;
 	}
 }
+
+int dhd_coredump_fill_section(uint8 **dst_buf, int dst_rlen, char *src_buf, int src_len,
+	int coredump_type, int *written_len)
+{
+	int ret;
+	uint32 *type, *length;
+	int sec_hdr_len = TLV_TYPE_LENGTH_SIZE;
+
+	if (src_buf == NULL || src_len == 0) {
+		DHD_ERROR(("Skip collecting type:%d dst_rlen:%d src_len:%d\n",
+			coredump_type, dst_rlen, src_len));
+	} else {
+		type = (uint32*)*dst_buf;
+		*type = dhd_coredump_types[coredump_type].type;
+		length = (uint32*)(*dst_buf + sizeof(*type));
+		*length = src_len;
+
+		ret = memcpy_s(*dst_buf + sec_hdr_len, dst_rlen - sec_hdr_len,
+			src_buf, src_len);
+
+		if (ret) {
+			DHD_ERROR(("Failed to memcpy_s() for type:%d ret:%d\n",
+				coredump_type, ret));
+			return BCME_ERROR;
+		}
+
+		DHD_PRINT(("%s: type:%u, len:%d, written_len:%d\n",
+			__FUNCTION__, *type, *length, *written_len));
+		*written_len += sec_hdr_len + *length;
+		*dst_buf += sec_hdr_len + *length;
+	}
+
+	return BCME_OK;
+}
+
 
 /* reconstruct dump memory with socram and sssr dump as TLV format */
 int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
@@ -966,43 +1040,30 @@ int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
 #endif /* DHD_SDTC_ETB_DUMP */
 	int ret = 0, i = 0;
 	int total_size = 0;
-	uint32 *magic, *type, *length;
-	uint8 num_d11cores = 0, offset = 0;
+	uint32 *magic;
+	uint8 num_d11cores = 0;
+	int saqm_buf_len = dhd_sssr_saqm_buf_size(dhdp);
 
 	if (!buf_ptr) {
 		DHD_ERROR(("coredump mem is not allocated\n"));
 		return BCME_ERROR;
 	}
 
-	/* SSSR dump */
-	if (!sssr_enab || !dhdp->collect_sssr) {
-		DHD_ERROR(("SSSR is not enabled or not collected yet.\n"));
-		return BCME_UNSUPPORTED;
-	}
-
 	/* SOCRAM dump start with magic code */
 	magic = (uint32*)buf_ptr;
 	*magic = DHD_COREDUMP_MAGIC;
+	total_size += sizeof(*magic);
+	buf_ptr += sizeof(*magic);
 
 	/* DHD_COREDUMP_TYPE_SOCRAMDUMP */
-	type = (uint32*)(buf_ptr + sizeof(*magic));
-	*type = dhd_coredump_types[DHD_COREDUMP_TYPE_SOCRAMDUMP].type;
-	length = (uint32*)(buf_ptr + sizeof(*magic) + sizeof(*type));
-	*length = socram_len;
-
-	offset = sizeof(*magic) + sizeof(*type) + sizeof(*length);
-	ret = memcpy_s(buf_ptr + offset, buf_len - offset,
-		socram_mem, socram_len);
-
+	ret = dhd_coredump_fill_section(&buf_ptr, buf_len - total_size,
+			socram_mem, socram_len,
+			DHD_COREDUMP_TYPE_SOCRAMDUMP, &total_size);
 	if (ret) {
-		DHD_ERROR(("Failed to memmove_s() for coredump. ret:%d\n", ret));
-		return BCME_ERROR;
+		return ret;
 	}
-	total_size = offset + socram_len;
-	buf_ptr += total_size;
 
-	DHD_PRINT(("%s: type: %u, length: %u\n", __FUNCTION__, *type, *length));
-
+	/* DHD_COREDUMP_TYPE_SSSR_ */
 	num_d11cores = dhd_d11_slices_num_get(dhdp);
 	for (i = 0; i < num_d11cores + 1; i++) {
 		int written_bytes = 0;
@@ -1032,34 +1093,34 @@ int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
 		total_size += written_bytes;
 	}
 
-#ifdef DHD_SDTC_ETB_DUMP
-	/* DHD_COREDUMP_TYPE_SDTC_ETB_DUMP */
-	if (sdtc_etb_mem == NULL || sdtc_etb_len == 0) {
-		DHD_ERROR(("Skip collecting SDTC ETB. len:%d\n", sdtc_etb_len));
-	} else {
-		type = (uint32*)buf_ptr;
-		*type = dhd_coredump_types[DHD_COREDUMP_TYPE_SDTC_ETB_DUMP].type;
-		length = (uint32*)(buf_ptr + sizeof(*type));
-		*length = sdtc_etb_len;
-
-		offset = sizeof(*type) + sizeof(*length);
-		total_size += offset;
-		ret = memcpy_s(buf_ptr + offset, buf_len - total_size,
-			sdtc_etb_mem, sdtc_etb_len);
-
-		if (ret) {
-			DHD_ERROR(("Failed to memcpy_s() for sdtc_etb. ret:%d\n", ret));
-			return BCME_ERROR;
-		}
-
-		total_size += sdtc_etb_len;
-		buf_ptr += total_size;
-
-		/* Reset SDTC ETB dump length */
-		dhdp->sdtc_etb_dump_len = 0;
-		DHD_PRINT(("%s: type: %u, length: %u\n", __FUNCTION__, *type, *length));
+	/* SSSR SAQM BUF AFTER */
+	ret = dhd_coredump_fill_section(&buf_ptr, buf_len - total_size,
+			(char *)dhdp->sssr_saqm_buf_after, saqm_buf_len,
+			DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_AFTER, &total_size);
+	if (ret) {
+		return ret;
 	}
+
+#ifdef DHD_SDTC_ETB_DUMP
+	ret = dhd_coredump_fill_section(&buf_ptr, buf_len - total_size,
+			sdtc_etb_mem, sdtc_etb_len,
+			DHD_COREDUMP_TYPE_SDTC_ETB_DUMP, &total_size);
+	if (ret) {
+		return ret;
+	}
+
+	/* Reset SDTC ETB dump length */
+	dhdp->sdtc_etb_dump_len = 0;
 #endif /* DHD_SDTC_ETB_DUMP */
+
+#ifdef COEX_CPU
+	ret = dhd_coredump_fill_section(&buf_ptr, buf_len - total_size,
+			dump->coex_buf, dump->coex_bufsize,
+			DHD_COREDUMP_TYPE_COEX_DUMP, &total_size);
+	if (ret) {
+		return ret;
+	}
+#endif /* COEX_CPU */
 
 	dump->buf = dhdp->coredump_mem;
 	dump->bufsize = total_size;
@@ -4744,30 +4805,50 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		break;
 	case WLC_E_ROAM_START:
 		if (datalen >= sizeof(wlc_roam_start_event_t)) {
-			const wlc_roam_start_event_t *roam_start =
+			wlc_roam_start_event_t *roam_start =
 				(wlc_roam_start_event_t *)event_data;
-			const bcm_xtlv_t *xtlv;
+			uint16 len = roam_start->length;
+			uint8 *data = roam_start->xtlvs;
+			bcm_xtlv_t *xtlv;
 			const wlc_bcn_prot_counters_v1_t *cnt;
+
 			DHD_EVENT(("MACEVENT: %s %d, MAC %s, status %d,"
 				" reason %d, auth %d, current bss rssi %d\n",
 				event_name, event_type, eabuf, (int)status, (int)reason,
 				(int)auth_type, (int)roam_start->rssi));
 
-			if (datalen < sizeof(*roam_start) + BCM_XTLV_HDR_SIZE +	sizeof(*cnt)) {
+			if (datalen < sizeof(*roam_start) + BCM_XTLV_HDR_SIZE +
+			    sizeof(wlc_bcn_prot_counters_v1_t)) {
 				break;
 			}
-			xtlv = (const bcm_xtlv_t *)roam_start->xtlvs;
-			if ((xtlv->id != WL_ROAM_START_XTLV_BCNPROT_STATS) ||
-			     (xtlv->len < sizeof(*cnt))) {
-				DHD_ERROR(("MACEVENT: %s invalid xtlv (id=%d len=%d)\n",
-					event_name, xtlv->id, xtlv->len));
-				break;
+
+			while (len > BCM_XTLV_HDR_SIZE) {
+				xtlv = (bcm_xtlv_t *)data;
+				if (xtlv->id != WL_ROAM_START_XTLV_BCNPROT_STATS ||
+					xtlv->len < sizeof(wlc_bcn_prot_counters_v1_t)) {
+					break;
+				}
+				cnt = (wlc_bcn_prot_counters_v1_t *)xtlv->data;
+				if (cnt->version == BCN_PROT_COUNTERS_VERSION_1) {
+					DHD_EVENT(("EXTEVENT: no_en=%d no_mme=%d mic_fails=%d "
+						"replay_fails=%d errors_since_good_bcn=%d\n",
+						cnt->no_en_bit, cnt->no_mme_ie,
+						cnt->mic_fails, cnt->replay_fails,
+						cnt->errors_since_good_bcn));
+				} else if (cnt->version == BCN_PROT_COUNTERS_VERSION_2) {
+					const wlc_bcn_prot_counters_v2_t *cnt_v2;
+					cnt_v2 = (const wlc_bcn_prot_counters_v2_t *)xtlv->data;
+					DHD_EVENT(("EXTEVENT: link_idx:%d link_id:%d no_en=%d "
+						"no_mme=%d mic_fails=%d replay_fails=%d no_key=%d "
+						"errors_since_good_bcn=%d\n", cnt_v2->link_idx,
+						cnt_v2->link_id, cnt_v2->no_en_bit,
+						cnt_v2->no_mme_ie, cnt_v2->mic_fails,
+						cnt_v2->replay_fails, cnt_v2->no_key,
+						cnt_v2->errors_since_good_bcn));
+				}
+				len -= (BCM_XTLV_HDR_SIZE + xtlv->len);
+				data += (BCM_XTLV_HDR_SIZE + xtlv->len);
 			}
-			cnt = (const wlc_bcn_prot_counters_v1_t *)xtlv->data;
-			DHD_EVENT(("MACEVENT: %s (no_en=%d no_mme=%d mic_fails=%d replay_fails=%d "
-				"errors_since_good_bcn=%d)\n", event_name, cnt->no_en_bit,
-				cnt->no_mme_ie, cnt->mic_fails, cnt->replay_fails,
-				cnt->errors_since_good_bcn));
 		} else {
 			DHD_EVENT(("MACEVENT: %s %d, MAC %s, status %d, reason %d, auth %d"
 				" ifidx %d cfgidx %d\n", event_name, event_type, eabuf,
@@ -9813,12 +9894,12 @@ dhd_event_logtrace_infobuf_pkt_process(dhd_pub_t *dhdp, void *pktbuf,
 	}
 	PKTPULL(dhdp->osh, pktbuf, sizeof(info_buf_payload_hdr_t));
 
-	/* Validate that the specified length isn't bigger than the
-	 * provided data.
-	 */
-	if (payload_hdr_length > PKTLEN(dhdp->osh, pktbuf)) {
-		DHD_ERROR(("%s: infobuf logtrace length is bigger"
-			" than actual buffer data\n", __FUNCTION__));
+	/* packet length must match remaining payload */
+	if (payload_hdr_length != PKTLEN(dhdp->osh, pktbuf)) {
+		DHD_ERROR(("%s: PKTLEN: %u payload_hdr_length: %u\n",
+			__FUNCTION__, PKTLEN(dhdp->osh, pktbuf), payload_hdr_length));
+		DHD_ERROR(("%s: infobuf logtrace length does not"
+			" match length of actual buffer data\n", __FUNCTION__));
 		goto exit;
 	}
 	dhd_dbg_trace_evnt_handler(dhdp, PKTDATA(dhdp->osh, pktbuf),

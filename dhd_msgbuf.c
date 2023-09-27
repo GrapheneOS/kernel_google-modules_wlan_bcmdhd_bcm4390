@@ -4027,6 +4027,11 @@ dhd_prot_attach(dhd_pub_t *dhd)
 		/* pre-allocation htput ring */
 		dhd->prot->prealloc_htput_flowring_buf = MALLOCZ(osh,
 			sizeof(dhd_dma_buf_t)* dhd->htput_total_flowrings);
+		if (dhd->prot->prealloc_htput_flowring_buf == NULL) {
+			DHD_ERROR(("%s : malloc of prealloc_htput_flowring_buf failed!\n",
+				__FUNCTION__));
+			goto fail;
+		}
 		for (i = 0; i < dhd->htput_total_flowrings; i++) {
 			if (dhd_dma_buf_alloc(dhd, &dhd->prot->prealloc_htput_flowring_buf[i],
 				(uint32)(h2d_htput_max_txpost * h2d_txpost_size_prealloc))) {
@@ -4047,6 +4052,10 @@ dhd_prot_attach(dhd_pub_t *dhd)
 	/* pre-allocation flow ring */
 	dhd->prot->prealloc_regular_flowring_buf = MALLOCZ(osh,
 		sizeof(dhd_dma_buf_t) * dhd->max_prealloc_regular_flowrings);
+	if (dhd->prot->prealloc_regular_flowring_buf == NULL) {
+		DHD_ERROR(("%s : malloc of prealloc_regular_flowring_buf failed!\n", __FUNCTION__));
+		goto fail;
+	}
 	for (i = 0; i < dhd->max_prealloc_regular_flowrings; i++) {
 		if (dhd_dma_buf_alloc(dhd, &dhd->prot->prealloc_regular_flowring_buf[i],
 			(uint32)(h2d_max_txpost * h2d_txpost_size_prealloc))) {
@@ -4132,6 +4141,17 @@ dhd_set_host_cap2(dhd_pub_t *dhd)
 		data |= HOSTCAP2_PCIE_PTM;
 		dhd->bus->ptm_sync_periodic_h2d = TRUE;
 		DHD_PRINT(("%s PTM sync periodic advertised\n", __FUNCTION__));
+		/* enable the TS validation default in these cases, where PTM is enabled */
+#ifdef DHD_PTMTS_VALIDATE_ENABLE_DEFAULT
+		if (dhd->bus->ptm_txts_validate == FALSE) {
+			dhd->bus->ptm_txts_validate = TRUE;
+			dhd->bus->ptm_ts_validate |= PTM_VALIDATE_TS_TX;
+		}
+		if (dhd->bus->ptm_rxts_validate == FALSE) {
+			dhd->bus->ptm_rxts_validate = TRUE;
+			dhd->bus->ptm_ts_validate |= PTM_VALIDATE_TS_RX;
+		}
+#endif /* DHD_PTMTS_VALIDATE_ENABLE_DEFAULT */
 	}
 
 #ifdef DHD_HP2P
@@ -5045,19 +5065,23 @@ void dhd_prot_detach(dhd_pub_t *dhd)
 		dhd_prot_flowrings_pool_detach(dhd);
 
 #ifdef FLOW_RING_PREALLOC
-		if (dhd->htput_support) {
-			for (i = 0; i < dhd->htput_total_flowrings; i++) {
-				dhd_dma_buf_free(dhd, &prot->prealloc_htput_flowring_buf[i]);
+		if (prot->prealloc_htput_flowring_buf) {
+			if (dhd->htput_support) {
+				for (i = 0; i < dhd->htput_total_flowrings; i++) {
+					dhd_dma_buf_free(dhd,
+						&prot->prealloc_htput_flowring_buf[i]);
+				}
 			}
+			MFREE(dhd->osh, prot->prealloc_htput_flowring_buf,
+				sizeof(dhd_dma_buf_t) * dhd->htput_total_flowrings);
 		}
-		MFREE(dhd->osh, prot->prealloc_htput_flowring_buf,
-			sizeof(dhd_dma_buf_t) * dhd->htput_total_flowrings);
-
-		for (i = 0; i < dhd->max_prealloc_regular_flowrings; i++) {
-			dhd_dma_buf_free(dhd, &prot->prealloc_regular_flowring_buf[i]);
+		if (prot->prealloc_regular_flowring_buf) {
+			for (i = 0; i < dhd->max_prealloc_regular_flowrings; i++) {
+				dhd_dma_buf_free(dhd, &prot->prealloc_regular_flowring_buf[i]);
+			}
+			MFREE(dhd->osh, prot->prealloc_regular_flowring_buf,
+				sizeof(dhd_dma_buf_t) * dhd->max_prealloc_regular_flowrings);
 		}
-		MFREE(dhd->osh, prot->prealloc_regular_flowring_buf,
-			sizeof(dhd_dma_buf_t) * dhd->max_prealloc_regular_flowrings);
 #endif /* FLOW_RING_PREALLOC */
 
 		/* detach info rings */
@@ -5191,14 +5215,16 @@ dhd_prot_reset(dhd_pub_t *dhd)
 	dhd_dma_buf_reset(dhd, &prot->d2h_dma_indx_wr_buf);
 
 #ifdef FLOW_RING_PREALLOC
-	if (dhd->htput_support) {
+	if (dhd->htput_support && prot->prealloc_htput_flowring_buf) {
 		for (i = 0; i < dhd->htput_total_flowrings; i++) {
 			dhd_dma_buf_reset(dhd, &prot->prealloc_htput_flowring_buf[i]);
 		}
 	}
 
-	for (i = 0; i < dhd->max_prealloc_regular_flowrings; i++) {
-		dhd_dma_buf_reset(dhd, &prot->prealloc_regular_flowring_buf[i]);
+	if (prot->prealloc_regular_flowring_buf) {
+		for (i = 0; i < dhd->max_prealloc_regular_flowrings; i++) {
+			dhd_dma_buf_reset(dhd, &prot->prealloc_regular_flowring_buf[i]);
+		}
 	}
 #endif /* FLOW_RING_PREALLOC */
 
@@ -6094,6 +6120,23 @@ dhd_prot_detach_edl_rings(dhd_pub_t *dhd)
 }
 #endif	/* EWP_EDL */
 
+static void
+dhd_config_dongle_host_access(dhd_pub_t *dhd)
+{
+	int ret = 0;
+#ifdef WLAN_ACCEL_BOOT
+	uint32 bus_host_access = 0;
+#else
+	uint32 bus_host_access = 1;
+#endif /* !WLAN_ACCEL_BOOT */
+	/* When WLAN_ACCEL_BOOT is enabled CFG layer will set the host_access. Else set here. */
+	ret = dhd_iovar(dhd, 0, "bus:host_access",
+		(char *)&bus_host_access, sizeof(bus_host_access), NULL, 0, TRUE);
+	if (ret) {
+		DHD_ERROR(("bus:host_access(%d) error (%d)\n", bus_host_access, ret));
+	}
+}
+
 /**
  * Initialize protocol: sync w/dongle state.
  * Sets dongle media info (iswl, drv_version, mac address).
@@ -6217,7 +6260,7 @@ int dhd_sync_with_dongle(dhd_pub_t *dhd)
 
 	/* Post buffers for packet reception */
 	dhd_msgbuf_rxbuf_post(dhd, FALSE); /* alloc pkt ids */
-
+	dhd_config_dongle_host_access(dhd);
 	ret = dhd_preinit_ioctls(dhd);
 
 #if defined(DHD_H2D_LOG_TIME_SYNC)
@@ -7832,7 +7875,7 @@ dhd_prot_process_edl_complete(dhd_pub_t *dhd, void *evt_decode_data)
 		}
 
 		if (err == BCME_OK) {
-			/* process the edl work item, i.e, the event log */
+			/* process the edl work item, i.e. the event log */
 			err = dhd_event_logtrace_process_edl(dhd, msg_addr, evt_decode_data);
 			if (err == BCME_NOTUP) {
 				return 0;
@@ -9343,6 +9386,239 @@ BCMFASTPATH(dhd_prot_txstatus_process_aggr_wi)(dhd_pub_t *dhd, void *msg)
 }
 #endif /* DHD_AGGR_WI */
 
+#define PTM_COUNT_1SEC	0x3BB00000u
+
+static bool
+BCMFASTPATH(dhd_msgbug_validate_ptm_ts)(dhd_pub_t *dhd, ts_timestamp_t *cur,
+	ts_timestamp_t *last, uint *adopt)
+{
+	uint32 diff = 0;
+
+	*adopt = TRUE;
+
+	/* host PTM seems to go to zero, when the host goes to sleep on some Brix platforms */
+
+	/* wrap around case */
+	if (cur->high < last->high) {
+		*adopt = FALSE;
+		/* gross check: high diff can't be more than 1 */
+		if ((last->high - cur->high) > 1u) {
+			return FALSE;
+		}
+		if (cur->low < last->low) {
+			return FALSE;
+		}
+		diff = cur->low - last->low;
+		if (diff < (0xFFFFFFFF - PTM_COUNT_1SEC)) {
+			return FALSE;
+		}
+	}
+	else if (cur->high == last->high) {
+		if (cur->low < last->low) {
+			diff = last->low - cur->low;
+			if (diff > PTM_COUNT_1SEC) {
+				return FALSE;
+			}
+		}
+	}
+	return TRUE;
+}
+
+static bool
+BCMFASTPATH(dhd_msgbuf_validate_ptm_tx_ts)(dhd_pub_t *dhd, ts_timestamp_t *ts)
+{
+	uint adopt = 0;
+	bool good_ts;
+
+	good_ts = dhd_msgbug_validate_ptm_ts(dhd, ts, &dhd->bus->last_tx_ptm_ts, &adopt);
+	if (good_ts || dhd->bus->ptm_host_ready_adopt_tx) {
+		/* On some systems PTM host time gets reset to 0, on host sleep */
+		if (!adopt && dhd->bus->ptm_host_ready_adopt_tx) {
+			DHD_ERROR(("TXTS: Host PTM may have got reset, so adopting"
+				"cur(0x%08x:0x%08x), last(0x%08x:0x%08x)\n",
+				ts->high, ts->low,
+				dhd->bus->last_tx_ptm_ts.high, dhd->bus->last_tx_ptm_ts.low));
+			adopt = TRUE;
+			good_ts = TRUE;
+			dhd->bus->ptm_host_ready_adopt_tx = FALSE;
+		}
+		if (adopt) {
+			dhd->bus->last_tx_ptm_ts.low = ts->low;
+			dhd->bus->last_tx_ptm_ts.high = ts->high;
+			dhd->bus->ptm_tx_ts_good_adopted_pkt_cnt++;
+		}
+		else {
+			DHD_PRINT(("TX: PTM:(NA) cur(0x%08x-%08x),last (0x%08x-%08x\n",
+				ts->high, ts->low, dhd->bus->last_tx_ptm_ts.high,
+				dhd->bus->last_tx_ptm_ts.low));
+			dhd->bus->ptm_tx_ts_good_not_adopted_pkt_cnt++;
+		}
+	} else {
+		DHD_ERROR(("TX: PTM:(ERR) cur(0x%08x-%08x),last (0x%08x-%08x\n",
+			ts->high, ts->low, dhd->bus->last_tx_ptm_ts.high,
+			dhd->bus->last_tx_ptm_ts.low));
+		dhd->bus->ptm_tx_ts_not_adopted_pkt_cnt++;
+	}
+	return good_ts;
+}
+
+static bool
+BCMFASTPATH(dhd_msgbuf_validate_ptm_rx_ts)(dhd_pub_t *dhd, ts_timestamp_t *ts)
+{
+	uint adopt = 0;
+	bool good_ts;
+
+	good_ts = dhd_msgbug_validate_ptm_ts(dhd, ts, &dhd->bus->last_rx_ptm_ts, &adopt);
+	if (good_ts || dhd->bus->ptm_host_ready_adopt_rx) {
+		/* On some systems PTM host time gets reset to 0, on host sleep */
+		if (!adopt && dhd->bus->ptm_host_ready_adopt_rx) {
+			DHD_ERROR(("RXTS: Host PTM may have got reset, so adopting"
+				"cur(0x%08x:0x%08x), last(0x%08x:0x%08x)\n",
+				ts->high, ts->low,
+				dhd->bus->last_rx_ptm_ts.high, dhd->bus->last_rx_ptm_ts.low));
+			adopt = TRUE;
+			good_ts = TRUE;
+			dhd->bus->ptm_host_ready_adopt_rx = FALSE;
+		}
+		if (adopt) {
+			dhd->bus->last_rx_ptm_ts.low = ts->low;
+			dhd->bus->last_rx_ptm_ts.high = ts->high;
+			dhd->bus->ptm_rx_ts_good_adopted_pkt_cnt++;
+		}
+		else {
+			DHD_ERROR(("RX: PTM:(NA), cur(0x%08x-%08x),last (0x%08x-0x%08x)\n",
+				ts->high, ts->low, dhd->bus->last_rx_ptm_ts.high,
+				dhd->bus->last_rx_ptm_ts.low));
+			dhd->bus->ptm_rx_ts_good_not_adopted_pkt_cnt++;
+		}
+	} else {
+		DHD_ERROR(("RX: PTM:(ERR) cur(0x%08x-%08x),last (0x%08x-%08x\n",
+			ts->high, ts->low, dhd->bus->last_rx_ptm_ts.high,
+			dhd->bus->last_rx_ptm_ts.low));
+		dhd->bus->ptm_rx_ts_not_adopted_pkt_cnt++;
+	}
+	return good_ts;
+}
+
+static void
+BCMFASTPATH(dhd_msgbuf_txcpl_ts_handle)(dhd_pub_t *dhd, host_txbuf_cmpl_t *txstatus,
+	void *pkt, uint16 flowid, msgbuf_ring_t *ring)
+{
+	ts_timestamp_t *ts;
+	flow_ring_node_t *flow_ring_node;
+	tx_cpl_info_t *txcpl_info = &dhd->txcpl_info;
+#ifdef DHD_TIMESYNC
+	dhd_pkt_parse_t parse;
+	bzero(&parse, sizeof(parse));
+	dhd_parse_proto(PKTDATA(dhd->osh, pkt), &parse);
+#endif /* DHD_TIMESYNC */
+
+	/* Store PTM timestamps */
+	ts = (ts_timestamp_t *)&txstatus->ts;
+	bzero(&txcpl_info->tx_history[txcpl_info->txcpl_hist_count],
+		sizeof(tx_cpl_history_t));
+
+	flow_ring_node = DHD_FLOW_RING(dhd, flowid);
+
+	txcpl_info->tx_history[txcpl_info->txcpl_hist_count].host_time =
+		(uint32)OSL_SYSUPTIME_US();
+	txcpl_info->tx_history[txcpl_info->txcpl_hist_count].tid =
+		flow_ring_node->flow_info.tid;
+	txcpl_info->tx_history[txcpl_info->txcpl_hist_count].flowid = flowid;
+
+	DHD_DATA(("%s: flowid %d: txstatus %d, ptm_high:0x%x, ptm_low:0x%x\n",
+		__FUNCTION__, flowid, txstatus->tx_status, ts->high, ts->low));
+
+	if (txstatus->tx_status != 0) {
+		if (!DHD_INV_CLKID(ts->high)) {
+			DHD_INFO(("txstatus is %d, BAD ts(0x%08x-%08x)\n",
+				txstatus->tx_status, ts->high, ts->low));
+			dhd->bus->txs_fail_clkid_bad_ts++;
+		}
+		else {
+			dhd->bus->txs_fail_clkid_inv++;
+		}
+		goto done;
+	}
+#ifdef DHD_TIMESYNC
+	if (dhd->prot->tx_ts_log_enabled) {
+		if (parse.proto == IP_PROT_ICMP) {
+			dhd_timesync_log_tx_timestamp(dhd->ts,
+				txstatus->compl_hdr.flow_ring_id,
+				txstatus->cmn_hdr.if_id,
+				ts->low, ts->high, &parse);
+		}
+	}
+#endif /* DHD_TIMESYNC */
+
+#ifdef DHD_HP2P
+	if (dhd->hp2p_capable && flow_ring_node->flow_info.tid == HP2P_PRIO) {
+#ifdef DHD_HP2P_DEBUG
+		bcm_print_bytes("txcpl", (uint8 *)txstatus, sizeof(host_txbuf_cmpl_t));
+#endif /* DHD_HP2P_DEBUG */
+		dhd_update_hp2p_txstats(dhd, txstatus);
+		/* XXX: this won't have proper PTM TS */
+		goto done;
+	}
+#endif /* DHD_HP2P */
+
+	/* XXX: Should have a check to say it is expecting PTM TS */
+	if (DHD_PTM_CLKID(ts->high)) {
+#ifdef DHD_TIMESYNC
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].proto = parse.proto;
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].tuple_1 = parse.t1;
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].tuple_2 = parse.t2;
+#endif /* DHD_TIMESYNC */
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].ptm_high = ts->high;
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].ptm_low = ts->low;
+
+		if (dhd->bus->ptm_txts_validate) {
+			if (!dhd_msgbuf_validate_ptm_tx_ts(dhd, ts)) {
+				dhd->bus->ptm_bad_txts_cont_cnt++;
+			}
+			else if (dhd->bus->ptm_bad_txts_cont_cnt) {
+				if (dhd->bus->ptm_bad_txts_cont_cnt_max <
+					dhd->bus->ptm_bad_txts_cont_cnt)
+				{
+					dhd->bus->ptm_bad_txts_cont_cnt_max =
+						dhd->bus->ptm_bad_txts_cont_cnt;
+				}
+				/* good pkt txs with valid PTM ts */
+				dhd->bus->ptm_bad_txts_cont_cnt = 0;
+			}
+		}
+	}
+	else if (dhd->bus->ptm_txts_validate) {
+		DHD_DATA(("TXTS: DHD invalid TS error 0x%08x-0x%08x\n", ts->high, ts->low));
+		dhd->bus->ptm_bad_txts_cont_cnt++;
+		if (DHD_INV_CLKID(ts->high)) {
+			dhd->bus->txs_clkid_invalid_clkid++;
+		}
+		else {
+			/* XXX: May be should check for TSF as well */
+			dhd->bus->txs_clkid_bad_ts++;
+		}
+	}
+	if (dhd->bus->ptm_txts_validate) {
+		if (dhd->bus->ptm_bad_txts_trap_th &&
+			(dhd->bus->ptm_bad_txts_cont_cnt >= dhd->bus->ptm_bad_txts_trap_th))
+		{
+			DHD_DATA(("DHD detected PTM-TX TS errors %d/%d\n",
+				dhd->bus->ptm_bad_txts_cont_cnt, dhd->bus->ptm_bad_txts_trap_th));
+			DHD_ERROR(("Force trap on firmware for bad TX PTM ts\n"));
+			dhdpcie_db7_trap(dhd->bus);
+		}
+	}
+	/* non Hp2P tx cases with tx pkt latency info */
+	if (ring == &dhd->prot->d2hring_tx_cpln) {
+		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].latency =
+			txstatus->metadata_len & BCMPCIE_TX_PKT_LATENCY_MASK;
+	}
+done:
+	txcpl_info->txcpl_hist_count =
+		(txcpl_info->txcpl_hist_count +1) % MAX_TXCPL_HISTORY;
+	return;
+}
 
 /** called on MSG_TYPE_TX_STATUS message received from dongle */
 static void
@@ -9370,8 +9646,6 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 
 	flow_ring_node_t *flow_ring_node;
 	uint16 flowid;
-	tx_cpl_info_t *txcpl_info = &dhd->txcpl_info;
-	ts_timestamp_t *ts;
 
 
 	txstatus = (host_txbuf_cmpl_t *)msg;
@@ -9559,60 +9833,9 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 	}
 #endif /* DHD_DBG_SHOW_METADATA */
 
-#ifdef DHD_HP2P
-	if (dhd->hp2p_capable && flow_ring_node->flow_info.tid == HP2P_PRIO) {
-#ifdef DHD_HP2P_DEBUG
-		bcm_print_bytes("txcpl", (uint8 *)txstatus, sizeof(host_txbuf_cmpl_t));
-#endif /* DHD_HP2P_DEBUG */
-		dhd_update_hp2p_txstats(dhd, txstatus);
-	}
-#endif /* DHD_HP2P */
+	/* Tx: HP2P, timesync, PTM ts timestamps handler */
+	dhd_msgbuf_txcpl_ts_handle(dhd, txstatus, pkt, flowid, ring);
 
-	/* Store PTM timestamps */
-	ts = (ts_timestamp_t *)&txstatus->ts;
-	bzero(&txcpl_info->tx_history[txcpl_info->txcpl_hist_count],
-		sizeof(tx_cpl_history_t));
-	if (DHD_PTM_CLKID(ts->high)) {
-#ifdef DHD_TIMESYNC
-		dhd_pkt_parse_t parse;
-
-		bzero(&parse, sizeof(dhd_pkt_parse_t));
-		dhd_parse_proto(PKTDATA(dhd->osh, pkt), &parse);
-
-		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].proto = parse.proto;
-		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].tuple_1 = parse.t1;
-		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].tuple_2 = parse.t2;
-#endif /* DHD_TIMESYNC */
-		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].ptm_high = ts->high;
-		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].ptm_low = ts->low;
-	}
-	/* Tx Latency for successful xmission of non HPP packet */
-	if ((txstatus->tx_status == 0) &&
-		(ring == &dhd->prot->d2hring_tx_cpln)) {
-		txcpl_info->tx_history[txcpl_info->txcpl_hist_count].latency =
-			txstatus->metadata_len & BCMPCIE_TX_PKT_LATENCY_MASK;
-	}
-	txcpl_info->tx_history[txcpl_info->txcpl_hist_count].host_time =
-		(uint32)OSL_SYSUPTIME_US();
-	txcpl_info->tx_history[txcpl_info->txcpl_hist_count].tid =
-		flow_ring_node->flow_info.tid;
-	txcpl_info->tx_history[txcpl_info->txcpl_hist_count].flowid = flowid;
-	txcpl_info->txcpl_hist_count =
-		(txcpl_info->txcpl_hist_count +1) % MAX_TXCPL_HISTORY;
-#ifdef DHD_TIMESYNC
-	if (dhd->prot->tx_ts_log_enabled) {
-		dhd_pkt_parse_t parse;
-
-		bzero(&parse, sizeof(parse));
-		dhd_parse_proto(PKTDATA(dhd->osh, pkt), &parse);
-
-		if (parse.proto == IP_PROT_ICMP)
-			dhd_timesync_log_tx_timestamp(dhd->ts,
-				txstatus->compl_hdr.flow_ring_id,
-				txstatus->cmn_hdr.if_id,
-				ts->low, ts->high, &parse);
-	}
-#endif /* DHD_TIMESYNC */
 #ifdef DHD_LBUF_AUDIT
 	PKTAUDIT(dhd->osh, pkt);
 #endif
@@ -12181,6 +12404,61 @@ dhd_prot_print_ring_info(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 	bcm_bprintf(strbuf, "\n");
 }
 
+void
+dhd_prot_ptm_stats_dump(dhd_pub_t *dhd, struct bcmstrbuf *b)
+{
+	bcm_bprintf(b, "ptm(fw:%d host: %d) tsval 0x%08x, rx (%d, %d, %d, %d), tx (%d, %d, %d, %d)",
+		dhd->dongle_support_ptm, dhd->bus->ptm_cfg_enabled,
+		dhd->bus->ptm_ts_validate,
+		dhd->bus->ptm_rxts_validate, dhd->bus->ptm_bad_rxts_trap_th,
+		dhd->bus->ptm_bad_rxts_cont_cnt, dhd->bus->ptm_bad_rxts_cont_cnt_max,
+		dhd->bus->ptm_txts_validate, dhd->bus->ptm_bad_txts_trap_th,
+		dhd->bus->ptm_bad_txts_cont_cnt, dhd->bus->ptm_bad_txts_cont_cnt_max);
+
+	bcm_bprintf(b, "\nPTM TX Stats:");
+	bcm_bprintf(b, "tot_txcpl %d(%d), good_na %d, good %d, badts %d, invclk %d "
+		"bad %d, txsfail(inv: %d, bad: %d)\n",
+		dhd->tot_txcpl, dhd->bus->tot_txcpl_last,
+		dhd->bus->ptm_tx_ts_good_not_adopted_pkt_cnt,
+		dhd->bus->ptm_tx_ts_good_adopted_pkt_cnt,
+		dhd->bus->ptm_tx_ts_not_adopted_pkt_cnt, dhd->bus->txs_clkid_bad_ts,
+		dhd->bus->txs_clkid_invalid_clkid, dhd->bus->txs_fail_clkid_inv,
+		dhd->bus->txs_fail_clkid_bad_ts);
+
+	bcm_bprintf(b, "\nPTM RX Stats:");
+	bcm_bprintf(b, "tot_rxcpl %d(%d), good_na %d, good %d, badts %d, invclk %d, bad %d\n",
+		dhd->prot->tot_rxcpl, dhd->bus->tot_rxcpl_last,
+		dhd->bus->ptm_rx_ts_good_not_adopted_pkt_cnt,
+		dhd->bus->ptm_rx_ts_good_adopted_pkt_cnt,
+		dhd->bus->ptm_rx_ts_not_adopted_pkt_cnt, dhd->bus->rxs_clkid_invalid_clkid,
+		dhd->bus->rxs_clkid_bad_ts);
+}
+
+void
+dhd_prot_ptm_stats_clr(dhd_pub_t *dhd)
+{
+	dhd->bus->ptm_tx_ts_good_not_adopted_pkt_cnt = 0;
+	dhd->bus->ptm_tx_ts_good_adopted_pkt_cnt = 0;
+	dhd->bus->ptm_tx_ts_not_adopted_pkt_cnt = 0;
+	dhd->bus->txs_clkid_bad_ts = 0;
+	dhd->bus->txs_clkid_invalid_clkid = 0;
+	dhd->bus->txs_fail_clkid_inv = 0;
+	dhd->bus->txs_fail_clkid_bad_ts = 0;
+	dhd->bus->ptm_bad_txts_cont_cnt = 0;
+	dhd->bus->ptm_bad_txts_cont_cnt_max = 0;
+	dhd->bus->tot_txcpl_last = dhd->tot_txcpl;
+
+	dhd->bus->ptm_rx_ts_good_adopted_pkt_cnt = 0;
+	dhd->bus->ptm_rx_ts_good_not_adopted_pkt_cnt = 0;
+	dhd->bus->ptm_rx_ts_not_adopted_pkt_cnt = 0;
+	dhd->bus->rxs_clkid_invalid_clkid = 0;
+	dhd->bus->rxs_clkid_bad_ts = 0;
+	dhd->bus->ptm_bad_rxts_cont_cnt = 0;
+	dhd->bus->ptm_bad_rxts_cont_cnt_max = 0;
+	dhd->bus->tot_rxcpl_last = dhd->prot->tot_rxcpl;
+
+}
+
 /** Add prot dump output to a buffer */
 void dhd_prot_dump(dhd_pub_t *dhd, struct bcmstrbuf *b)
 {
@@ -12207,6 +12485,8 @@ void dhd_prot_dump(dhd_pub_t *dhd, struct bcmstrbuf *b)
 #endif /* DHD_DMA_INDICES_SEQNUM */
 
 	dhd_prot_counters(dhd, b, FALSE, FALSE);
+
+	dhd_prot_ptm_stats_dump(dhd, b);
 }
 
 void dhd_prot_counters(dhd_pub_t *dhd, struct bcmstrbuf *b,
@@ -17811,6 +18091,43 @@ dhd_update_rxstats(dhd_pub_t *dhd, host_rxbuf_cmpl_t *rxstatus, void *pkt)
 		rxcpl_info->rx_history[rxcpl_info->rxcpl_hist_count].ptm_low = ts->low;
 		rxcpl_info->rx_history[rxcpl_info->rxcpl_hist_count].host_time =
 			(uint32)OSL_SYSUPTIME_US();
+		if (dhd->bus->ptm_rxts_validate) {
+			/* validation of PTM TS to flag possible bad ts pkts */
+			if (!dhd_msgbuf_validate_ptm_rx_ts(dhd, ts)) {
+				/* host might trigger a wathdog on bad ts */
+				/* based on some threshold */
+				dhd->bus->ptm_bad_rxts_cont_cnt++;
+			}
+			else if (dhd->bus->ptm_bad_rxts_cont_cnt) {
+				if (dhd->bus->ptm_bad_rxts_cont_cnt >
+					dhd->bus->ptm_bad_rxts_cont_cnt_max)
+				{
+					dhd->bus->ptm_bad_rxts_cont_cnt_max =
+						dhd->bus->ptm_bad_rxts_cont_cnt;
+				}
+				dhd->bus->ptm_bad_rxts_cont_cnt = 0;
+			}
+		}
+	} else if (dhd->bus->ptm_rxts_validate) {
+		DHD_DATA(("RXTS: DHD invalid TS error 0x%08x-0x%08x\n", ts->high, ts->low));
+		dhd->bus->ptm_bad_rxts_cont_cnt++;
+		if (DHD_INV_CLKID(ts->high)) {
+			dhd->bus->rxs_clkid_invalid_clkid++;
+		}
+		else {
+			dhd->bus->rxs_clkid_bad_ts++;
+		}
+	}
+	if (dhd->bus->ptm_rxts_validate) {
+		if (dhd->bus->ptm_bad_rxts_trap_th &&
+			(dhd->bus->ptm_bad_rxts_cont_cnt >= dhd->bus->ptm_bad_rxts_trap_th))
+		{
+			DHD_ERROR(("DHD detected PTM-RX TS errors %d/%d\n",
+				dhd->bus->ptm_bad_rxts_cont_cnt, dhd->bus->ptm_bad_rxts_trap_th));
+			/* XXX: cause firwmare trap */
+			DHD_ERROR(("Force trap on firmware for bad RX PTM ts\n"));
+			dhdpcie_db7_trap(dhd->bus);
+		}
 	}
 
 	DHD_INFO(("%s:0x%x ptm_high:0x%x, ptm_low:0x%x, t0:0x%x "
@@ -17818,6 +18135,12 @@ dhd_update_rxstats(dhd_pub_t *dhd, host_rxbuf_cmpl_t *rxstatus, void *pkt)
 		"dur:%d useconds\n", __FUNCTION__, marker, ts->high,
 		ts->low, rx_t0, rx_t1,
 		slice, prio, rssi, dur));
+	DHD_DATA(("%s:0x%x ptm_high:0x%x, ptm_low:0x%x, t0:0x%x "
+		"rspec:0x%x, band:%d, prio:%d, rssi:%d, "
+		"dur:%d useconds\n", __FUNCTION__, marker, ts->high,
+		ts->low, rx_t0, rx_t1,
+		slice, prio, rssi, dur));
+
 	rxcpl_info->rxcpl_hist_count =
 		(rxcpl_info->rxcpl_hist_count +1) % MAX_RXCPL_HISTORY;
 

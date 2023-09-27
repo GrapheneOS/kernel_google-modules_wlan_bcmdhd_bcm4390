@@ -75,6 +75,7 @@
 #define DHD_FUNC_STR_LEN 80
 
 #define DHD_COREDUMP_MAGIC 0xDDCEDACF
+#define DHD_COREDUMP_MAGIC_LEN	(4u)
 #define TLV_TYPE_LENGTH_SIZE	(8u)
 /* coredump is composed as following TLV format.
  * Type(32bit) | Length(32bit) | Value(x bit)
@@ -95,8 +96,12 @@ enum coredump_types {
 #ifdef DHD_SDTC_ETB_DUMP
 	DHD_COREDUMP_TYPE_SDTC_ETB_DUMP         = 9,
 #endif /* DHD_SDTC_ETB_DUMP */
-	DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_BEFORE   = 10,
-	DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_AFTER    = 11
+	DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_BEFORE  = 10,
+	DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_AFTER   = 11,
+#ifdef COEX_CPU
+	DHD_COREDUMP_TYPE_COEX_DUMP             = 12,
+#endif /* COEX_CPU */
+	DHD_COREDUMP_TYPE_MAX			= 13
 };
 
 #ifdef DHD_SSSR_DUMP

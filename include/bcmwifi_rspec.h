@@ -71,7 +71,7 @@ typedef uint32 ratespec_bw_t;
 #define WL_RSPEC_LDPC		0x00400000u
 #define WL_RSPEC_SGI		0x00800000u	/* HT/VHT SGI indication */
 #define WL_RSPEC_SHORT_PREAMBLE	0x00800000u	/**< DSSS short preable - Encoding 0 */
-#ifdef WL11BE
+#if defined(WL11BE) || defined(WLC_SIGB_RX_11BE_RATE_DECODE)
 #define WL_RSPEC_ENCODING_MASK	0x07000000u	/**< Encoding of RSPEC_RATE field */
 #else
 #define WL_RSPEC_ENCODING_MASK	0x03000000u	/**< Encoding of RSPEC_RATE field */
@@ -256,7 +256,7 @@ typedef uint32 ratespec_bw_t;
 #else /* WL11AX */
 #define RSPEC_ISHE(rspec)	0
 #endif /* WL11AX */
-#ifdef WL11BE
+#if defined(WL11BE) || defined(WLC_SIGB_RX_11BE_RATE_DECODE)
 #define RSPEC_ISEHT(rspec)	(((rspec) & WL_RSPEC_ENCODING_MASK) == WL_RSPEC_ENCODE_EHT)
 #else /* WL11BE */
 #define RSPEC_ISEHT(rspec)	0
@@ -336,7 +336,7 @@ ratespec_t wf_vht_plcp_to_rspec(const uint8 *plcp);
 ratespec_t wf_he_plcp_to_rspec(const uint8 *plcp);
 ratespec_t wf_ht_plcp_to_rspec(const uint8 *plcp);
 #ifndef MOVE_WF_EHT_RXH_TO_RSPEC_TO_BCMWIFI_UTILS
-#if defined(BCMDRIVER) && defined(DONGLEBUILD)
+#if defined(BCMDRIVER) && (defined(DONGLEBUILD) || defined(WLC_SIGB_RX_11BE_RATE_DECODE))
 /* API to converting incoming RXH(ctx) to rspec based on corerev (minor/major) */
 ratespec_t wf_eht_rxh_to_rspec(d11rxhdr_t *rxh, uint corerev, uint corerev_minor);
 #endif /* BCMDRIVER && DONGLEBUILD */

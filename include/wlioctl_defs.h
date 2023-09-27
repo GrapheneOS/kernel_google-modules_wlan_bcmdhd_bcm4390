@@ -2738,8 +2738,9 @@ enum wl_cnt_xtlv_id {
 	WL_CNT_XTLV_WLC_HE_OMI = 0x104,		/* he omi counters */
 	WL_CNT_XTLV_WLC_RINIT_RSN_V2 = 0x105,	/**< WLC layer reinitreason extension */
 	WL_CNT_XTLV_WLC_MESH_PKT_V1 = 0x106,	/**< WLC layer Mesh pkt counters */
-	WL_CNT_XTLV_WLC_HE_TX = 0x107,		/* HE Tx counters */
-	WL_CNT_XTLV_WLC_HE_RX = 0x108,		/* HE Rx counters */
+	WL_CNT_XTLV_WLC_HE_TX = 0x107,		/* HE Tx counters for WL counters */
+	WL_CNT_XTLV_WLC_HE_RX = 0x108,		/* HE Rx counters for WL counters */
+
 	WL_CNT_XTLV_CNTV_LE10_UCODE = 0x200,	/**< wl counter ver < 11 UCODE MACSTAT */
 	WL_CNT_XTLV_LT40_UCODE_V1 = 0x300,	/**< corerev < 40 UCODE MACSTAT */
 	WL_CNT_XTLV_GE40_UCODE_V1 = 0x400,	/**< corerev >= 40 UCODE MACSTAT */
@@ -2760,14 +2761,30 @@ enum wl_cnt_xtlv_id {
 	WL_CNT_XTLV_DYN_BW_STATS_V1 = 0x100b,		/* Deprecated */
 	WL_CNT_XTLV_DYN_BW_STATS = 0x100c,		/* corerev >= 88 DynBW stats */
 	WL_CNT_XTLV_SLIM_SCAN_STATS = 0x100d,		/* Slim Scan stats */
-	/* For use in ecounters: maps to wl_cnt_ge88mcst_tx_wrap_v1_t */
-	WL_CNT_XTLV_GE88_UCODE_TX_LNKSTAT_WRAP_V1 = 0x100e,
-	/* For use in ecounters: maps to wl_cnt_ge88mcst_rx_wrap_v1_t */
-	WL_CNT_XTLV_GE88_UCODE_RX_LNKSTAT_WRAP_V1 = 0x100f,
-	/* For use in ecounters: maps to wl_cnt_ge88mcst_tx_u32_wrap_v1_t */
-	WL_CNT_XTLV_GE88_UCODE_TX_LNKSTAT_WRAP_U32_V1 = 0x1010,
-	/* For use in ecounters: maps to wl_cnt_ge88mcst_rx_u32_wrap_v1_t */
-	WL_CNT_XTLV_GE88_UCODE_RX_LNKSTAT_WRAP_U32_V1 = 0x1011
+	WL_CNT_XTLV_DATA_BW_STATS = 0x100e,		/* corerev >= 89 DataBW stats */
+	/* XLTVs in this gap are available for use */
+	/* scan aux core related additional counters */
+	WL_CNT_XTLV_SCANAUX_UCODE_V1 = 0x1012,
+
+	/* For use in ecounters */
+	WL_CNT_XTLV_UCODE_TX_BLK0 = 0x1013,
+	WL_CNT_XTLV_UCODE_RX_BLK0 = 0x1014,
+	WL_CNT_XTLV_UCODE_RXERR_BLK0 = 0x1015,
+	WL_CNT_XTLV_WLC_HE_OMI_BLK0 = 0x1016,
+	WL_CNT_XTLV_WLC_HE_RX_BLK0 = 0x1017,
+	WL_CNT_XTLV_WLC_HE_TX_BLK0 = 0x1018,
+	WL_CNT_XTLV_DYN_BW_BLK0 = 0x1019,
+	WL_CNT_XTLV_DATA_BW_BLK0 = 0x101a,
+	/* 14 XTLVs reserved for new counters that may need to be added */
+	WL_CNT_XTLV_UCODE_TX_BLK1 = 0x1028,
+	WL_CNT_XTLV_UCODE_RX_BLK1 = 0x1029,
+	WL_CNT_XTLV_UCODE_RXERR_BLK1 = 0x102a,
+	WL_CNT_XTLV_WLC_HE_OMI_BLK1 = 0x102b,
+	WL_CNT_XTLV_WLC_HE_RX_BLK1 = 0x102c,
+	WL_CNT_XTLV_WLC_HE_TX_BLK1 = 0x102d,
+	WL_CNT_XTLV_DYN_BW_BLK1 = 0x102e,
+	WL_CNT_XTLV_DATA_BW_BLK1 = 0x102f,
+	/* 14 XTLVs reserved for new counters that may need to be added */
 };
 
 /* bitmap for clm_flags iovar */
@@ -3327,6 +3344,7 @@ enum wlc_capext_feature_bitpos {
 	WLC_CAPEXT_FEATURE_BITPOS_PRUNE_WPA		= 129,
 	WLC_CAPEXT_FEATURE_BITPOS_SCCA			= 130,
 	WLC_CAPEXT_FEATURE_BITPOS_SC_6G_HE		= 131,
+	WLC_CAPEXT_FEATURE_BITPOS_SPMI_SCAN_FWD		= 132,
 
 	WLC_CAPEXT_FEATURE_BITPOS_MAX
 };

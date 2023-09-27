@@ -1181,7 +1181,11 @@ typedef enum wl_roam_conf {
 	ROAM_CONF_LINKDOWN,
 	ROAM_CONF_PRIMARY_STA,
 	ROAM_CONF_ROAM_ENAB_REQ,
-	ROAM_CONF_ROAM_DISAB_REQ
+	ROAM_CONF_ROAM_DISAB_REQ,
+	ROAM_CONF_NAN_ENABLE,
+	ROAM_CONF_NAN_DISABLE,
+	ROAM_CONF_AP_ENABLE,
+	ROAM_CONF_AP_DISABLE
 } wl_roam_conf_t;
 
 typedef enum wl_link_action {
@@ -2008,6 +2012,7 @@ typedef struct wlcfg_assoc_info {
 	bool reassoc;
 	bool bssid_hint;
 	u8 bssid[ETH_ALEN];
+	u8 mld[ETH_ALEN];
 	u16 ssid_len;
 	u8 ssid[DOT11_MAX_SSID_LEN];
 	s32 bssidx;
@@ -3440,7 +3445,6 @@ void wl_cfg80211_set_bcmcfg(struct bcm_cfg80211 *cfg);
 /* clear IEs */
 extern s32 wl_cfg80211_clear_mgmt_vndr_ies(struct bcm_cfg80211 *cfg);
 extern s32 wl_cfg80211_clear_per_bss_ies(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev);
-extern void wl_cfg80211_clear_p2p_disc_ies(struct bcm_cfg80211 *cfg);
 #ifdef WL_STATIC_IF
 extern int32 wl_cfg80211_update_iflist_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	int ifidx, uint8 *addr, int bssidx, char *name, int if_state);
@@ -3465,22 +3469,10 @@ extern bool wl_cfg80211_is_concurrent_mode(struct net_device * dev);
 extern void wl_cfg80211_disassoc(struct net_device *ndev, uint32 reason);
 extern void wl_cfg80211_del_all_sta(struct net_device *ndev, uint32 reason);
 extern void* wl_cfg80211_get_dhdp(struct net_device * dev);
-extern bool wl_cfg80211_is_p2p_active(struct net_device * dev);
 extern bool wl_cfg80211_is_roam_offload(struct net_device * dev);
 extern bool wl_cfg80211_is_event_from_connected_bssid(struct net_device * dev,
 		const wl_event_msg_t *e, int ifidx);
 extern void wl_cfg80211_dbg_level(u32 level);
-extern s32 wl_cfg80211_get_p2p_dev_addr(struct net_device *net, struct ether_addr *p2pdev_addr);
-extern s32 wl_cfg80211_set_p2p_noa(struct net_device *net, char* buf, int len);
-extern s32 wl_cfg80211_get_p2p_noa(struct net_device *net, char* buf, int len);
-extern s32 wl_cfg80211_set_wps_p2p_ie(struct net_device *net, char *buf, int len,
-	enum wl_management_type type);
-extern s32 wl_cfg80211_set_p2p_ps(struct net_device *net, char* buf, int len);
-extern s32 wl_cfg80211_set_p2p_ecsa(struct net_device *net, char* buf, int len);
-extern s32 wl_cfg80211_increase_p2p_bw(struct net_device *net, char* buf, int len);
-#ifdef P2PLISTEN_AP_SAMECHN
-extern s32 wl_cfg80211_set_p2p_resp_ap_chn(struct net_device *net, s32 enable);
-#endif /* P2PLISTEN_AP_SAMECHN */
 
 #if defined(OEM_ANDROID)
 /* btcoex functions */
@@ -3663,9 +3655,6 @@ extern uint8 wl_cfg80211_get_iface_conc_disc(struct net_device *ndev);
 #endif /* WL_NANP2P */
 #endif /* WL_NAN */
 
-#ifdef WL_CFG80211_P2P_DEV_IF
-extern void wl_cfg80211_del_p2p_wdev(struct net_device *dev);
-#endif /* WL_CFG80211_P2P_DEV_IF */
 #ifdef WL_CFG80211_SYNC_GON
 #define WL_DRV_STATUS_SENDING_AF_FRM_EXT(cfg) \
 	(wl_get_drv_status_all(cfg, SENDING_ACT_FRM) || \
@@ -3728,7 +3717,6 @@ extern int wl_cfg80211_ifstats_counters(struct net_device *dev, u8 link_id,
 	wl_if_stats_t *if_stats);
 extern int wl_cfg80211_ifstats_counters_cb(void *ctx, const uint8 *data, uint16 type, uint16 len);
 extern s32 wl_cfg80211_set_dbg_verbose(struct net_device *ndev, u32 level);
-extern int wl_cfg80211_deinit_p2p_discovery(struct bcm_cfg80211 * cfg);
 extern int wl_cfg80211_set_frameburst(struct bcm_cfg80211 *cfg, bool enable);
 extern int wl_cfg80211_determine_rsdb_scc_mode(struct bcm_cfg80211 *cfg, u8 link_idx);
 extern uint8 wl_cfg80211_get_bus_state(struct bcm_cfg80211 *cfg);
@@ -3824,8 +3812,6 @@ extern bool dhd_force_country_change(struct net_device *dev);
 extern u32 wl_dbg_level;
 extern u32 wl_log_level;
 extern u32 wl_cfg80211_debug_data_dump(struct net_device *dev, u8 *buf, u32 buf_len);
-extern void wl_cfg80211_concurrent_roam(struct bcm_cfg80211 *cfg, int enable);
-
 extern s32 wl_cfg80211_iface_state_ops(struct wireless_dev *wdev, wl_interface_state_t state,
 	wl_iftype_t wl_iftype, u16 wl_mode);
 extern chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy);
@@ -3930,8 +3916,7 @@ extern s32 wl_cfgvendor_notify_twt_event(struct bcm_cfg80211 *cfg,
 extern int wl_get_all_sideband_chanspecs(uint center_channel, chanspec_band_t band,
 	chanspec_bw_t bw, chanspec_t *chspecs, int *cnt);
 
-extern int wl_cfg80211_reassoc(struct net_device *dev, struct ether_addr *bssid,
-	chanspec_t chanspec);
+extern int wl_cfg80211_reassoc(struct net_device *dev, wlcfg_assoc_info_t *info);
 extern void wl_cfg80211_set_suspend_bcn_li_dtim(struct bcm_cfg80211 *cfg,
 		struct net_device *dev, bool suspend);
 extern void wl_cfg80211_soft_suspend(struct net_device *dev, bool supsend);
@@ -3975,9 +3960,6 @@ typedef struct wl_ext_reassoc_params_cvt_v1 {
 	wl_reassoc_params_cvt_v1_t params;
 } wl_ext_reassoc_params_cvt_v1_t;
 
-#define WL_REASSOC_VERSION_V0	0u
-#define WL_REASSOC_VERSION_V1	WL_JOIN_VERSION_MAJOR_1
-#define WL_REASSOC_VERSION_V2	WL_EXT_REASSOC_VER_1
 #ifdef WL_CP_COEX
 struct wl_cp_coex {
 	int ch_cpcoex;

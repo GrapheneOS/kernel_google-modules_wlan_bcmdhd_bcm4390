@@ -1440,7 +1440,11 @@ wl_cellavoid_handle_apsta_concurrency(struct bcm_cfg80211 *cfg)
 	}
 
 	/* Check whether AP and STA is already operational */
-	wl_get_ap_chanspecs(cfg, &ap_oper_data);
+	ret = wl_get_ap_chanspecs(cfg, &ap_oper_data);
+	if (ret != BCME_OK) {
+		WL_ERR(("Failed to get ap chanspec, ret: %d\n", ret));
+		return ret;
+	}
 	sta_chanspec = wl_cfg80211_get_sta_chanspec(cfg);
 
 	/* If there's any AP interface */

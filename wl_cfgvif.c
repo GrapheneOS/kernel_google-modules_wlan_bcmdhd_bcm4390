@@ -895,7 +895,7 @@ wl_cfg80211_handle_discovery_config(struct bcm_cfg80211 *cfg,
 
 	if (disable_p2p) {
 		/* Disable p2p discovery */
-		ret = wl_cfg80211_deinit_p2p_discovery(cfg);
+		ret = wl_cfgp2p_deinit_p2p_discovery(cfg);
 		if (ret != BCME_OK) {
 			/* Should we fail nan enab here */
 			WL_ERR(("Failed to disable p2p_disc for allowing nan\n"));
@@ -1111,12 +1111,20 @@ wl_get_vif_macaddr(struct bcm_cfg80211 *cfg, u16 wl_iftype, u8 *mac_addr)
 
 #ifdef WL_MLO
 void
-wl_mlo_update_linkaddr(wl_mlo_config_v1_t *mlo_config)
+wl_cfgvif_mlo_update_linkaddr(wl_mlo_config_v1_t *mlo_config)
 {
 	u8 i = 0;
 	u8 mac_addr[ETH_ALEN];
 
 	(void)memcpy_s(&mac_addr, ETH_ALEN, &mlo_config->mld_addr, ETH_ALEN);
+	if (mlo_config->num_links == 1) {
+		/* For single link mlo, use mld_addr == link_addr */
+		eacopy(&mac_addr, &mlo_config->link_config[0].link_addr);
+		WL_DBG(("use mld_addr == link_addr. " MACDBG "\n",
+			MAC2STRDBG(&mlo_config->link_config[0].link_addr)));
+		return;
+	}
+
 	ETHER_SET_LOCALADDR(&mac_addr);
 	for (i = 0; i < mlo_config->num_links; i++) {
 		/* recommended logic by android mlo I/F doc */
@@ -1768,6 +1776,7 @@ wl_cfg80211_set_chan_mlo_concurrency(struct bcm_cfg80211 *cfg, struct net_info *
 	chanspec_t target_chspec = INVCHANSPEC;
 	chanspec_t pri_chspec = INVCHANSPEC;
 	chanspec_t sta_chanspecs[WLC_BAND_6G + 1] = {INVCHANSPEC};
+	wl_ap_oper_data_t ap_oper_data = {0};
 	int i;
 	u16 sta_band = 0;
 
@@ -1782,6 +1791,26 @@ wl_cfg80211_set_chan_mlo_concurrency(struct bcm_cfg80211 *cfg, struct net_info *
 		/* Update the primary chanspec */
 		if (mld_netinfo->mlinfo.links[i].link_idx == 0) {
 			pri_chspec =  sta_chspec;
+		}
+	}
+
+	/* Check whether AP is already operational */
+	wl_get_ap_chanspecs(cfg, &ap_oper_data);
+	if (ap_oper_data.count == 1) {
+		chanspec_t ch = ap_oper_data.iface[0].chspec;
+		u16 ap_band, incoming_band;
+
+		/* Single AP case. Bring up the AP in the other band */
+		ap_band = CHSPEC_TO_WLC_BAND(ch);
+		incoming_band = CHSPEC_TO_WLC_BAND(ap_chspec);
+		WL_DBG_MEM(("AP operational in band:%d and incoming band:%d\n",
+			ap_band, incoming_band));
+		/* if incoming and operational AP band is same,
+		 * it is invalid case
+		 */
+		if (ap_band == incoming_band) {
+			WL_ERR(("DUAL AP not allowed on same band :%d\n", ap_band));
+			return INVCHANSPEC;
 		}
 	}
 
@@ -1885,6 +1914,7 @@ wl_get_overlapping_chspecs(chanspec_t sel_chspec,
 	int i, j;
 	u8 max_idx = *arr_idx;
 	u8 chan_idx = 0;
+	u8 max_num_chans = 0;
 	u32 band;
 	chanspec_t chspec;
 	u32 chaninfo;
@@ -1903,15 +1933,19 @@ wl_get_overlapping_chspecs(chanspec_t sel_chspec,
 	for (i = 0; i < max_idx; i++) {
 		chspec = overlap[i].chanspec;
 		chaninfo = overlap[i].chaninfo;
+		max_num_chans =
+			MIN(wl_cfgscan_get_max_num_chans_per_bw(chspec),
+				MAX_20MHZ_CHANNELS);
+
 		if (band != CHSPEC_BAND(chspec)) {
 			continue;
 		}
-		for (j = 0; j < MAX_20MHZ_CHANNELS; j++) {
+		for (j = 0; j < max_num_chans; j++) {
 			if (!chan_array[j]) {
-				/* if list is empty, break */
-				break;
+				/* if list entry is empty, continue to look further */
+				continue;
 			}
-			if ((chan_array[j] == CHSPEC_CHANNEL(chspec))) {
+			if (chan_array[j] == CHSPEC_CHANNEL(chspec)) {
 				new_arr[chan_idx].chanspec = chspec;
 				new_arr[chan_idx].chaninfo = chaninfo;
 				WL_DBG(("sel_chspec:%x overlap_chspec:%x\n",
@@ -1952,6 +1986,7 @@ wl_filter_restricted_subbands(struct bcm_cfg80211 *cfg,
 	s32 err = BCME_OK;
 	u32 tot_size = 0;
 	u32 band;
+	u8 max_num_chans = 0;
 
 	chan_list = (wl_chanspec_list_v1_t *)MALLOCZ(cfg->osh, CHANINFO_LIST_BUF_SIZE);
 	if (chan_list == NULL) {
@@ -2001,16 +2036,19 @@ wl_filter_restricted_subbands(struct bcm_cfg80211 *cfg,
 	band = CHSPEC_BAND(sel_chspec);
 	wf_get_all_ext(sel_chspec, chan_array);
 	bzero(overlap, sizeof(overlap));
-	 for (i = 0; i < dtoh32(list_count); i++) {
-		 chspec = dtoh32(chan_list->chspecs[i].chanspec);
-		 chaninfo = dtoh32(chan_list->chspecs[i].chaninfo);
+	for (i = 0; i < dtoh32(list_count); i++) {
+		chspec = dtoh32(chan_list->chspecs[i].chanspec);
+		chaninfo = dtoh32(chan_list->chspecs[i].chaninfo);
+		max_num_chans =
+			MIN(wl_cfgscan_get_max_num_chans_per_bw(chspec),
+				MAX_20MHZ_CHANNELS);
 
 		/* get overlapping chanspec, chaninfo details based on current chanspec */
 		if ((CHSPEC_BAND(chspec) == band) && (CHSPEC_BW(chspec) == WL_CHANSPEC_BW_20)) {
-			for (j = 0; j < MAX_20MHZ_CHANNELS; j++) {
+			for (j = 0; j < max_num_chans; j++) {
 				if (!chan_array[j]) {
-					/* if entry is empty, break */
-					break;
+					/* if entry is empty, look further */
+					continue;
 				}
 				if (chan_array[j] == CHSPEC_CHANNEL(chspec)) {
 					overlap[arr_idx].chanspec = chspec;
@@ -2120,10 +2158,9 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	}
 #endif /* WL_UNII4_CHAN */
 	/* Check whether AP is already operational */
-	wl_get_ap_chanspecs(cfg, &ap_oper_data);
-	if (ap_oper_data.count >= MAX_AP_IFACES) {
-		WL_ERR(("ACS request in multi AP case!! count:%d\n",
-			ap_oper_data.count));
+	err = wl_get_ap_chanspecs(cfg, &ap_oper_data);
+	if (err != BCME_OK) {
+		WL_ERR(("Failed to get ap chanspec, err: %d\n", err));
 		return -EINVAL;
 	}
 
@@ -3764,6 +3801,8 @@ wl_cfg80211_bcn_bringup_ap(
 	s32 err = BCME_OK;
 	s32 is_rsdb_supported = BCME_ERROR;
 	u8 buf[WLC_IOCTL_SMLEN] = {0};
+	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
+	bool dyn_rsdb = FW_SUPPORTED(dhd, sdb_modesw);
 
 #if defined (BCMDONGLEHOST)
 	is_rsdb_supported = DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_RSDB_MODE);
@@ -3834,6 +3873,10 @@ wl_cfg80211_bcn_bringup_ap(
 		} else
 			WL_DBG(("Bss is already up\n"));
 	} else if (dev_role == NL80211_IFTYPE_AP) {
+
+		if (dyn_rsdb) {
+			wl_cfgvif_roam_config(cfg, dev, ROAM_CONF_AP_ENABLE);
+		}
 
 		if (!wl_get_drv_status(cfg, AP_CREATING, dev)) {
 			/* Make sure fw is in proper state */
@@ -4025,6 +4068,10 @@ exit:
 			WL_DBG(("cancelled ap_work\n"));
 		}
 		wl_clr_drv_status(cfg, AP_BSS_UP_IN_PROG, dev);
+
+		if ((dev_role == NL80211_IFTYPE_AP) && dyn_rsdb) {
+			wl_cfgvif_roam_config(cfg, dev, ROAM_CONF_AP_DISABLE);
+		}
 	}
 	return err;
 }
@@ -4902,15 +4949,14 @@ wl_cfg80211_stop_ap(
 	s32 bssidx = 0;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	s32 is_rsdb_supported = BCME_ERROR;
-#ifdef BCMDONGLEHOST
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-#endif /* BCMDONGLEHOST */
 #ifdef CUSTOMER_HW4
 #ifdef DHD_PCIE_RUNTIMEPM
 	int idletime = MAX_IDLE_COUNT;
 #endif /* DHD_PCIE_RUNTIMEPM */
 #endif /* CUSTOMER_HW4 */
 	u8 null_mac[ETH_ALEN];
+	bool dyn_rsdb = FW_SUPPORTED(dhd, sdb_modesw);
 
 	WL_DBG(("Enter \n"));
 
@@ -4982,6 +5028,9 @@ wl_cfg80211_stop_ap(
 		WL_ERR(("bss down error %d\n", err));
 	}
 
+	if (dyn_rsdb) {
+		wl_cfgvif_roam_config(cfg, dev, ROAM_CONF_AP_DISABLE);
+	}
 #if defined(WL_MLO) && defined(WL_MLO_AP)
 	if (cfg->mlo.supported && mlo_ap_enable) {
 		if ((err = wl_stop_mlo_ap(cfg, dev)) != BCME_OK) {
@@ -8226,8 +8275,7 @@ wl_roam_off_config(struct net_device *dev, bool val)
 	return err;
 }
 
-#ifdef WL_DUAL_APSTA
-static void
+void
 wl_roam_enable_on_connected(struct bcm_cfg80211 *cfg,
 		bool enable)
 {
@@ -8254,8 +8302,8 @@ wl_roam_enable_on_connected(struct bcm_cfg80211 *cfg,
  * Enable: Enable roam only for primary STA
  */
 static void
-wl_dualsta_enable_roam(struct bcm_cfg80211 *cfg,
-		struct net_device *dev, bool enable)
+wl_sta_enable_roam(struct bcm_cfg80211 *cfg,
+		struct net_device *primary_dev, bool enable)
 {
 	struct net_info *iter, *next;
 	bool roam_val = false;
@@ -8264,27 +8312,37 @@ wl_dualsta_enable_roam(struct bcm_cfg80211 *cfg,
 	for_each_ndev(cfg, iter, next) {
 		GCC_DIAGNOSTIC_POP();
 		if ((iter->ndev) &&
-				(iter->ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_STATION)) {
+				(iter->iftype == WL_IF_TYPE_STA)) {
 
 			roam_val = enable ? FALSE : TRUE;
-			if (enable && iter->ndev != cfg->inet_ndev) {
+			if (enable && iter->ndev != primary_dev) {
 				/* For enable case, the roam is supposed to enabled only
 				 * on primary. For other interfaces, disable it
 				 */
 				wl_roam_off_config(iter->ndev, TRUE);
+#ifdef OEM_ANDROID
+				wl_android_rcroam_turn_on(iter->ndev, FALSE);
+#endif /* OEM_ANDROID */
 				WL_DBG_MEM(("non-primary ndev. skip roam enable\n"));
 				continue;
 			}
 			wl_roam_off_config(iter->ndev, roam_val);
+#ifdef OEM_ANDROID
+			wl_android_rcroam_turn_on(iter->ndev, enable);
+#endif /* OEM_ANDROID */
 		}
 	}
 }
-#endif /* WL_DUAL_APSTA */
 
 void
 wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		wl_roam_conf_t state)
 {
+	struct net_device *primary_sta = NULL;
+	bool conc_conflict = FALSE;
+	bool attempt_roam_enable = FALSE;
+	bool force_roam_disable = FALSE;
+
 	if (!cfg || !dev) {
 		WL_ERR(("invalid args\n"));
 		return;
@@ -8292,107 +8350,111 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 
 	WL_DBG_MEM(("Enter. state:%d stas:%d\n", state, cfg->stas_associated));
 
-	if (!IS_STA_IFACE(dev->ieee80211_ptr)) {
-		WL_ERR(("non-sta iface. ignore.\n"));
-		return;
-	}
-
 	/*
 	 * We support roam only on one STA interface at a time (meant for internet
 	 * traffic. For ROAM enable cases, if more than one STA interface is in
 	 * connected state, the primary interface is expected to be set (inet_ndev)
 	 */
-
-	if (state == ROAM_CONF_ROAM_DISAB_REQ) {
-		cfg->disable_fw_roam = TRUE;
-#ifdef WL_DUAL_APSTA
-		wl_android_rcroam_turn_on(dev, FALSE);
-#endif /* WL_DUAL_APSTA */
-		/* roam off for incoming ndev interface */
-		wl_roam_off_config(dev, TRUE);
-		return;
-	} else if (state == ROAM_CONF_ROAM_ENAB_REQ) {
-		cfg->disable_fw_roam = FALSE;
-#ifdef WL_DUAL_APSTA
-		if ((cfg->stas_associated >= 1)) {
-			WL_DBG_MEM(("Roam enable with more than one interface connected.\n"));
-			/* If roam enable comes with > 1 iface connected, enable it on primary */
-			if (!cfg->inet_ndev) {
-				WL_ERR(("primary_sta (inet_ndev) not set! skip roam enable\n"));
-				return;
+	if (cfg->stas_associated == 1) {
+		struct net_info *iter, *next;
+		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+		/* For single STA connected case, treat it as primary STA */
+		for_each_ndev(cfg, iter, next) {
+			GCC_DIAGNOSTIC_POP();
+			if (iter->ndev && (iter->iftype == WL_IF_TYPE_STA) &&
+				wl_get_drv_status(cfg, CONNECTED, iter->ndev)) {
+				primary_sta = iter->ndev;
 			}
-			/* Enable roam on primary, disable on others */
-			wl_dualsta_enable_roam(cfg, cfg->inet_ndev, TRUE);
-			wl_android_rcroam_turn_on(cfg->inet_ndev, TRUE);
+		}
+		if (!primary_sta) {
+			WL_ERR(("associated ndev not found\n"));
 			return;
 		}
-#endif /* WL_DUAL_APSTA */
-
-		/* ROAM enable */
-		wl_roam_off_config(dev, FALSE);
-		/* Single Interface. Enable back rcroam */
-#ifdef WL_DUAL_APSTA
-		wl_android_rcroam_turn_on(dev, TRUE);
-#endif /* WL_DUAL_APSTA */
-		return;
+	} else if (cfg->stas_associated == 2) {
+		if (!cfg->inet_ndev) {
+			WL_ERR(("primary_sta (inet_ndev) not configured! skip roam enable\n"));
+			return;
+		}
+		primary_sta = cfg->inet_ndev;
 	}
 
+	if (!primary_sta) {
+		/* In non associated case, use default interface */
+		primary_sta = bcmcfg_to_prmry_ndev(cfg);
+	}
 
-	if (cfg->disable_fw_roam) {
+	/* check states for whether to attempt or disable roam */
+	conc_conflict = wl_get_drv_status_all(cfg, AP_CREATED) ? TRUE : FALSE;
+#if defined(WL_NAN) && defined(ROAM_DISABLE_NAN_STA_CONC)
+	if (!conc_conflict) {
+		conc_conflict = wl_cfgnan_is_enabled(cfg) ? TRUE : FALSE;
+	}
+	if (state == ROAM_CONF_NAN_ENABLE) {
+		/* Disable STA roam */
+		force_roam_disable = TRUE;
+	} else if (state == ROAM_CONF_NAN_DISABLE) {
+		/* check for roam enable */
+		attempt_roam_enable = TRUE;
+	} else
+#endif /* ROAM_DISABLE_NAN_STA_CONC */
+	if (((state == ROAM_CONF_ASSOC_REQ) &&
+		(cfg->stas_associated >= 1)) || (state == ROAM_CONF_AP_ENABLE)) {
+		/* Disable STA roam:
+		 * 1. If there is already one connected STA
+		 * 2. concurrency conflict.
+		 * this is only for the duration of connection. Enable roam back on
+		 * primary interface from link up or concurrency conflict removal.
+		 */
+		force_roam_disable = TRUE;
+	} if ((state == ROAM_CONF_LINKDOWN) ||
+		(state == ROAM_CONF_PRIMARY_STA) || (state == ROAM_CONF_LINKUP) ||
+		(state == ROAM_CONF_AP_DISABLE)) {
+		attempt_roam_enable = TRUE;
+	}
+
+	/* ROAM_CONF_ROAM_ENABLE/DISAB_REQ are framework commands and expected to
+	 * operate on the interface on which it is applied. Since we support roam
+	 * only on one interface, disable roam on other interface.
+	 */
+	if (state == ROAM_CONF_ROAM_DISAB_REQ) {
+		/* roam off for incoming ndev interface */
+		cfg->disable_fw_roam = TRUE;
+#ifdef OEM_ANDROID
+		wl_android_rcroam_turn_on(dev, FALSE);
+#endif /* OEM_ANDROID */
+		wl_roam_off_config(dev, TRUE);
+		return;
+	} else if ((state == ROAM_CONF_ROAM_ENAB_REQ) && !conc_conflict) {
+		/* If roam enable comes with > 1 iface connected, enable it on primary */
+		cfg->disable_fw_roam = FALSE;
+		if (primary_sta) {
+			/* Enable roam on primary, disable on others */
+			wl_sta_enable_roam(cfg, primary_sta, TRUE);
+			return;
+		}
+	}
+
+	if (cfg->disable_fw_roam && attempt_roam_enable) {
 		/* Framework has disabled roam, don't change roam states within the DHD */
 		WL_INFORM_MEM(("fwk roam disable active. don't handle state:%d\n", state));
 		return;
 	}
 
-#ifdef WL_DUAL_APSTA
-	if (state == ROAM_CONF_LINKUP) {
-		if (cfg->stas_associated == 2) {
-			/* Apply  ROAM_CONF_PRIMARY_STA configuration */
-			state = ROAM_CONF_PRIMARY_STA;
-		} else if (cfg->stas_associated == 1) {
-			/* Single sta case. Enable ROAM */
-			wl_roam_off_config(dev, FALSE);
-			wl_android_rcroam_turn_on(dev, TRUE);
-		} else {
-			WL_ERR(("roam_config unexpected state. stas:%d\n",
-				cfg->stas_associated));
-			return;
-		}
-
-	}
-
-	if (state == ROAM_CONF_PRIMARY_STA) {
-		/* Enable roam on primary STA */
-		if (!cfg->inet_ndev) {
-			WL_ERR(("primary_sta (inet_ndev) not configured! skip roam enable\n"));
-			return;
-		}
-
+	if ((attempt_roam_enable) && !conc_conflict) {
 		/* Enable roam on primary, disable on others */
-		wl_dualsta_enable_roam(cfg, cfg->inet_ndev, TRUE);
-		wl_android_rcroam_turn_on(dev, TRUE);
+		WL_DBG_MEM(("state:%d attempt roam enable\n", state));
+		wl_sta_enable_roam(cfg, primary_sta, TRUE);
 		return;
 	}
 
-	if ((state == ROAM_CONF_ASSOC_REQ) &&
-			(cfg->stas_associated >= 1))  {
-		/* If we already have another STA connected, disable ROAM
-		 * on both STA interfaces. Enable it back from linkdown or
-		 * setPrimarySta context.
+	if (force_roam_disable == TRUE)  {
+		/* If we already have another STA connected or NAN enabled,
+		 * disable ROAM on both STA interfaces. Enable it back from
+		 * linkdown or setPrimarySta context.
 		 */
-		wl_android_rcroam_turn_on(dev, FALSE);
-		wl_dualsta_enable_roam(cfg, dev, FALSE);
-
-	} else if (state == ROAM_CONF_LINKDOWN) {
-		/* If link down came for STA interface and there are no two active STA
-		 * connections, enable back the roam
-		 */
-		if (cfg->stas_associated == 1) {
-			wl_roam_enable_on_connected(cfg, TRUE);
-			wl_android_rcroam_turn_on(dev, TRUE);
-		}
+		WL_DBG_MEM(("state:%d force roam disable\n", state));
+		wl_sta_enable_roam(cfg, dev, FALSE);
 	}
-#endif /* WL_DUAL_APSTA */
 }
 
 #ifdef SUPPORT_AP_INIT_BWCONF
@@ -9239,6 +9301,7 @@ wl_cfgvif_is_scc_valid(chanspec_t sta_chanspec, chanspec_t chspec, wl_chan_info_
 	u8 *chan_array;
 	s32 i;
 	u32 sta_band;
+	u8 max_num_chans = 0;
 
 	if (!wl_chaninfo) {
 		WL_ERR(("chaninfo detail null\n"));
@@ -9253,11 +9316,15 @@ wl_cfgvif_is_scc_valid(chanspec_t sta_chanspec, chanspec_t chspec, wl_chan_info_
 	}
 
 	sta_band = CHSPEC_TO_WLC_BAND(CHSPEC_BAND(sta_chanspec));
+	max_num_chans =
+		MIN(wl_cfgscan_get_max_num_chans_per_bw(sta_chanspec),
+			MAX_20MHZ_CHANNELS);
+
 	/* if channel is overlapping for the incoming chanspec */
-	for (i = 0; i < MAX_20MHZ_CHANNELS; i++) {
+	for (i = 0; i < max_num_chans; i++) {
 
 		if (!chan_array[i]) {
-			break;
+			continue;
 		}
 
 		if (chan_array[i] == wf_chspec_ctlchan(chspec)) {

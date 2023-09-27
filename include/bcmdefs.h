@@ -24,10 +24,6 @@
 #ifndef	_bcmdefs_h_
 #define	_bcmdefs_h_
 
-#ifndef BCM_FLEX_ARRAY
-#define BCM_FLEX_ARRAY  (1)
-#endif /* BCM_FLEX_ARRAY */
-
 /*
  * One doesn't need to include this file explicitly, gets included automatically if
  * typedefs.h is included.
@@ -900,6 +896,19 @@ extern uint32 gFWID;
 #else
 	#define UDCC_ENAB() (FALSE)
 #endif /* UDCC */
+
+#ifdef URB_MON_GIANT_PKT /* URB Mon giant packet enab macro  */
+	extern bool _urb_giantpkt_enab;
+#if defined(ROM_ENAB_RUNTIME_CHECK) || !defined(DONGLEBUILD)
+	#define URB_MON_GIANTPKT_ENAB() (_urb_giantpkt_enab)
+#elif defined(URB_MON_GIANT_PKT_DISABLED)
+	#define URB_MON_GIANTPKT_ENAB() (FALSE)
+#else
+	#define URB_MON_GIANTPKT_ENAB() (TRUE)
+#endif
+#else
+	#define URB_MON_GIANTPKT_ENAB() (FALSE)
+#endif /* URB_MON_GIANT_PKT */
 
 #ifdef TX_HISTOGRAM
 extern bool _tx_histogram_enabled;

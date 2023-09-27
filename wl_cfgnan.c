@@ -3890,7 +3890,9 @@ wl_cfgnan_disable_cleanup(struct bcm_cfg80211 *cfg)
 		nancfg->ndp_id[i] = 0;
 	}
 	nancfg->nan_dp_count = 0;
-	wl_cfg80211_concurrent_roam(cfg, false);
+
+	wl_cfgvif_roam_config(cfg,
+			bcmcfg_to_prmry_ndev(cfg), ROAM_CONF_NAN_DISABLE);
 	return;
 }
 
@@ -6895,6 +6897,10 @@ wl_cfgnan_get_capability(struct net_device *ndev,
 	if (fw_cap->flags1 & WL_NAN_FW_CAP_FLAG1_SUSPENSION) {
 		capabilities->is_suspension_supported = true;
 		cfg->nancfg->is_suspension_supported = true;
+	}
+
+	if (fw_cap->flags1 & WL_NAN_FW_CAP_FLAG1_6G) {
+		cfg->nancfg->is_6g_nan_supported = true;
 	}
 
 fail:
@@ -10008,7 +10014,8 @@ wl_cfgnan_update_dp_info(struct bcm_cfg80211 *cfg, bool add,
 			nancfg->ndp_id[i] = ndp_id;
 			WL_DBG(("%s:Added ndp id = [%d] at i = %d\n",
 					__FUNCTION__, nancfg->ndp_id[i], i));
-			wl_cfg80211_concurrent_roam(cfg, true);
+			wl_cfgvif_roam_config(cfg,
+				bcmcfg_to_prmry_ndev(cfg), ROAM_CONF_NAN_ENABLE);
 		}
 	} else {
 		ASSERT(nancfg->nan_dp_count);
@@ -10032,7 +10039,8 @@ wl_cfgnan_update_dp_info(struct bcm_cfg80211 *cfg, bool add,
 				WL_ERR(("Received unsaved NDP Id = %d !!\n", ndp_id));
 			} else {
 				if (nancfg->nan_dp_count == 0) {
-					wl_cfg80211_concurrent_roam(cfg, false);
+					wl_cfgvif_roam_config(cfg,
+						bcmcfg_to_prmry_ndev(cfg), ROAM_CONF_NAN_DISABLE);
 					wl_cfgnan_immediate_nan_disable_pending(cfg);
 				}
 			}

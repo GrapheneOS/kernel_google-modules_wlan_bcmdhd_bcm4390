@@ -132,6 +132,18 @@ get_asd(const si_t *sih, uint32 **eromptr, uint sp, uint ad, uint st, uint32 *ad
 	return asd;
 }
 
+/* If OOBR_TYPE is NIC-400 (bits [2:0] value 0x1) in EromPtrOffset,
+ * it means that Erom is in OOBR
+ */
+bool
+BCMATTACHFN(ai_erom_in_oobr)(si_info_t *sii, void *regs)
+{
+	chipcregs_t *cc = (chipcregs_t *)regs;
+	uint32 erombase = R_REG(sii->osh, CC_REG_ADDR(cc, EromPtrOffset));
+
+	return (erombase & ID_NODETYPE_MASK) ? TRUE : FALSE;
+}
+
 /* Parse the enumeration rom to identify all cores */
 void
 BCMATTACHFN(ai_scan)(si_t *sih, void *regs, uint devid)
@@ -1349,15 +1361,6 @@ BCMPOSTTRAPFN(ai_core_reset)(si_t *sih, uint32 bits, uint32 resetbits)
 
 	_ai_core_reset(sih, bits, resetbits);
 }
-
-#ifdef BOOKER_NIC400_INF
-void
-BCMPOSTTRAPFN(ai_core_reset_ext)(const si_t *sih, uint32 bits, uint32 resetbits)
-{
-	_ai_core_reset(sih, bits, resetbits);
-}
-#endif /* BOOKER_NIC400_INF */
-
 
 void
 ai_core_cflags_wo(const si_t *sih, uint32 mask, uint32 val)

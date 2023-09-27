@@ -217,7 +217,7 @@ typedef struct ap_oper_data {
 
 extern bool wl_cfgscan_check_dynamic_restrictions(struct bcm_cfg80211 *cfg,
 		chanspec_t chspec, u8 *indoor_restrict);
-extern void wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data);
+extern int wl_get_ap_chanspecs(struct bcm_cfg80211 *cfg, wl_ap_oper_data_t *ap_data);
 
 extern int wl_android_get_sta_channel(struct bcm_cfg80211 *cfg);
 extern int wl_handle_acs_concurrency_cases(struct bcm_cfg80211 *cfg,
@@ -249,4 +249,5 @@ extern s32
 wl_cfgscan_get_bw_chspec(chanspec_t *chspec, u32 bw);
 extern s32 wl_cfgscan_get_chan_info(struct bcm_cfg80211 *cfg,
 		u32 *chan_info, chanspec_t in_chspec);
+extern u8 wl_cfgscan_get_max_num_chans_per_bw(chanspec_t chspec);
 #endif /* _wl_cfgscan_h_ */

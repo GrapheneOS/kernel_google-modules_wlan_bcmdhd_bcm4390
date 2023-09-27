@@ -72,6 +72,8 @@
 #define DS_EXIT_TIMEOUT	1000 /* In ms */
 #define DS_ENTER_TIMEOUT 1000 /* In ms */
 
+#define D0_EXIT_TIMEOUT	D3_ACK_RESP_TIMEOUT /* In ms */
+
 #define IOCTL_DISABLE_TIMEOUT 0
 
 /*
@@ -300,4 +302,16 @@ extern void dhd_prot_smmu_fault_dump(dhd_pub_t *dhdp);
 
 uint16 dhd_prot_get_h2d_txpost_size(dhd_pub_t *dhd);
 void dhd_prot_set_ring_size_ver(dhd_pub_t *dhd, int version);
+void dhd_prot_clearcounts(dhd_pub_t *dhd);
+
+#ifdef TX_FLOW_RING_INDICES_TRACE
+void dhd_tx_flowring_indices_trace_dump(dhd_pub_t *dhdp);
+#else
+static INLINE void dhd_tx_flowring_indices_trace_dump(dhd_pub_t *dhdp)
+{ return; }
+#endif /* TX_FLOW_RING_INDICES_TRACE */
+
+extern void dhd_prot_ptm_stats_dump(dhd_pub_t *dhd, struct bcmstrbuf *b);
+extern void dhd_prot_ptm_stats_clr(dhd_pub_t *dhd);
+
 #endif /* _dhd_proto_h_ */

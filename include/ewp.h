@@ -115,6 +115,7 @@ typedef enum etb_user {
 	ETB_USER_SDTC =         0,
 	ETB_USER_ETM =          1,
 	ETB_USER_ETM_COEX =     2,
+	ETB_USER_MAC_SDTC =     3,
 	ETB_USER_MAX
 } etb_user_t;
 

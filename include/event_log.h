@@ -60,6 +60,24 @@
 /* Maximum event log record payload size = 1016 bytes or 254 words. */
 #define EVENT_LOG_MAX_RECORD_PAYLOAD_SIZE	254
 
+/* Lengths of some mandatory fields in words in event log record */
+#define EVENT_LOG_RECORD_HDR_LEN		(1u)
+#define EVENT_LOG_RECORD_TIMESTAMP_LEN		(1u)
+
+/*
+ * The overhead of every event log message:
+ * 1 word for header, 1 word for time (ARM CC)
+ */
+#define EVENT_LOG_MESSAGE_OVERHEAD	\
+	(EVENT_LOG_RECORD_HDR_LEN + EVENT_LOG_RECORD_TIMESTAMP_LEN)
+#define EVENT_LOG_MESSAGE_OVERHEAD_BYTES	\
+	(SIZE_OF_PV(event_log_set_t, cur_ptr) * (EVENT_LOG_MESSAGE_OVERHEAD))
+
+#define EVENT_LOG_PAYLOAD_COUNT(size_bytes)		\
+	CEIL(size_bytes, SIZE_OF_PV(event_log_set_t, cur_ptr))
+#define EVENT_LOG_PAYLOAD_SIZE_BYTES(num_args)		\
+	(num_args * SIZE_OF_PV(event_log_set_t, cur_ptr))
+
 /* A format number entry in event header is shifted left by 2.
  * To get the lower bits of actual format number used, shift the format number field in the
  * event log header right by 2.
@@ -629,6 +647,21 @@ extern bool prsv_periodic_enab;
 
 extern uint8 *event_log_tag_sets;
 
+
+/**
+ * @brief Convert a 64 bits nsec timestamp to a 32bit timestamp of 256ns per count
+ *
+ * @param[in] nsec_ts   64 bit nano second timestamp.
+ *
+ * @return 32 bit timestamp with 256 nsec per tick.
+ */
+static INLINE_ALWAYS uint32
+event_log_nsec_to_log_ts(uint64 nsec_ts)
+{
+	return (uint32)(nsec_ts >> 8u);
+}
+
+
 /* Initialize event log top and tag_sets context on given buffers. */
 int event_log_init_context(event_log_top_t *top, uint8 *tag_sets, uint16 tag_sets_len,
 		uint8 *tag_sets_ext, uint16 tag_sets_ext_len);
@@ -741,6 +774,8 @@ extern int event_log_send_partial_block_set(int set_num);
 
 /* Get number of log blocks associated to a log set */
 extern int event_log_num_blocks_get(int set, uint32 *num_blocks);
+/* Get block size associated with a particular set */
+extern int event_log_get_block_size(int set);
 
 /* Get a log buffer of a desired set */
 extern int event_log_block_get(int set, uint32 **buf, uint16 *len);

@@ -183,10 +183,26 @@ enum {
 #define BP_AUX_PMNI			0x6u
 #define BP_SCAN_PMNI			0x7u
 #define BP_SAQM_PMNI			0x8u
+/* AI Backplane ID's */
+#define BP_NIC400_CB			0x0u
+#define BP_NIC400_WL			0x1u
+#define BP_APB_WL			0x2u
+#define BP_APB_CB0			0x3u
+#define BP_APB_CB1			0x4u
+#define BP_CCI400			0x5u
 
 #define PCIE_WRITE_SIZE			4u
 
 #define BACKPLANE_ID_STR_SIZE		11u
+char BACKPLANE_ID_NAME_AI[][BACKPLANE_ID_STR_SIZE] = {
+	"NIC400_CB",
+	"NIC400_WL",
+	"APB_WL0",
+	"APB_CB0",
+	"APB_CB1",
+	"CCI400",
+	"\0"
+};
 char BACKPLANE_ID_NAME_4397A0[][BACKPLANE_ID_STR_SIZE] = {
 	"BOOKER",
 	"NIC400",
@@ -357,7 +373,8 @@ static nci_info_t *knci_info = NULL;
 #endif /* _RTE_ */
 
 static void nci_update_shared_pmni_iface(nci_info_t *nci);
-static void nci_save_iface1_reg(si_t *sih, interface_desc_t *desc, uint32 iface_desc_1);
+static void nci_save_iface1_reg(si_t *sih, interface_desc_t *desc, uint32 iface_desc_1,
+	uint32 *erom2ptr);
 static uint32* nci_save_slaveport_addr(nci_info_t *nci,
 	interface_desc_t *desc, uint32 *erom2ptr);
 static int nci_get_coreunit(nci_cores_t *cores, uint32 numcores, uint cid,
@@ -465,7 +482,7 @@ BCMATTACHFN(nci_init)(si_t *sih, chipcregs_t *cc, uint bustype)
 	nci->osh = sii->osh;
 	nci->refcnt++;
 
-	nci->cc_erom2base = R_REG(nci->osh, CC_REG_ADDR(cc, EromPtrOffset));
+	nci->cc_erom2base = GET_NODEPTR(R_REG(nci->osh, CC_REG_ADDR(cc, EromPtrOffset)));
 	nci->bustype = bustype;
 	switch (nci->bustype) {
 		case SI_BUS:
@@ -591,14 +608,17 @@ end:
  * Return : Void
  */
 static void
-BCMATTACHFN(nci_save_iface1_reg)(si_t *sih, interface_desc_t *desc, uint32 iface_desc_1)
+BCMATTACHFN(nci_save_iface1_reg)(si_t *sih, interface_desc_t *desc, uint32 iface_desc_1,
+	uint32 *erom2ptr)
 {
 	si_info_t *sii = SI_INFO(sih);
+	nci_info_t *nci = sii->nci_info;
 	char (*bpid_str)[BACKPLANE_ID_STR_SIZE];
 	uint8 bpid, apb_start, apb_end;
 
 	BCM_REFERENCE(sii);
 	BCM_REFERENCE(BACKPLANE_ID_NAME_4397A0);
+	BCM_REFERENCE(BACKPLANE_ID_NAME_AI);
 	BCM_REFERENCE(BACKPLANE_ID_NAME);
 	BCM_REFERENCE(bpid_str);
 
@@ -620,8 +640,19 @@ BCMATTACHFN(nci_save_iface1_reg)(si_t *sih, interface_desc_t *desc, uint32 iface
 			ASSERT(0u);
 		}
 	} else {
-		/* SLAVE 'NumAddressRegion' one less than actual slave ports, so increment by 1 */
-		desc->num_addr_reg++;
+		/* SLAVE 'NumAddressRegion' one less than actual slave ports, so increment by 1
+		 * if WORDOFFSET bigger then 1.
+		 * In the last slave descriptor, WORDOFFSET is 0 and NUM_ADDR_REG is 0,
+		 * increment by 1 if the next dword is not ID_ENDMARKER (0xFFFFFFFF).
+		 */
+		if (GET_WORDOFFSET(desc->iface_desc_1) > 1u) {
+			desc->num_addr_reg++;
+		} else if (GET_WORDOFFSET(desc->iface_desc_1) == 0) {
+			uint32 adesc = R_REG(nci->osh, erom2ptr);
+			if (adesc != ID_ENDMARKER) {
+				desc->num_addr_reg++;
+			}
+		}
 	}
 
 	bpid = ID_BPID(desc->iface_desc_1);
@@ -1119,7 +1150,7 @@ BCMATTACHFN(nci_scan)(si_t *sih)
 			NCI_INC_ADDR(erom2ptr, NCI_WORD_SIZE);
 
 			/* Interface Descriptor Register */
-			nci_save_iface1_reg(sih, desc, iface_desc_1);
+			nci_save_iface1_reg(sih, desc, iface_desc_1, erom2ptr);
 			if (desc->master && desc->num_addr_reg) {
 				err = NCI_MASTER_INVALID_ADDR;
 				goto end;
@@ -1137,7 +1168,7 @@ BCMATTACHFN(nci_scan)(si_t *sih)
 				desc->node_type?"NIC-400":"BOOKER", desc->node_ptr));
 
 			/* Slave Port Addresses */
-			if (!desc->master) {
+			if (!desc->master && desc->num_addr_reg) {
 				erom2ptr = nci_save_slaveport_addr(nci, desc, erom2ptr);
 				if (erom2ptr == NULL) {
 					NCI_ERROR(("nci_scan: Invalid EROM2PTR\n"));
@@ -1280,6 +1311,160 @@ BCMATTACHFN(nci_dump_erom)(void *ctx)
 	}
 
 	return;
+}
+
+/**
+ * Function : nci_cores_to_ai_cores
+ * Description : Function converts nci->cores to sii->cores_info data structures.
+ * Used in AI Chips only.
+ *
+ * @paramter[in]
+ * @nci : This is 'nci_info_t' data structure, where all EROM parsed Cores are saved.
+ *
+ * Return : void
+ */
+void
+BCMATTACHFN(nci_cores_to_ai_cores)(si_t *sih)
+{
+	si_info_t *sii = SI_INFO(sih);
+	si_cores_info_t *cores_info = (si_cores_info_t *)sii->cores_info;
+	axi_wrapper_t * axi_wrapper = sii->axi_wrapper;
+	nci_info_t *nci = (nci_info_t *)sii->nci_info;
+	nci_cores_t *nci_core;
+	uint32 core_idx;
+
+	SI_MSG_DBG_REG(("%s: Enter\n", __FUNCTION__));
+
+	sii->axi_num_wrappers = 0;
+
+	for (core_idx = 0u; core_idx < nci->num_cores; core_idx++) {
+		interface_desc_t *desc;
+		slave_port_t *sp;
+		uint32 addr_idx, iface_idx, ai_idx;
+		uint32 cid, mfg, crev, cib;
+		bool is_core = FALSE;
+		uint8 m_idx = 0, s_idx = 0;
+		nci_core = &nci->cores[core_idx];
+
+		cid = nci_core->coreid;
+		mfg = CORE_MFG(nci_core->coreinfo);
+		crev = CORE_REV(nci_core->coreinfo);
+
+		ai_idx = sii->numcores;
+
+		/* Find if componnet is a core */
+		for (iface_idx = 0u; iface_idx < nci_core->iface_cnt; iface_idx++) {
+			desc = &nci_core->desc[iface_idx];
+			is_core = is_core || desc->is_axi;
+		}
+
+		SI_VMSG(("Found component 0x%04x/0x%04x rev %d\n", mfg, cid, crev));
+
+		/* A component which is not a core */
+		if (is_core == FALSE) {
+			if ((cid != NS_CCB_CORE_ID) && (cid != PMU_CORE_ID) &&
+				(cid != GCI_CORE_ID) && (cid != SR_CORE_ID) &&
+				(cid != HUB_CORE_ID) && (cid != HND_OOBR_CORE_ID) &&
+				(cid != CCI400_CORE_ID) && (cid != SPMI_SLAVE_CORE_ID) &&
+#if defined(__ARM_ARCH_7R__)
+				(cid != SDTC_CORE_ID) &&
+#endif /* __ARM_ARCH_7R__ */
+				TRUE) {
+				continue;
+			}
+		}
+
+		/* revision from cib used in ai functions */
+		cib = (crev << CIB_REV_SHIFT) & CIB_REV_MASK;
+
+		//cores_info->cia[ai_idx] = cia;
+		cores_info->cib[ai_idx] = cib;
+		cores_info->coreid[ai_idx] = cid;
+
+		if (BUSTYPE(sih->bustype) == PCI_BUS &&
+			(cid == PCI_CORE_ID || cid == PCIE_CORE_ID || cid == PCIE2_CORE_ID)) {
+			sii->pub.buscoretype = (uint16)cid;
+		}
+
+		/* Master and Salve wrappers */
+		for (iface_idx = 0u; iface_idx < nci_core->iface_cnt; iface_idx++) {
+			desc = &nci_core->desc[iface_idx];
+
+			if (desc->is_axi) {
+				if (desc->master) {
+					if (m_idx == 0) {
+						cores_info->wrapba[ai_idx] = desc->node_ptr;
+					} else if (m_idx == 1) {
+						cores_info->wrapba2[ai_idx] = desc->node_ptr;
+					} else if (m_idx == 2) {
+						cores_info->wrapba3[ai_idx] = desc->node_ptr;
+					}
+					m_idx++;
+				} else if (m_idx == 0) {
+					if (s_idx == 0) {
+						cores_info->wrapba[ai_idx] = desc->node_ptr;
+					} else if (s_idx == 1) {
+						cores_info->wrapba2[ai_idx] = desc->node_ptr;
+					} else if (s_idx == 2) {
+						cores_info->wrapba3[ai_idx] = desc->node_ptr;
+					}
+					s_idx++;
+				}
+				axi_wrapper[sii->axi_num_wrappers].mfg = mfg;
+				axi_wrapper[sii->axi_num_wrappers].cid = cid;
+				axi_wrapper[sii->axi_num_wrappers].rev = crev;
+				axi_wrapper[sii->axi_num_wrappers].wrapper_type =
+					(desc->master) ? AI_MASTER_WRAPPER : AI_SLAVE_WRAPPER;
+				axi_wrapper[sii->axi_num_wrappers].wrapper_addr = desc->node_ptr;
+
+
+				SI_VMSG(("%s WRAPPER: %d, mfg:%x, cid:%x, rev:%x, addr:%x\n",
+					desc->master?"MASTER":"SLAVE", sii->axi_num_wrappers,
+					mfg, cid, crev, desc->node_ptr));
+
+				sii->axi_num_wrappers++;
+			}
+
+			/* Slave Port Addresses */
+			sp = desc->sp;
+			if (!sp) {
+				continue;
+			}
+			for (addr_idx = 0u; addr_idx < desc->num_addr_reg; addr_idx++) {
+
+				if (sp[addr_idx].extaddrl == 0u) {
+					if (desc->is_axi) {
+						/* First base address of second slave port */
+						if (addr_idx == 0) {
+							cores_info->csp2ba[ai_idx] =
+								sp[addr_idx].addrl;
+							cores_info->csp2ba_size[ai_idx] =
+								(sp[addr_idx].addrh -
+								sp[addr_idx].addrl + 1);
+						}
+					} else {
+						/* First Slave Address Descriptor should be port 0:
+						 * the main register space for the core
+						 */
+						if (addr_idx == 0) {
+							cores_info->coresba[ai_idx] =
+								sp[addr_idx].addrl;
+							cores_info->coresba_size[ai_idx] =
+								(sp[addr_idx].addrh -
+								sp[addr_idx].addrl + 1);
+						} else if (addr_idx == 1) {
+							cores_info->coresba2[ai_idx] =
+								sp[addr_idx].addrl;
+							cores_info->coresba2_size[ai_idx] =
+								(sp[addr_idx].addrh -
+								sp[addr_idx].addrl + 1);
+						}
+					}
+				}
+			}
+		}
+		sii->numcores++;
+	}
 }
 
 /*
@@ -2033,16 +2218,8 @@ BCMPOSTTRAPFN(nci_core_reset_enable)(const si_t *sih, uint32 bits, uint32 resetb
 		if (core->desc[iface_idx].is_shared_pmni) {
 			continue;
 		}
-#ifdef BOOKER_NIC400_INF
-		if (core->desc[iface_idx].node_type == NODE_TYPE_NIC400) {
-			nci_setcoreidx_wrap(sih, sii->curidx, iface_idx);
-			ai_core_reset_ext(sih, bits, resetbits);
-		} else
-#endif /* BOOKER_NIC400_INF */
-		{
-			nci_setcoreidx_wrap(sih, sii->curidx, iface_idx);
-			nci_core_reset_iface(sih, bits, resetbits, iface_idx, FALSE);
-		}
+		nci_setcoreidx_wrap(sih, sii->curidx, iface_idx);
+		nci_core_reset_iface(sih, bits, resetbits, iface_idx, FALSE);
 	}
 
 	/* Force the clock enable. */
@@ -2115,16 +2292,7 @@ nci_core_disable(const si_t *sih, uint32 bits)
 		goto end;
 	}
 
-#ifdef BOOKER_NIC400_INF
-	/* If Wrapper is of NIC400, then call AI functionality */
-	if (nci->cores[sii->curidx].desc[iface_idx].node_type == NODE_TYPE_NIC400) {
-		ai_core_disable(sih, bits);
-		goto end;
-	} else
-#endif /* BOOKER_NIC400_INF */
-	{
-		nci_core_reset_enable(sih, bits, 0u, FALSE);
-	}
+	nci_core_reset_enable(sih, bits, 0u, FALSE);
 end:
 	return;
 }
@@ -2137,21 +2305,6 @@ BCMPOSTTRAPFN(nci_iscoreup)(const si_t *sih)
 	nci_cores_t *core = &nci->cores[sii->curidx];
 	amni_regs_t *amni = (amni_regs_t *)(uintptr)sii->curwrap;
 	uint32 reset_ctrl;
-
-#ifdef BOOKER_NIC400_INF
-	int32 iface_idx = nci_find_first_wrapper_idx(nci, sii->curidx);
-
-	if (iface_idx < 0) {
-		NCI_ERROR(("nci_iscoreup: First Wrapper is not found\n"));
-		ASSERT(0u);
-		return FALSE;
-	}
-
-	/* If Wrapper is of NIC400, then call AI functionality */
-	if (core->desc[iface_idx].master && (core->desc[iface_idx].node_type == NODE_TYPE_NIC400)) {
-		return ai_iscoreup(sih);
-	}
-#endif /* BOOKER_NIC400_INF */
 
 	if (SRPWR_ENAB() && core->domain != DOMAIN_AAON) {
 		si_srpwr_request(sih, 1u << core->domain, 1u << core->domain);
@@ -2316,7 +2469,7 @@ BCMPOSTTRAPFN(nci_get_axi_addr)(const si_t *sih, uint32 *size, uint32 baidx)
 	}
 	if (iface_idx < core_info->iface_cnt) {
 		if ((core_info->desc[iface_idx].num_addr_reg > baidx) &&
-			(&core_info->desc[iface_idx].sp[baidx] != NULL)) {
+			(core_info->desc[iface_idx].sp != NULL)) {
 			addr = core_info->desc[iface_idx].sp[baidx].addrl;
 			if (size) {
 				uint32 adesc = core_info->desc[iface_idx].sp[baidx].adesc;
@@ -2357,7 +2510,7 @@ BCMPOSTTRAPFN(nci_get_core_baaddr)(const si_t *sih, uint32 *size, int32 baidx)
 	}
 	if (iface_idx < core_info->iface_cnt) {
 		if ((core_info->desc[iface_idx].num_addr_reg > baidx) &&
-			(&core_info->desc[iface_idx].sp[baidx] != NULL)) {
+			(core_info->desc[iface_idx].sp != NULL)) {
 			addr = core_info->desc[iface_idx].sp[baidx].addrl;
 			if (size) {
 				uint32 adesc = core_info->desc[iface_idx].sp[baidx].adesc;
@@ -2421,6 +2574,7 @@ BCMPOSTTRAPFN(nci_core_cflags)(const si_t *sih, uint32 mask, uint32 val)
 	uint32 orig_bar0_win1 = 0;
 	int32 iface_idx;
 	uint32 w;
+	volatile dmp_regs_t *io = sii->curwrap;
 
 	BCM_REFERENCE(iface_idx);
 
@@ -2434,24 +2588,9 @@ BCMPOSTTRAPFN(nci_core_cflags)(const si_t *sih, uint32 mask, uint32 val)
 		goto end;
 	}
 
-#ifdef BOOKER_NIC400_INF
-	/* If Wrapper is of NIC400, then call AI functionality */
-	if (core->desc[iface_idx].master && (core->desc[iface_idx].node_type == NODE_TYPE_NIC400)) {
-		aidmp_t *ai = sii->curwrap;
-
-		if (mask || val) {
-			 w = ((R_REG(sii->osh, &ai->ioctrl) & ~mask) | val);
-			W_REG(sii->osh, &ai->ioctrl, w);
-		}
-		reg_read = R_REG(sii->osh, &ai->ioctrl);
-	} else
-#endif /* BOOKER_NIC400_INF */
-	{
-		volatile dmp_regs_t *io = sii->curwrap;
-
-		/* BOOKER */
-		/* Point to OOBR base */
-		switch (BUSTYPE(sih->bustype)) {
+	/* BOOKER */
+	/* Point to OOBR base */
+	switch (BUSTYPE(sih->bustype)) {
 		case SI_BUS:
 			io = (volatile dmp_regs_t*)
 				REG_MAP(GET_OOBR_BASE(nci->cc_erom2base), SI_CORE_SIZE);
@@ -2470,33 +2609,31 @@ BCMPOSTTRAPFN(nci_core_cflags)(const si_t *sih, uint32 mask, uint32 val)
 		default:
 			NCI_ERROR(("nci_core_cflags Invalid bustype %d\n", BUSTYPE(sih->bustype)));
 			goto end;
-		}
-
-		if (core->desc[iface_idx].oobr_core) {
-			/* Point to DMP Control */
-			io = (dmp_regs_t*)(NCI_ADD_ADDR(io, nci->cores[sii->curidx].dmp_regs_off));
-
-			if (mask || val) {
-				w = ((R_REG(sii->osh, &io->dmpctrl) & ~mask) | val);
-				W_REG(sii->osh, &io->dmpctrl, w);
-				NCI_INFO(("nci_core_cflags coreid.unit 0x%x.%d WREG dmpctrl "
-					"value=0x%x\n", nci->cores[sii->curidx].coreid,
-					nci->cores[sii->curidx].coreunit, w));
-
-				/* poll for the reset to happen or wait for NCI_SPINWAIT_TIMEOUT */
-				SPINWAIT_TRAP(((reg_read = R_REG(nci->osh, &io->dmpctrl)) !=
-					w), NCI_SPINWAIT_TIMEOUT);
-			}
-			reg_read = R_REG(sii->osh, &io->dmpctrl);
-		}
-
-		/* Point back to original base */
-		if (BUSTYPE(sih->bustype) == PCI_BUS) {
-			OSL_PCI_WRITE_CONFIG(nci->osh, PCI_BAR0_WIN,
-				PCI_ACCESS_SIZE, orig_bar0_win1);
-		}
 	}
 
+	if (core->desc[iface_idx].oobr_core) {
+		/* Point to DMP Control */
+		io = (dmp_regs_t*)(NCI_ADD_ADDR(io, nci->cores[sii->curidx].dmp_regs_off));
+
+		if (mask || val) {
+			w = ((R_REG(sii->osh, &io->dmpctrl) & ~mask) | val);
+			W_REG(sii->osh, &io->dmpctrl, w);
+			NCI_INFO(("nci_core_cflags coreid.unit 0x%x.%d WREG dmpctrl "
+				"value=0x%x\n", nci->cores[sii->curidx].coreid,
+				nci->cores[sii->curidx].coreunit, w));
+
+			/* poll for the reset to happen or wait for NCI_SPINWAIT_TIMEOUT */
+			SPINWAIT_TRAP(((reg_read = R_REG(nci->osh, &io->dmpctrl)) !=
+				w), NCI_SPINWAIT_TIMEOUT);
+		}
+		reg_read = R_REG(sii->osh, &io->dmpctrl);
+	}
+
+	/* Point back to original base */
+	if (BUSTYPE(sih->bustype) == PCI_BUS) {
+		OSL_PCI_WRITE_CONFIG(nci->osh, PCI_BAR0_WIN,
+			PCI_ACCESS_SIZE, orig_bar0_win1);
+	}
 end:
 	return reg_read;
 }
@@ -2530,39 +2667,30 @@ BCMPOSTTRAPFN(nci_core_cflags_wo)(const si_t *sih, uint32 mask, uint32 val)
 		goto end;
 	}
 
-#ifdef BOOKER_NIC400_INF
-	/* If Wrapper is of NIC400, then call AI functionality */
-	if (core->desc[iface_idx].master && (core->desc[iface_idx].node_type == NODE_TYPE_NIC400)) {
-		aidmp_t *ai = sii->curwrap;
-		if (mask || val) {
-			w = ((R_REG(sii->osh, &ai->ioctrl) & ~mask) | val);
-			W_REG(sii->osh, &ai->ioctrl, w);
-		}
-	}
-#endif /* BOOKER_NIC400_INF */
-	else if (core->desc[iface_idx].oobr_core) {
+	if (core->desc[iface_idx].oobr_core) {
 		/* BOOKER */
 		/* Point to OOBR base */
 		switch (BUSTYPE(sih->bustype)) {
-		case SI_BUS:
-			io = (volatile dmp_regs_t*)
-				REG_MAP(GET_OOBR_BASE(nci->cc_erom2base), SI_CORE_SIZE);
-			break;
+			case SI_BUS:
+				io = (volatile dmp_regs_t*)
+					REG_MAP(GET_OOBR_BASE(nci->cc_erom2base), SI_CORE_SIZE);
+				break;
 
-		case PCI_BUS:
-			/* Save Original Bar0 Win1 */
-			orig_bar0_win1 =
-				OSL_PCI_READ_CONFIG(nci->osh, PCI_BAR0_WIN, PCI_ACCESS_SIZE);
+			case PCI_BUS:
+				/* Save Original Bar0 Win1 */
+				orig_bar0_win1 =
+					OSL_PCI_READ_CONFIG(nci->osh, PCI_BAR0_WIN,
+					PCI_ACCESS_SIZE);
 
-			OSL_PCI_WRITE_CONFIG(nci->osh, PCI_BAR0_WIN, PCI_ACCESS_SIZE,
-				GET_OOBR_BASE(nci->cc_erom2base));
-			io = (volatile dmp_regs_t*)sii->curmap;
-			break;
+				OSL_PCI_WRITE_CONFIG(nci->osh, PCI_BAR0_WIN, PCI_ACCESS_SIZE,
+					GET_OOBR_BASE(nci->cc_erom2base));
+				io = (volatile dmp_regs_t*)sii->curmap;
+				break;
 
-		default:
-			NCI_ERROR(("nci_core_cflags_wo Invalid bustype %d\n",
-				BUSTYPE(sih->bustype)));
-			goto end;
+			default:
+				NCI_ERROR(("nci_core_cflags_wo Invalid bustype %d\n",
+					BUSTYPE(sih->bustype)));
+				goto end;
 		}
 
 		/* Point to DMP Control */
@@ -2616,19 +2744,7 @@ nci_core_sflags(const si_t *sih, uint32 mask, uint32 val)
 		goto end;
 	}
 
-#ifdef BOOKER_NIC400_INF
-	/* If Wrapper is of NIC400, then call AI functionality */
-	if (core->desc[iface_idx].master && (core->desc[iface_idx].node_type == NODE_TYPE_NIC400)) {
-		aidmp_t *ai = sii->curwrap;
-		if (mask || val) {
-			w = ((R_REG(sii->osh, &ai->iostatus) & ~mask) | val);
-			W_REG(sii->osh, &ai->iostatus, w);
-		}
-
-		reg_read = R_REG(sii->osh, &ai->iostatus);
-	}
-#endif /* BOOKER_NIC400_INF */
-	else if (core->desc[iface_idx].oobr_core) {
+	if (core->desc[iface_idx].oobr_core) {
 		volatile dmp_regs_t *io = sii->curwrap;
 
 		/* BOOKER */

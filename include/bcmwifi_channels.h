@@ -612,6 +612,8 @@ typedef struct {
 
 uint wf_chspec_first_20_sb(chanspec_t chspec);
 
+#include <bcmwifi_channels_shared.h>
+
 /*
  * This function returns TRUE if both the chanspec can co-exist in PHY.
  * Addition to primary20 channel, the function checks for side band for 2g 40 channels

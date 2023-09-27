@@ -108,6 +108,9 @@
 #define	SD_SG32			0x00000008u
 #define	SD_SZ_ALIGN		0x00000fffu
 
+/* 0:Booker 1:IDM 1-0xf:Reserved */
+#define ID_NODETYPE_MASK	0x00000007u
+
 #define WRAPPER_TIMEOUT_CONFIG	0x4u
 
 #if !defined(_LANGUAGE_ASSEMBLY) && !defined(__ASSEMBLY__)

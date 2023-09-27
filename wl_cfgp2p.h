@@ -108,6 +108,20 @@ enum wl_cfgp2p_status {
 	WLP2P_STATUS_DISC_IN_PROGRESS
 };
 
+struct p2p_config_af_params {
+	s32 max_tx_retry;	/* max tx retry count if tx no ack */
+#ifdef WL_CFG80211_GON_COLLISION
+	/* drop tx go nego request if go nego collision occurs */
+	bool drop_tx_req;
+#endif
+#ifdef WL_CFG80211_SYNC_GON
+	/* WAR: dongle does not keep the dwell time of 'actframe' sometime.
+	 * if extra_listen is set, keep the dwell time to get af response frame
+	 */
+	bool extra_listen;
+#endif
+	bool search_channel;	/* 1: search peer's channel to send af */
+};
 
 #define wl_to_p2p_bss_ndev(cfg, type)		((cfg)->p2p->bss[type].dev)
 #define wl_to_p2p_bss_bssidx(cfg, type)		((cfg)->p2p->bss[type].bssidx)
@@ -371,19 +385,19 @@ extern s32
 wl_cfgp2p_down(struct bcm_cfg80211 *cfg);
 
 extern s32
-wl_cfgp2p_set_p2p_noa(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* buf, int len);
+wl_cfgp2p_set_p2p_noa(struct net_device *ndev, char* buf, int len);
 
 extern s32
-wl_cfgp2p_get_p2p_noa(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* buf, int len);
+wl_cfgp2p_get_p2p_noa(struct net_device *ndev, char* buf, int len);
 
 extern s32
-wl_cfgp2p_set_p2p_ps(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* buf, int len);
+wl_cfgp2p_set_p2p_ps(struct net_device *ndev, char* buf, int len);
 
 extern s32
-wl_cfgp2p_set_p2p_ecsa(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* buf, int len);
+wl_cfgp2p_set_p2p_ecsa(struct net_device *ndev, char* buf, int len);
 
 extern s32
-wl_cfgp2p_increase_p2p_bw(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* buf, int len);
+wl_cfgp2p_increase_p2p_bw(struct net_device *ndev, char* buf, int len);
 
 extern const u8 *
 wl_cfgp2p_retreive_p2pattrib(const void *buf, u8 element_id);
@@ -438,6 +452,21 @@ wl_cfgp2p_is_p2p_specific_scan(struct cfg80211_scan_request *request);
 
 extern s32
 wl_cfg80211_abort_action_frame(struct bcm_cfg80211 *cfg, struct net_device *dev, s32 bssidx);
+
+#ifdef WL_CFG80211_P2P_DEV_IF
+extern void wl_cfgp2p_del_p2p_wdev(struct net_device *dev);
+#endif /* WL_CFG80211_P2P_DEV_IF */
+extern int wl_cfgp2p_deinit_p2p_discovery(struct bcm_cfg80211 * cfg);
+#ifdef P2PLISTEN_AP_SAMECHN
+extern s32 wl_cfgp2p_set_p2p_resp_ap_chn(struct net_device *net, s32 enable);
+#endif /* P2PLISTEN_AP_SAMECHN */
+extern s32 wl_cfgp2p_config_p2p_pub_af_tx(struct wiphy *wiphy,
+	wl_action_frame_v1_t *action_frame, wl_af_params_v1_t *af_params,
+	struct p2p_config_af_params *config_af_params);
+#if defined(WL_ENABLE_P2P_IF) || defined (WL_NEWCFG_PRIVCMD_SUPPORT)
+extern s32 wl_cfgp2p_attach_p2p(struct bcm_cfg80211 *cfg);
+extern s32 wl_cfgp2p_detach_p2p(struct bcm_cfg80211 *cfg);
+#endif /* WL_ENABLE_P2P_IF || WL_NEWCFG_PRIVCMD_SUPPORT */
 
 /* WiFi Direct */
 #define SOCIAL_CHAN_1 1

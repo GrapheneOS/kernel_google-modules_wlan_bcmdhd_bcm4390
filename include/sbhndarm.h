@@ -213,7 +213,7 @@
 #define	ARMCR4_MT_ROM		0x100
 #define	ARMCR4_MT_RAM		0
 
-#define	ARMCR4_BSZ_MASK		0x7f
+#define	ARMCR4_BSZ_MASK		0xff
 #define	ARMCR4_BUNITSZ_MASK	0x200
 #define	ARMCR4_BSZ_8K		8192
 #define	ARMCR4_BSZ_1K		1024

@@ -100,6 +100,17 @@ extern uint dhd_sssr_srcb_buf_addr(dhd_pub_t *dhdp);
 #define DHD_SSSR_REG_INFO_INIT(dhdp)	dhd_sssr_reg_info_init(dhdp)
 #define DHD_SSSR_REG_INFO_DEINIT(dhdp) dhd_sssr_reg_info_deinit(dhdp)
 
+#ifdef DHD_SSSR_DUMP_BEFORE_SR
+int dhd_sssr_dump_d11_buf_before(void *dhd_pub, const void *user_buf,
+	uint32 len, int core);
+int dhd_sssr_dump_dig_buf_before(void *dhd_pub, const void *user_buf,
+	uint32 len);
+#endif /* DHD_SSSR_DUMP_BEFORE_SR */
+int dhd_sssr_dump_d11_buf_after(void *dhd_pub, const void *user_buf,
+	uint32 len, int core);
+int dhd_sssr_dump_dig_buf_after(void *dhd_pub, const void *user_buf,
+	uint32 len);
+
 #endif /* DHD_SSSR_DUMP */
 
 #endif /* __DHD_PCIE_SSSR_DUMP_H__ */

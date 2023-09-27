@@ -305,6 +305,7 @@ extern si_t *ai_attach(uint pcidev, osl_t *osh, void *regs, uint bustype,
                        void *sdh, char **vars, uint *varsz);
 extern si_t *ai_kattach(osl_t *osh);
 extern void ai_scan(si_t *sih, void *regs, uint devid);
+extern bool ai_erom_in_oobr(si_info_t *sii, void *regs);
 
 extern uint ai_flag(si_t *sih);
 extern uint ai_flag_alt(const si_t *sih);
@@ -340,10 +341,6 @@ extern uint32 ai_clear_backplane_to(si_t *sih);
 void ai_force_clocks(const si_t *sih, uint clock_state);
 extern uint ai_num_slaveports(const si_t *sih, uint coreidx);
 
-#ifdef BOOKER_NIC400_INF
-extern void ai_core_reset_ext(const si_t *sih, uint32 bits, uint32 resetbits);
-#endif /* BOOKER_NIC400_INF */
-
 #if defined(AXI_TIMEOUTS)
 extern uint32 ai_clear_backplane_to_per_core(si_t *sih, uint coreid, uint coreunit,
 	volatile void *wrap);
@@ -377,6 +374,7 @@ void ai_force_clocks(const si_t *sih, uint clock_state);
 #ifndef SOCI_NCI_BUS
 #define nci_uninit(a) do {} while (0)
 #define nci_scan(a) (0)
+#define nci_cores_to_ai_cores(a) do {} while (0)
 #define nci_dump_erom(a) do {} while (0)
 #define nci_init(a, b, c) (NULL)
 #define nci_setcore(a, b, c) (NULL)
