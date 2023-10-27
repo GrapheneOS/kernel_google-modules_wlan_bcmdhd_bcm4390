@@ -803,7 +803,7 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 	}
 
 #ifdef PCIE_FULL_DONGLE
-	if (dhdp->d3d0ack_timeout_occured) {
+	if (dhdp->d3ack_timeout_occured) {
 		DHD_ERROR_RLMT(("%s: Resumed on timeout for previous D3ACK, cannot proceed\n",
 			__FUNCTION__));
 		ret = TRUE;
@@ -898,7 +898,7 @@ dhd_clear_all_errors(dhd_pub_t *dhd)
 	dhd->hang_reason = 0;
 	dhd->iovar_timeout_occured = 0;
 #ifdef PCIE_FULL_DONGLE
-	dhd->d3d0ack_timeout_occured = 0;
+	dhd->d3ack_timeout_occured = 0;
 	dhd->livelock_occured = 0;
 	dhd->pktid_audit_failed = 0;
 	dhd->pktid_invalid_occured = 0;

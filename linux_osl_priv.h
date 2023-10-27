@@ -174,6 +174,8 @@ struct osl_info {
 #endif /* DHD_MAP_LOGGING */
 	spinlock_t bpaccess_lock_r;
 	spinlock_t bpaccess_lock_w;
+	uchar	*fatal_logbuf;
+	uint32	fatal_logbuf_size;
 };
 
 #endif /* _LINUX_OSL_PRIV_H_ */

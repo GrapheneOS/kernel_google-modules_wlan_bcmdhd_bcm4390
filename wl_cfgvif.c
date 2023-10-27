@@ -2723,11 +2723,11 @@ wl_validate_wpa2ie(struct net_device *dev, const bcm_tlv_t *wpa2ie, s32 bssidx)
 			case RSN_AKM_FILS_SHA384:
 				wpa_auth |= WPA2_AUTH_FILS_SHA384;
 				break;
-#if defined(WL_SAE) || defined(WL_CLIENT_SAE)
+#if defined(WL_SAE) || defined(WL_CLIENT_SAE) || defined(WL_SAE_STD_API)
 			case RSN_AKM_SAE_PSK:
 				wpa_auth |= WPA3_AUTH_SAE_PSK;
 				break;
-#endif /* WL_SAE || WL_CLIENT_SAE */
+#endif /* WL_SAE || WL_CLIENT_SAE || WL_SAE_STD_API */
 #endif /* MFP */
 #if defined(WL_OWE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0))
 			case RSN_AKM_OWE:
@@ -3045,11 +3045,11 @@ wl_get_suite_auth_key_mgmt_type(uint8 type, const wpa_suite_mcast_t *mcast)
 				ret = WPA_AUTH_PSK;
 			}
 			break;
-#ifdef WL_SAE
+#if defined(WL_SAE) || defined(WL_SAE_STD_API)
 		case RSN_AKM_SAE_PSK:
 			ret = WPA3_AUTH_SAE_PSK;
 			break;
-#endif /* WL_SAE */
+#endif /* WL_SAE || WL_SAE_STD_API */
 		default:
 			WL_ERR(("No Key Mgmt Info\n"));
 		}
@@ -3324,34 +3324,47 @@ exit:
 #endif /* SUPPORT_SOFTAP_WPAWPA2_MIXED */
 
 static s32
-wl_set_ap_passphrase(struct net_device *dev)
+wl_set_ap_passphrase(struct net_device *dev, struct cfg80211_crypto_settings *crypto)
 {
+#ifndef WL_SAE_STD_API
 	struct net_info *_net_info;
+#endif /* !WL_SAE_STD_API */
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 	wl_config_passphrase_t pp_config;
 	int err = BCME_OK;
 	bzero(&pp_config, sizeof(wl_config_passphrase_t));
 
-	_net_info = wl_get_netinfo_by_netdev(cfg, dev);
-
-	if (_net_info == NULL) {
-		WL_ERR(("net_info not found for iface %s", dev->name));
-		err = BCME_BADARG;
-		goto done;
-	}
-
-	if ((cfg->hostapd_ssid.SSID_len == 0) ||
-		(_net_info->passphrase_len == 0)) {
-		WL_ERR(("Invalid config ssid_len %d passphrase_len %d",
-			cfg->hostapd_ssid.SSID_len, _net_info->passphrase_len));
+	if (cfg->hostapd_ssid.SSID_len == 0) {
+		WL_ERR(("Invalid config ssid_len %d\n", cfg->hostapd_ssid.SSID_len));
 		err = BCME_BADARG;
 		goto done;
 	}
 
 	pp_config.ssid = cfg->hostapd_ssid.SSID;
 	pp_config.ssid_len = cfg->hostapd_ssid.SSID_len;
+
+#ifdef WL_SAE_STD_API
+	if (crypto && crypto->sae_pwd) {
+		pp_config.passphrase = (u8 *)crypto->sae_pwd;
+		pp_config.passphrase_len = crypto->sae_pwd_len;
+	}
+#else
+	_net_info = wl_get_netinfo_by_netdev(cfg, dev);
+	if (_net_info == NULL) {
+		WL_ERR(("net_info not found for iface %s", dev->name));
+		err = BCME_BADARG;
+		goto done;
+	}
+
+	if (_net_info->passphrase_len == 0) {
+		WL_ERR(("Invalid passphrase_len %d\n", _net_info->passphrase_len));
+		err = BCME_BADARG;
+		goto done;
+	}
+
 	pp_config.passphrase = _net_info->passphrase;
 	pp_config.passphrase_len = _net_info->passphrase_len;
+#endif /* WL_SAE_STD_API */
 
 	err = wl_cfg80211_config_passphrase(cfg, dev, &pp_config);
 
@@ -3368,6 +3381,10 @@ wl_cfg80211_bcn_validate_sec(
 	bool privacy,
 	struct cfg80211_crypto_settings *crypto)
 {
+#if ((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && defined(WL_IDAUTH)) || \
+	defined(WL_SAE_STD_API)
+	s32 err = BCME_OK;
+#endif /* ((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && WL_IDAUTH) || WL_SAE_STD_API */
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 	wl_cfgbss_t *bss = wl_get_cfgbss_by_wdev(cfg, dev->ieee80211_ptr);
 	struct wl_security *sec = wl_read_prof(cfg, dev, WL_PROF_SEC);
@@ -3408,7 +3425,6 @@ wl_cfg80211_bcn_validate_sec(
 		if (cfg->idauth_enabled &&
 			(sec->fw_wpa_auth & WPA2_AUTH_PSK) && crypto && crypto->psk) {
 			wsec_pmk_t pmk = {0};
-			s32 err = BCME_OK;
 
 			pmk.key_len = WL_SUPP_PMK_LEN;
 			if (pmk.key_len > sizeof(pmk.key)) {
@@ -3432,19 +3448,19 @@ wl_cfg80211_bcn_validate_sec(
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && WL_IDAUTH */
 
 		BCM_REFERENCE(wl_set_ap_passphrase);
-#ifdef WL_SAE
+#if defined(WL_SAE) || defined(WL_SAE_STD_API)
 		/* Set SAE passphrase */
 		if (sec->fw_wpa_auth & WPA3_AUTH_SAE_PSK) {
-#ifdef WL_SAE_OFFLOAD
-			if (cfg->idauth_enabled &&
-				crypto && crypto->sae_pwd) {
-				wl_cfg80211_set_netinfo_passphrase(cfg, dev, crypto->sae_pwd,
-					crypto->sae_pwd_len);
+			wl_set_ap_passphrase(dev, crypto);
+#ifdef WL_SAE_STD_API
+			err = wl_set_sae_pwe(dev, crypto->sae_pwe);
+			if (unlikely(err)) {
+				WL_ERR(("Unable to set sae_pwe\n"));
+				return err;
 			}
-#endif /* WL_SAE_OFFLOAD */
-			wl_set_ap_passphrase(dev);
+#endif /* WL_SAE_STD_API */
 		}
-#endif /* WL_SAE */
+#endif /* WL_SAE || WL_SAE_STD_API */
 
 		if (ies->fils_ind_ie &&
 			(wl_validate_fils_ind_ie(dev, ies->fils_ind_ie, bssidx)  < 0)) {
@@ -3801,8 +3817,10 @@ wl_cfg80211_bcn_bringup_ap(
 	s32 err = BCME_OK;
 	s32 is_rsdb_supported = BCME_ERROR;
 	u8 buf[WLC_IOCTL_SMLEN] = {0};
+#ifdef DYN_RSDB_ROAM_DISABLE
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 	bool dyn_rsdb = FW_SUPPORTED(dhd, sdb_modesw);
+#endif /* DYN_RSDB_ROAM_DISABLE */
 
 #if defined (BCMDONGLEHOST)
 	is_rsdb_supported = DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_RSDB_MODE);
@@ -3874,9 +3892,11 @@ wl_cfg80211_bcn_bringup_ap(
 			WL_DBG(("Bss is already up\n"));
 	} else if (dev_role == NL80211_IFTYPE_AP) {
 
+#ifdef DYN_RSDB_ROAM_DISABLE
 		if (dyn_rsdb) {
 			wl_cfgvif_roam_config(cfg, dev, ROAM_CONF_AP_ENABLE);
 		}
+#endif /* DYN_RSDB_ROAM_DISABLE */
 
 		if (!wl_get_drv_status(cfg, AP_CREATING, dev)) {
 			/* Make sure fw is in proper state */
@@ -4069,9 +4089,11 @@ exit:
 		}
 		wl_clr_drv_status(cfg, AP_BSS_UP_IN_PROG, dev);
 
+#ifdef DYN_RSDB_ROAM_DISABLE
 		if ((dev_role == NL80211_IFTYPE_AP) && dyn_rsdb) {
 			wl_cfgvif_roam_config(cfg, dev, ROAM_CONF_AP_DISABLE);
 		}
+#endif /* DYN_RSDB_ROAM_DISABLE */
 	}
 	return err;
 }
@@ -4956,7 +4978,9 @@ wl_cfg80211_stop_ap(
 #endif /* DHD_PCIE_RUNTIMEPM */
 #endif /* CUSTOMER_HW4 */
 	u8 null_mac[ETH_ALEN];
+#ifdef DYN_RSDB_ROAM_DISABLE
 	bool dyn_rsdb = FW_SUPPORTED(dhd, sdb_modesw);
+#endif /* DYN_RSDB_ROAM_DISABLE */
 
 	WL_DBG(("Enter \n"));
 
@@ -5028,9 +5052,12 @@ wl_cfg80211_stop_ap(
 		WL_ERR(("bss down error %d\n", err));
 	}
 
+#ifdef DYN_RSDB_ROAM_DISABLE
 	if (dyn_rsdb) {
 		wl_cfgvif_roam_config(cfg, dev, ROAM_CONF_AP_DISABLE);
 	}
+#endif /* DYN_RSDB_ROAM_DISABLE */
+
 #if defined(WL_MLO) && defined(WL_MLO_AP)
 	if (cfg->mlo.supported && mlo_ap_enable) {
 		if ((err = wl_stop_mlo_ap(cfg, dev)) != BCME_OK) {
@@ -8728,8 +8755,13 @@ wl_cfgvif_scb_authorized(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	if (cfg->idauth_enabled && (status == WLC_E_AUTHORIZED)) {
 		WL_INFORM_MEM(("Sending port authorized event for STA " MACDBG "\n",
 			MAC2STRDBG(sta_addr)));
+#ifdef WL_AP_PORT_AUTH_BKPORT
+		CFG80211_PORT_AUTHORIZED(cfgdev_to_ndev(cfgdev), (const u8 *)sta_addr,
+			NULL, 0, GFP_KERNEL);
+#else
 		err = wl_cfgvendor_send_async_event(bcmcfg_to_wiphy(cfg), cfgdev_to_ndev(cfgdev),
 			BRCM_VENDOR_EVENT_PORT_AUTHORIZED, sta_addr, ETHER_ADDR_LEN);
+#endif /* WL_AP_PORT_AUTH_BKPORT */
 		if (unlikely(err)) {
 			WL_ERR(("Failed to send port authorized event err = %d\n", err));
 		}

@@ -1494,7 +1494,7 @@ typedef struct dhd_pub {
 	bool	invalid_shinfo_nrfrags;	/* flag to indicate invlaid shinfo nrfrags */
 	bool	is_sched_error;		/* flag to indicate timeout due to scheduling issue */
 #ifdef PCIE_FULL_DONGLE
-	bool	d3d0ack_timeout_occured;	/* flag to indicate d3ack resumed on timeout */
+	bool	d3ack_timeout_occured;	/* flag to indicate d3ack resumed on timeout */
 	bool	livelock_occured;	/* flag to indicate livelock occured */
 	bool	pktid_audit_failed;	/* flag to indicate pktid audit failure */
 	bool	pktid_invalid_occured;	/* flag to indicate invalid pktid */
@@ -1521,7 +1521,7 @@ typedef struct dhd_pub {
 	int   rxcnt_timeout;		/* counter rxcnt timeout to send HANG */
 	int   txcnt_timeout;		/* counter txcnt timeout to send HANG */
 #ifdef BCMPCIE
-	int   d3d0ackcnt_timeout;		/* counter d3ack timeout to send HANG */
+	int   d3ackcnt_timeout;		/* counter d3ack timeout to send HANG */
 #endif /* BCMPCIE */
 	bool hang_report;		/* enable hang report by default */
 	uint16 hang_reason;		/* reason codes for HANG event */
@@ -3203,8 +3203,6 @@ int dhd_os_busbusy_wait_bitmask(dhd_pub_t *pub, uint *var,
 #ifdef PCIE_INB_DW
 extern int dhd_os_ds_exit_wait(dhd_pub_t * pub, uint * condition);
 extern int dhd_os_ds_exit_wake(dhd_pub_t * pub);
-extern int dhd_os_d0_exit_wait(dhd_pub_t * pub, uint * condition);
-extern int dhd_os_d0_exit_wake(dhd_pub_t * pub);
 #endif /* PCIE_INB_DW */
 int dhd_os_tput_test_wait(dhd_pub_t *pub, uint *condition, uint timeout_ms);
 int dhd_os_tput_test_wake(dhd_pub_t * pub);
@@ -3222,10 +3220,6 @@ static INLINE int dhd_os_d3ack_wake(dhd_pub_t * pub)
 static INLINE int dhd_os_ds_exit_wait(dhd_pub_t * pub, uint * condition)
 { DHD_ERROR(("%s is Not supported for this platform", __FUNCTION__)); return 0; }
 static INLINE int dhd_os_ds_exit_wake(dhd_pub_t * pub)
-{ DHD_ERROR(("%s is Not supported for this platform", __FUNCTION__)); return 0; }
-static INLINE int dhd_os_d0_exit_wait(dhd_pub_t * pub, uint * condition)
-{ DHD_ERROR(("%s is Not supported for this platform", __FUNCTION__)); return 0; }
-static INLINE int dhd_os_d0_exit_wake(dhd_pub_t * pub)
 { DHD_ERROR(("%s is Not supported for this platform", __FUNCTION__)); return 0; }
 #endif /* PCIE_INB_DW */
 static INLINE int dhd_os_busbusy_wait_negation(dhd_pub_t * pub, uint * condition)

@@ -72,8 +72,6 @@
 #define DS_EXIT_TIMEOUT	1000 /* In ms */
 #define DS_ENTER_TIMEOUT 1000 /* In ms */
 
-#define D0_EXIT_TIMEOUT	D3_ACK_RESP_TIMEOUT /* In ms */
-
 #define IOCTL_DISABLE_TIMEOUT 0
 
 /*

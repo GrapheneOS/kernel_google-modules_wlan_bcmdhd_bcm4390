@@ -449,7 +449,6 @@ typedef struct dhd_bus {
 	uint32 pcie_mailbox_int;
 	bool	ltrsleep_on_unload;
 	uint	wait_for_d3_ack;
-	uint	wait_for_d0_ack;
 	uint16	max_tx_flowrings;
 	uint16	max_submission_rings;
 	uint16	max_completion_rings;

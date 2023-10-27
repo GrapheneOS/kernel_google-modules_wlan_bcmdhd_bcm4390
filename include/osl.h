@@ -529,4 +529,17 @@ do { \
 #define MFREE_PERSIST MFREE
 #endif /* DONGLEBUILD && !BCM_MEM_PERSIST_ENABLE */
 
+#define OSL_ALLOC_FATAL_LOGBUF(osh) \
+	(osl_alloc_fatal_logbuf(osl_t *osh))
+#define OSL_DEALLOC_FATAL_LOGBUF(osh) \
+	(osl_dealloc_fatal_logbuf(osl_t *osh))
+#define OSL_GET_FATAL_LOGBUF_SIZE(osh) \
+	(osl_get_fatal_logbuf_size(osl_t *osh))
+#define OSL_GET_FATAL_LOGBUF_ADDR(osh) \
+		(osl_get_fatal_logbuf_addr(osl_t *osh))
+#define OSL_GET_FATAL_LOGBUF(osh, size, alloced)	\
+	(osl_get_fatal_logbuf((osh), (size), (alloced)))
+#define OSL_GET_FATAL_LOGBUF_END(osh, size, alloced)	\
+	(osl_get_fatal_logbuf_end(osh, size, alloced))
+
 #endif	/* _osl_h_ */

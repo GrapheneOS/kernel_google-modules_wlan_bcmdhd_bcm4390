@@ -299,6 +299,9 @@ typedef uint32 ratespec_t;
 
 /* WL_SCANFLAGS_EXT_ flags */
 #define WL_SCANFLAGS_EXT_LOWPOWER_PARALLEL_2G_SCAN	0x1U	/* Lowpower parallel 2G scan */
+#define WL_SCANFLAGS_EXT_NOMLOFOLLOWUP			0x2U	/* No 2G or 5G band active
+								 * scan due to RNR
+								 */
 
 /* BIT MASK for 6G_SCAN_TYPE  */
 #define WL_SCAN_SSIDFLAGS_SHORT_SSID		0x01U /* include short ssid */
@@ -2700,7 +2703,7 @@ enum {
 #define WLC_WITH_XTLV_CNT
 
 /* Number of xtlv info as required to calculate subcounter offsets */
-#define WL_CNT_XTLV_ID_NUM	13
+#define WL_CNT_XTLV_ID_NUM	14
 #define WL_TLV_IOV_VERSION_1	1u
 #define WL_TLV_IOV_VERSION_2	2u
 
@@ -2762,6 +2765,7 @@ enum wl_cnt_xtlv_id {
 	WL_CNT_XTLV_DYN_BW_STATS = 0x100c,		/* corerev >= 88 DynBW stats */
 	WL_CNT_XTLV_SLIM_SCAN_STATS = 0x100d,		/* Slim Scan stats */
 	WL_CNT_XTLV_DATA_BW_STATS = 0x100e,		/* corerev >= 89 DataBW stats */
+	WL_CNT_XTLV_MACST_TX_V4 = 0x100f,		/* corerev >= 88 ucode macstats V4 - tx */
 	/* XLTVs in this gap are available for use */
 	/* scan aux core related additional counters */
 	WL_CNT_XTLV_SCANAUX_UCODE_V1 = 0x1012,

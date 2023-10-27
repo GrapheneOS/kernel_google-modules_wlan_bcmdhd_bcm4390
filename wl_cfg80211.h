@@ -91,15 +91,26 @@ struct wl_ibss;
 #define WL_WTC
 
 #ifndef WL_CLIENT_SAE
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) && !defined(WL_SAE))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) && !defined(WL_SAE) && !defined(WL_SAE_STD_API))
 #define WL_SAE
-#endif /* LINUX_VERSION_CODE >= (4, 17, 0) && !(WL_SAE) */
+#endif /* LINUX_VERSION_CODE >= (4, 17, 0) && !(WL_SAE) && !(WL_SAE_STD_API) */
 #else
-#ifdef WL_SAE
+#if defined(WL_SAE) || defined(WL_SAE_STD_API)
 #error "WL_SAE is for dongle-offload and WL_CLIENT_SAE is for wpa_supplicant. \
 	Please choose only one."
-#endif /* WL_SAE */
+#endif /* WL_SAE || WL_SAE_STD_API */
 #endif /* !WL_CLIENT_SAE */
+
+#ifdef WL_SAE_STD_API
+#if !(LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)) && \
+	(!defined(WL_AP_PORT_AUTH_BKPORT) || !defined(WL_AP_4WAY_HS_BKPORT) || \
+	!defined(WL_SAE_AP_CAP_BKPORT) || !defined(WL_SAE_PWE_BKPORT))
+#error "required backports are not present to enable STD SAE"
+#endif /* !(KERNEL > 6.7.0) && (!AUTH_BKPORT || !4WAY_BKPORT || !APCAP_BKPORT || !PWE_BKPORT) */
+#ifndef WL_IDAUTH
+#error "WL_IDAUTH is needed to enable WL_SAE_STD_API for softap"
+#endif /* !WL_IDAUTH */
+#endif /* WL_SAE_STD_API */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)) && !defined(WL_DISABLE_SCAN_TYPE) && \
 	!defined(WL_SCAN_TYPE)
@@ -238,11 +249,11 @@ typedef sta_info_v4_t wlcfg_sta_info_t;
 }
 #endif /* CFG80211_6G_SUPPORT */
 
-#ifdef WL_SAE
+#if defined(WL_SAE) || defined(WL_SAE_STD_API)
 #define IS_AKM_SAE(akm) (akm == WLAN_AKM_SUITE_SAE)
 #else
 #define IS_AKM_SAE(akm) FALSE
-#endif
+#endif /* WL_SAE || WL_SAE_STD_API */
 #ifdef WL_OWE
 #define IS_AKM_OWE(akm) (akm == WLAN_AKM_SUITE_OWE)
 #else
@@ -2020,6 +2031,7 @@ typedef struct wlcfg_assoc_info {
 	chanspec_t chanspecs[MAX_ROAM_CHANNEL];
 	bool auto_wpa_enabled;	/* auto_wpa enabled for multi AKM */
 	bool seamless_psk;	/* Multi-AKMs needing seamless PSK */
+	u32 multi_akm_auth;	/* AKM bit map */
 } wlcfg_assoc_info_t;
 
 #define MAX_NUM_OF_ASSOCIATED_DEV       64
@@ -2584,7 +2596,7 @@ typedef struct acs_delay_work {
 * 3. BSSID
 */
 typedef struct wl_config_passphrase {
-	u8* passphrase;
+	const u8* passphrase;
 	u16 passphrase_len;
 	const u8 *ssid;
 	u8 ssid_len;
@@ -3418,13 +3430,14 @@ wl_sup_event_ieee80211_error(u32 reason)
 #define EHT_PHY_CAP_MAX_EHT_LTF_SUP_VAL	9
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)) || WL_MLO_BKPORT */
 
-#ifdef WL_MLO_BKPORT_NEW_PORT_AUTH
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)) || defined(WL_MLO_BKPORT_NEW_PORT_AUTH) || \
+	defined(WL_AP_PORT_AUTH_BKPORT)
 #define CFG80211_PORT_AUTHORIZED(ndev, bssid, tdmode, tdlen, kflags) \
 	cfg80211_port_authorized(ndev, bssid, tdmode, tdlen, kflags)
 #else
 #define CFG80211_PORT_AUTHORIZED(ndev, bssid, tdmode, tdlen, kflags) \
 	cfg80211_port_authorized(ndev, bssid, kflags)
-#endif /* WL_MLO_BKPORT_NEW_PORT_AUTH */
+#endif /* WL_MLO_BKPORT_NEW_PORT_AUTH || WL_AP_PORT_AUTH_BKPORT */
 
 #define IS_CHSPEC_SCC(chspec1, chspec2) \
 	(wf_chspec_primary20_chspec(chspec1) == wf_chspec_primary20_chspec(chspec2))
@@ -3988,4 +4001,7 @@ extern wl_mlo_link_t *wl_cfg80211_get_ml_linkinfo_by_linkid(struct bcm_cfg80211 
 extern void wl_cfg80211_get_bss_sta_info(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	struct ether_addr *mac_ea, struct station_info *sinfo);
 #endif /* WL_BSS_STA_INFO */
+#ifdef WL_SAE_STD_API
+extern int wl_set_sae_pwe(struct net_device *dev, enum nl80211_sae_pwe_mechanism sae_pwe_value);
+#endif /* WL_SAE_STD_API */
 #endif /* _wl_cfg80211_h_ */

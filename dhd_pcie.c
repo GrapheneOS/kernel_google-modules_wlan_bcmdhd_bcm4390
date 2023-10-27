@@ -5344,6 +5344,7 @@ dhdpcie_read_dnglbp(dhd_bus_t *bus, int src, int src_size, uint8 *obuf)
 	sharea_addr = (uint32 *)(obuf - sizeof(uint32));
 	if ((int)(*sharea_addr) == -1) {
 		DHD_ERROR(("%s: Error! Last word is 0xFFFFFFFF\n", __FUNCTION__));
+		dhd_validate_pcie_link_cbp_wlbp(bus);
 		ret = BCME_NOTUP;
 	} else {
 		DHD_ERROR(("%s: Last word is 0x%x\n", __FUNCTION__, *sharea_addr));
@@ -5396,6 +5397,8 @@ dhdpcie_get_coex_mem_dump(dhd_bus_t *bus)
 	comb_hdr->version = COEX_COMBINED_FW_HDR_VERSION;
 	comb_hdr->len = len;
 
+	dhd_validate_pcie_link_cbp_wlbp(bus);
+
 	/* ITCM portion */
 	tlv = comb_hdr->tlv;
 	tlv->id = COEX_FW_TLV_ITCM;
@@ -5404,6 +5407,7 @@ dhdpcie_get_coex_mem_dump(dhd_bus_t *bus)
 	ret = dhdpcie_read_dnglbp(bus, bus->coex_itcm_base, bus->coex_itcm_size, tlv->data);
 	if (ret) {
 		DHD_ERROR(("%s: Failed to dump coex itcm\n", __FUNCTION__));
+		comb_hdr->len = 0;
 		return ret;
 	}
 	len -= bus->coex_itcm_size;
@@ -5415,9 +5419,12 @@ dhdpcie_get_coex_mem_dump(dhd_bus_t *bus)
 	len -= sizeof(*tlv);
 	ret = dhdpcie_read_dnglbp(bus, bus->coex_dtcm_base, bus->coex_dtcm_size, tlv->data);
 	if (ret) {
+		comb_hdr->len = 0;
 		DHD_ERROR(("%s: Failed to dump coex dtcm\n", __FUNCTION__));
 	}
 	ASSERT((len - bus->coex_dtcm_size == 0));
+
+	dhd_validate_pcie_link_cbp_wlbp(bus);
 
 	return ret;
 }
@@ -5483,15 +5490,8 @@ dhdpcie_get_mem_dump(dhd_bus_t *bus)
 	ret = dhdpcie_read_dnglbp(bus, start, size, p_buf);
 	if (ret) {
 		DHD_ERROR(("%s: Failed to dump wlan ram\n", __FUNCTION__));
-		return ret;
 	}
 
-#ifdef COEX_CPU
-	/* Perform coex dump if it exists */
-	if (bus->coex_itcm_base) {
-		ret = dhdpcie_get_coex_mem_dump(bus);
-	}
-#endif /* COEX_CPU */
 exit:
 #if defined(DHD_FILE_DUMP_EVENT) && defined(DHD_FW_COREDUMP)
 	if (ret != BCME_OK) {
@@ -5774,18 +5774,30 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 	if (dhdp->skip_memdump_map_read == FALSE && cmnbp_state == BCME_OK) {
 		ret = dhdpcie_get_mem_dump(bus);
 		if (ret == BCME_NOTUP && CHIPTYPE(bus->sih->socitype) == SOCI_NCI) {
-			DHD_ERROR(("%s: failed to get mem dump! err=%d, retry\n",
+			DHD_ERROR(("%s: failed to get wl mem dump! err=%d, retry\n",
 				__FUNCTION__, ret));
 			ret = dhdpcie_retry_memdump(bus);
 			if (ret) {
-				DHD_ERROR(("%s: retry mem dump also fails"
+				DHD_ERROR(("%s: retry wl mem dump also fails"
 					", err=%d\n", __FUNCTION__, ret));
 				goto exit;
 			}
 		} else if (ret) {
-			DHD_ERROR(("%s: failed to get mem dump, err=%d\n", __FUNCTION__, ret));
+			DHD_ERROR(("%s: failed to get wl mem dump, err=%d\n", __FUNCTION__, ret));
 			goto exit;
 		}
+#ifdef COEX_CPU
+		/* Perform coex dump if it exists */
+		if (bus->coex_itcm_base) {
+			if ((ret = dhdpcie_get_coex_mem_dump(bus)) != BCME_OK) {
+				/* do not return error, since wl memdump is already collected
+				 * and needs to be dumped to file
+				 */
+				DHD_ERROR(("%s: Failed to dump coex ram\n", __FUNCTION__));
+			}
+		}
+#endif /* COEX_CPU */
+
 	} else {
 		DHD_ERROR(("%s: Skipped to get mem dump, err=%d\n", __FUNCTION__, ret));
 		dhdp->skip_memdump_map_read = FALSE;
@@ -8293,9 +8305,9 @@ BCMRAMFN(dhd_cap_bcmstrbuf)(dhd_pub_t *dhd, struct bcmstrbuf *b)
 #ifdef WL_CFG80211
 	bcm_bprintf(b, "cfg80211 ");
 #endif /* WL_CFG80211 */
-#ifdef DHD_FILE_DUMP_EVENT
+#if defined(DHD_FILE_DUMP_EVENT) || defined(HAL_DEBUGABILITY)
 	bcm_bprintf(b, "haldump ");
-#endif /* DHD_FILE_DUMP_EVENT */
+#endif /* DHD_FILE_DUMP_EVENT || HAL_DEBUGABILITY */
 #ifdef DHD_LB_RXP
 	bcm_bprintf(b, "lbrxp ");
 #endif /* DHD_LB_RXP */
@@ -10094,132 +10106,6 @@ dhdpcie_bus_lpback_req(struct  dhd_bus *bus, uint32 len)
 	return 0;
 }
 
-int
-dhdpcie_bus_handle_d3d0_timeouts(struct dhd_bus *bus)
-{
-	int rc;
-	unsigned long flags;
-#ifdef DHD_FW_COREDUMP
-	uint32 cur_memdump_mode = bus->dhd->memdump_enabled;
-#endif /* DHD_FW_COREDUMP */
-
-	/* check if the D3 ACK timeout due to scheduling issue */
-	bus->dhd->is_sched_error = !dhd_query_bus_erros(bus->dhd) &&
-		dhd_bus_query_dpc_sched_errors(bus->dhd);
-	DHD_PRINT(("%s: resumed on timeout for D3/D0 ACK%s\n",
-		__FUNCTION__, bus->dhd->is_sched_error ?
-		" due to scheduling problem" : ""));
-#if defined(DHD_KERNEL_SCHED_DEBUG) && defined(DHD_FW_COREDUMP)
-	/* DHD triggers Kernel panic if the resumed on timeout occurrs
-	 * due to tasklet or workqueue scheduling problems in the Linux Kernel.
-	 * Customer informs that it is hard to find any clue from the
-	 * host memory dump since the important tasklet or workqueue information
-	 * is already disappered due the latency while printing out the timestamp
-	 * logs for debugging scan timeout issue.
-	 * For this reason, customer requestes us to trigger Kernel Panic rather
-	 * than taking a SOCRAM dump.
-	 */
-	if (bus->dhd->is_sched_error && cur_memdump_mode == DUMP_MEMFILE_BUGON) {
-		/* change g_assert_type to trigger Kernel panic */
-		g_assert_type = 2;
-		/* use ASSERT() to trigger panic */
-		ASSERT(0);
-	}
-#endif /* DHD_KERNEL_SCHED_DEBUG && DHD_FW_COREDUMP */
-	DHD_SET_BUS_NOT_IN_LPS(bus);
-
-	DHD_GENERAL_LOCK(bus->dhd, flags);
-	bus->dhd->busstate = DHD_BUS_DATA;
-	/* resume all interface network queue. */
-	dhd_bus_start_queue(bus);
-	DHD_GENERAL_UNLOCK(bus->dhd, flags);
-
-	dhd_validate_pcie_link_cbp_wlbp(bus);
-	if (bus->link_state != DHD_PCIE_ALL_GOOD) {
-		DHD_ERROR(("%s: bus->link_state:%d\n", __FUNCTION__, bus->link_state));
-#ifdef OEM_ANDROID
-		dhd_os_check_hang(bus->dhd, 0, -ETIMEDOUT);
-#endif /* OEM_ANDROID */
-		rc = -ETIMEDOUT;
-		return rc;
-	}
-
-	/* Dump important config space registers */
-	dhd_bus_dump_imp_cfg_registers(bus);
-
-	/* avoid multiple socram dump from dongle trap and
-	 * invalid PCIe bus assceess due to PCIe link down
-	 */
-	if (bus->dhd->check_trap_rot) {
-		DHD_PRINT(("Check dongle trap in the case of d3/d0 ack timeout\n"));
-		dhdpcie_checkdied(bus, NULL, 0);
-	}
-	/* Set d3_ack_timeout_occurred after checkdied,
-	 * as checkdied returns for any bus error
-	 */
-	bus->dhd->d3d0ack_timeout_occured = TRUE;
-	/* If the D3 Ack has timeout */
-	bus->dhd->d3d0ackcnt_timeout++;
-
-	if (bus->dhd->dongle_trap_occured) {
-#ifdef OEM_ANDROID
-#ifdef SUPPORT_LINKDOWN_RECOVERY
-#ifdef CONFIG_ARCH_MSM
-		bus->no_cfg_restore = 1;
-#endif /* CONFIG_ARCH_MSM */
-#endif /* SUPPORT_LINKDOWN_RECOVERY */
-		dhd_os_check_hang(bus->dhd, 0, -EREMOTEIO);
-#endif /* OEM_ANDROID */
-	} else if (!bus->is_linkdown &&
-		!bus->cto_triggered && (bus->link_state == DHD_PCIE_ALL_GOOD)) {
-		uint32 intstatus = 0;
-
-		/* Check if PCIe bus status is valid */
-		intstatus = si_corereg(bus->sih, bus->sih->buscoreidx,
-			bus->pcie_mailbox_int, 0, 0);
-		if (intstatus == (uint32)-1) {
-			/* Invalidate PCIe bus status */
-			bus->is_linkdown = 1;
-		}
-
-		dhd_bus_dump_console_buffer(bus);
-		dhd_prot_debug_info_print(bus->dhd);
-#ifdef DHD_FW_COREDUMP
-		if (cur_memdump_mode) {
-			/* write core dump to file */
-			bus->dhd->memdump_type = DUMP_TYPE_D3_ACK_TIMEOUT;
-			dhdpcie_mem_dump(bus);
-		}
-#endif /* DHD_FW_COREDUMP */
-
-#ifdef NDIS
-		/* ASSERT only if hang detection/recovery is disabled.
-		 * If enabled then let
-		 * windows HDR mechansim trigger FW download via surprise removal
-		 */
-		dhd_bus_check_died(bus);
-#endif
-
-#ifdef OEM_ANDROID
-		DHD_PRINT(("%s: Event HANG send up due to D3/D0_ACK timeout\n",
-			__FUNCTION__));
-#ifdef SUPPORT_LINKDOWN_RECOVERY
-#ifdef CONFIG_ARCH_MSM
-		bus->no_cfg_restore = 1;
-#endif /* CONFIG_ARCH_MSM */
-#endif /* SUPPORT_LINKDOWN_RECOVERY */
-		dhd_os_check_hang(bus->dhd, 0, -ETIMEDOUT);
-#endif /* OEM_ANDROID */
-
-	}
-#if defined(DHD_ERPOM) || (defined(DHD_EFI) && defined(BT_OVER_PCIE))
-	dhd_schedule_reset(bus->dhd);
-#endif /* DHD_ERPOM || DHD_EFI */
-	rc = -ETIMEDOUT;
-
-	return rc;
-}
-
 /* Ring DoorBell1 to indicate Hostready i.e. D3 Exit */
 void
 dhd_bus_hostready(struct  dhd_bus *bus)
@@ -10243,14 +10129,6 @@ dhd_bus_hostready(struct  dhd_bus *bus)
 		return;
 	}
 
-#ifdef PCIE_INB_DW
-	if (INBAND_DW_ENAB(bus)) {
-		if (dhdpcie_bus_get_pcie_inband_dw_state(bus) == DW_DEVICE_HOST_WAKE_WAIT) {
-			bus->wait_for_d0_ack = 0;
-		}
-	}
-#endif /* PCIE_INB_DW */
-
 #ifdef DHD_MMIO_TRACE
 	dhd_bus_mmio_trace(bus, dhd_bus_db1_addr_get(bus), 0x1, TRUE);
 #endif /* defined(DHD_MMIO_TRACE) */
@@ -10258,20 +10136,6 @@ dhd_bus_hostready(struct  dhd_bus *bus)
 	si_corereg(bus->sih, bus->sih->buscoreidx, dhd_bus_db1_addr_get(bus), ~0, 0x12345678);
 	bus->hostready_count ++;
 	DHD_ERROR_MEM(("%s: Ring Hostready:%d\n", __FUNCTION__, bus->hostready_count));
-
-#ifdef PCIE_INB_DW
-	if (INBAND_DW_ENAB(bus)) {
-		if (dhdpcie_bus_get_pcie_inband_dw_state(bus) == DW_DEVICE_HOST_WAKE_WAIT) {
-			uint32 timeleft = dhd_os_ds_exit_wait(bus->dhd, &bus->wait_for_d0_ack);
-			if (!bus->wait_for_d0_ack || timeleft == 0) {
-				DHD_ERROR(("%s: Resumed on timeout for D0, wait_for_d0_ack : %d\n",
-					__FUNCTION__, bus->wait_for_d0_ack));
-				dhdpcie_bus_handle_d3d0_timeouts(bus);
-			}
-		}
-	}
-#endif /* PCIE_INB_DW */
-
 }
 
 /* Clear INTSTATUS */
@@ -10505,9 +10369,9 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 		/* As D3_INFORM will be sent after De-assert,
 		 * skip sending DS-ACK for DS-REQ.
 		 */
-		DHD_BUS_INB_DW_LOCK(bus->inb_lock, flags);
-		bus->skip_ds_ack = TRUE;
-		DHD_BUS_INB_DW_UNLOCK(bus->inb_lock, flags);
+	DHD_BUS_INB_DW_LOCK(bus->inb_lock, flags);
+	bus->skip_ds_ack = TRUE;
+	DHD_BUS_INB_DW_UNLOCK(bus->inb_lock, flags);
 #endif /* PCIE_INB_DW */
 
 #if defined(PCIE_OOB) || defined(PCIE_INB_DW)
@@ -10753,7 +10617,7 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 				 * between DPC and suspend context and bus->bus_low_power_state
 				 * will be set to DHD_BUS_D3_ACK_RECEIVED in DPC.
 				 */
-				bus->dhd->d3d0ackcnt_timeout = 0;
+				bus->dhd->d3ackcnt_timeout = 0;
 				bus->dhd->busstate = DHD_BUS_SUSPEND;
 				DHD_GENERAL_UNLOCK(bus->dhd, flags);
 #if defined(__linux__)
@@ -10800,9 +10664,125 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			}
 #endif /* OEM_ANDROID */
 
-		} else if (timeleft == 0) {
-			DHD_ERROR(("%s: Resumed on timeout for D3 ACK\n", __FUNCTION__));
-			rc = dhdpcie_bus_handle_d3d0_timeouts(bus);
+		} else if ((timeleft == 0) && !dhd_query_bus_erros(bus->dhd)) { /* D3 ACK Timeout */
+#ifdef DHD_FW_COREDUMP
+			uint32 cur_memdump_mode = bus->dhd->memdump_enabled;
+#endif /* DHD_FW_COREDUMP */
+
+			/* check if the D3 ACK timeout due to scheduling issue */
+			bus->dhd->is_sched_error = !dhd_query_bus_erros(bus->dhd) &&
+				dhd_bus_query_dpc_sched_errors(bus->dhd);
+			DHD_PRINT(("%s: resumed on timeout for D3 ACK%s d3_inform_cnt %d\n",
+				__FUNCTION__, bus->dhd->is_sched_error ?
+				" due to scheduling problem" : "", bus->dhd->d3ackcnt_timeout));
+#if defined(DHD_KERNEL_SCHED_DEBUG) && defined(DHD_FW_COREDUMP)
+			/* DHD triggers Kernel panic if the resumed on timeout occurrs
+			 * due to tasklet or workqueue scheduling problems in the Linux Kernel.
+			 * Customer informs that it is hard to find any clue from the
+			 * host memory dump since the important tasklet or workqueue information
+			 * is already disappered due the latency while printing out the timestamp
+			 * logs for debugging scan timeout issue.
+			 * For this reason, customer requestes us to trigger Kernel Panic rather
+			 * than taking a SOCRAM dump.
+			 */
+			if (bus->dhd->is_sched_error && cur_memdump_mode == DUMP_MEMFILE_BUGON) {
+				/* change g_assert_type to trigger Kernel panic */
+				g_assert_type = 2;
+				/* use ASSERT() to trigger panic */
+				ASSERT(0);
+			}
+#endif /* DHD_KERNEL_SCHED_DEBUG && DHD_FW_COREDUMP */
+			DHD_SET_BUS_NOT_IN_LPS(bus);
+
+			DHD_GENERAL_LOCK(bus->dhd, flags);
+			bus->dhd->busstate = DHD_BUS_DATA;
+			/* resume all interface network queue. */
+			dhd_bus_start_queue(bus);
+			DHD_GENERAL_UNLOCK(bus->dhd, flags);
+
+			dhd_validate_pcie_link_cbp_wlbp(bus);
+			if (bus->link_state != DHD_PCIE_ALL_GOOD) {
+				DHD_ERROR(("%s: bus->link_state:%d\n",
+					__FUNCTION__, bus->link_state));
+#ifdef OEM_ANDROID
+				dhd_os_check_hang(bus->dhd, 0, -ETIMEDOUT);
+#endif /* OEM_ANDROID */
+				rc = -ETIMEDOUT;
+				return rc;
+			}
+
+			/* Dump important config space registers */
+			dhd_bus_dump_imp_cfg_registers(bus);
+
+			/* avoid multiple socram dump from dongle trap and
+			 * invalid PCIe bus assceess due to PCIe link down
+			 */
+			if (bus->dhd->check_trap_rot) {
+				DHD_PRINT(("Check dongle trap in the case of d3 ack timeout\n"));
+				dhdpcie_checkdied(bus, NULL, 0);
+			}
+			/* Set d3_ack_timeout_occurred after checkdied,
+			 * as checkdied returns for any bus error
+			 */
+			bus->dhd->d3ack_timeout_occured = TRUE;
+			/* If the D3 Ack has timeout */
+			bus->dhd->d3ackcnt_timeout++;
+
+			if (bus->dhd->dongle_trap_occured) {
+#ifdef OEM_ANDROID
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+				bus->no_cfg_restore = 1;
+#endif /* CONFIG_ARCH_MSM */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
+				dhd_os_check_hang(bus->dhd, 0, -EREMOTEIO);
+#endif /* OEM_ANDROID */
+			} else if (!bus->is_linkdown &&
+				!bus->cto_triggered && (bus->link_state == DHD_PCIE_ALL_GOOD)) {
+				uint32 intstatus = 0;
+
+				/* Check if PCIe bus status is valid */
+				intstatus = si_corereg(bus->sih, bus->sih->buscoreidx,
+					bus->pcie_mailbox_int, 0, 0);
+				if (intstatus == (uint32)-1) {
+					/* Invalidate PCIe bus status */
+					bus->is_linkdown = 1;
+				}
+
+				dhd_bus_dump_console_buffer(bus);
+				dhd_prot_debug_info_print(bus->dhd);
+#ifdef DHD_FW_COREDUMP
+				if (cur_memdump_mode) {
+					/* write core dump to file */
+					bus->dhd->memdump_type = DUMP_TYPE_D3_ACK_TIMEOUT;
+					dhdpcie_mem_dump(bus);
+				}
+#endif /* DHD_FW_COREDUMP */
+
+#ifdef NDIS
+				/* ASSERT only if hang detection/recovery is disabled.
+				 * If enabled then let
+				 * windows HDR mechansim trigger FW download via surprise removal
+				 */
+				dhd_bus_check_died(bus);
+#endif
+
+#ifdef OEM_ANDROID
+				DHD_PRINT(("%s: Event HANG send up due to D3_ACK timeout\n",
+					__FUNCTION__));
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+				bus->no_cfg_restore = 1;
+#endif /* CONFIG_ARCH_MSM */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
+				dhd_os_check_hang(bus->dhd, 0, -ETIMEDOUT);
+#endif /* OEM_ANDROID */
+
+			}
+#if defined(DHD_ERPOM) || (defined(DHD_EFI) && defined(BT_OVER_PCIE))
+			dhd_schedule_reset(bus->dhd);
+#endif /* DHD_ERPOM || DHD_EFI */
+			rc = -ETIMEDOUT;
 		}
 #ifdef PCIE_OOB
 		bus->oob_presuspend = FALSE;
@@ -10857,12 +10837,6 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 		/* set bus_low_power_state to DHD_BUS_NO_LOW_POWER_STATE */
 		DHD_SET_BUS_NOT_IN_LPS(bus);
 
-		/* Enable back the intmask which was cleared in DPC
-		 * after getting D3_ACK.
-		 */
-		dhdpcie_bus_intr_enable(bus);
-		bus->dngl_intmask_enable_count++;
-
 		if (!rc && bus->dhd->busstate == DHD_BUS_SUSPEND) {
 			if (bus->use_d0_inform) {
 				DHD_OS_WAKE_LOCK_WAIVE(bus->dhd);
@@ -10912,6 +10886,13 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 #endif /* PCIE_OOB */
 		/* resume all interface network queue. */
 		dhd_bus_start_queue(bus);
+
+		/* Enable back the intmask which was cleared in DPC
+		 * after getting D3_ACK.
+		 */
+		dhdpcie_bus_intr_enable(bus);
+		bus->dngl_intmask_enable_count++;
+
 		DHD_GENERAL_UNLOCK(bus->dhd, flags);
 
 #ifdef DHD_TIMESYNC
@@ -13664,10 +13645,6 @@ dhd_bus_handle_mb_data(dhd_bus_t *bus, uint32 d2h_mb_data, const char *context)
 			if (dhdpcie_bus_get_pcie_inband_dw_state(bus) ==
 				DW_DEVICE_HOST_WAKE_WAIT) {
 				dhdpcie_bus_set_pcie_inband_dw_state(bus, DW_DEVICE_DS_ACTIVE);
-				OSL_SMP_WMB();
-				bus->wait_for_d0_ack = 1;
-				OSL_SMP_WMB();
-				dhd_os_ds_exit_wake(bus->dhd);
 			}
 			DHD_BUS_INB_DW_UNLOCK(bus->inb_lock, flags);
 		}

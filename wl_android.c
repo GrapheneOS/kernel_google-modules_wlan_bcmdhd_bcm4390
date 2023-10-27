@@ -490,8 +490,8 @@ typedef union {
 	wl_roam_prof_band_v2_t v2;
 	wl_roam_prof_band_v3_t v3;
 	wl_roam_prof_band_v4_t v4;
+	wl_roam_prof_band_v6_t v6;
 } wl_roamprof_band_t;
-
 
 #ifdef WLWFDS
 #define CMD_ADD_WFDS_HASH	"ADD_WFDS_HASH"
@@ -1951,6 +1951,16 @@ wl_android_get_roam_trigger(struct net_device *dev, char *command, int total_len
 				for (i = 0; i < WL_MAX_ROAM_PROF_BRACKETS; i++) {
 					if (rp.v4.roam_prof[i].channel_usage == 0) {
 						roam_trigger[0] = rp.v4.roam_prof[i].roam_trigger;
+						break;
+					}
+				}
+			}
+			break;
+			case WL_ROAM_PROF_VER_5:
+			{
+				for (i = 0; i < WL_MAX_ROAM_PROF_BRACKETS; i++) {
+					if (rp.v6.roam_prof[i].channel_usage == 0) {
+						roam_trigger[0] = rp.v6.roam_prof[i].roam_trigger;
 						break;
 					}
 				}
@@ -15176,7 +15186,7 @@ wlc_wbtext_get_roam_prof(struct net_device *ndev, wl_roamprof_band_t *rp,
 	}
 	memcpy_s(rp, sizeof(*rp), ioctl_buf, sizeof(*rp));
 	/* roam_prof version get */
-	if (rp->v1.ver > WL_ROAM_PROF_VER_4) {
+	if (rp->v1.ver > WL_ROAM_PROF_VER_5) {
 		WL_ERR(("bad version (=%d) in return data\n", rp->v1.ver));
 		err = BCME_VERSION;
 		goto exit;
@@ -15210,6 +15220,12 @@ wlc_wbtext_get_roam_prof(struct net_device *ndev, wl_roamprof_band_t *rp,
 		{
 			*roam_prof_size = sizeof(wl_roam_prof_v4_t);
 			*roam_prof_ver = WL_ROAM_PROF_VER_4;
+		}
+		break;
+		case WL_ROAM_PROF_VER_5:
+		{
+			*roam_prof_size = sizeof(wl_roam_prof_v6_t);
+			*roam_prof_ver = WL_ROAM_PROF_VER_5;
 		}
 		break;
 
@@ -15287,6 +15303,7 @@ wl_cfg80211_wbtext_set_default(struct net_device *ndev)
 			case WL_ROAM_PROF_VER_2:
 			case WL_ROAM_PROF_VER_3:
 			case WL_ROAM_PROF_VER_4:
+			case WL_ROAM_PROF_VER_5:
 			{
 				memset_s(commandp, WLC_IOCTL_SMLEN, 0, WLC_IOCTL_SMLEN);
 				if (bandidx == BAND_5G_INDEX) {
@@ -15496,7 +15513,7 @@ wl_cfg80211_wbtext_config(struct net_device *ndev, char *data, char *command, in
 	}
 	memcpy_s(rp, sizeof(*rp), ioctl_buf, sizeof(*rp));
 	/* roam_prof version get */
-	if (rp->v1.ver > WL_ROAM_PROF_VER_4) {
+	if (rp->v1.ver > WL_ROAM_PROF_VER_5) {
 		WL_ERR(("bad version (=%d) in return data\n", rp->v1.ver));
 		err = -EINVAL;
 		goto exit;
@@ -15532,11 +15549,16 @@ wl_cfg80211_wbtext_config(struct net_device *ndev, char *data, char *command, in
 			roam_prof_ver = WL_ROAM_PROF_VER_4;
 		}
 		break;
+		case WL_ROAM_PROF_VER_5:
+		{
+			roam_prof_size = sizeof(wl_roam_prof_v6_t);
+			roam_prof_ver = WL_ROAM_PROF_VER_5;
+		}
+		break;
 		default:
 			WL_ERR(("bad version = %d \n", rp->v1.ver));
 			goto exit;
 	}
-	WL_DBG(("roam prof ver %u size %u\n", roam_prof_ver, roam_prof_size));
 	if ((rp->v1.len % roam_prof_size) != 0) {
 		WL_ERR(("bad length (=%d) in return data\n", rp->v1.len));
 		err = -EINVAL;
@@ -15561,6 +15583,8 @@ wl_cfg80211_wbtext_config(struct net_device *ndev, char *data, char *command, in
 			fs_per = rp->v4.roam_prof[i].fullscan_period;
 		} else if (roam_prof_ver == WL_ROAM_PROF_VER_4) {
 			fs_per = rp->v4.roam_prof[i].fullscan_period;
+		} else if (roam_prof_ver == WL_ROAM_PROF_VER_5) {
+			fs_per = rp->v6.roam_prof[i].fullscan_period;
 		}
 		if (fs_per == 0) {
 			break;
@@ -15602,7 +15626,24 @@ wl_cfg80211_wbtext_config(struct net_device *ndev, char *data, char *command, in
 					rp->v4.roam_prof[i].rssi_lower,
 					rp->v4.roam_prof[i].channel_usage,
 					rp->v4.roam_prof[i].cu_avg_calc_dur);
-
+			} else if (roam_prof_ver == WL_ROAM_PROF_VER_5) {
+				bytes_written += snprintf(command+bytes_written,
+					total_len - bytes_written,
+					"RSSI[%d,%d] CU(trigger:%d%%: duration:%ds)"
+					" ESTM(low_trigger: %d, roam_delta: %d),"
+					" boost_bitmap %d),"
+					" lp_roamscan_period: %d, max_fullscan_period: %d,"
+					" cca_meas_span:%d",
+					rp->v6.roam_prof[i].roam_trigger,
+					rp->v6.roam_prof[i].rssi_lower,
+					rp->v6.roam_prof[i].channel_usage,
+					rp->v6.roam_prof[i].cu_avg_calc_dur,
+					rp->v6.roam_prof[i].estm_low_trigger,
+					rp->v6.roam_prof[i].estm_roam_delta,
+					rp->v6.roam_prof[i].boost_bitmap,
+					rp->v6.roam_prof[i].lp_roamscan_period,
+					rp->v6.roam_prof[i].max_fullscan_period,
+					rp->v6.roam_prof[i].cca_meas_span);
 			}
 		}
 		bytes_written += scnprintf(command+bytes_written, total_len - bytes_written, "\n");
@@ -15668,6 +15709,20 @@ wl_cfg80211_wbtext_config(struct net_device *ndev, char *data, char *command, in
 					simple_strtol(data, &data, 10);
 				rp->v4.roam_prof[i].lp_roamscan_period = 0;
 				rp->v4.roam_prof[i].max_fullscan_period = 0;
+			}
+
+			if (roam_prof_ver == WL_ROAM_PROF_VER_5) {
+				rp->v6.roam_prof[i].roam_trigger = roam_trigger;
+				rp->v6.roam_prof[i].rssi_lower = rssi_lower;
+				data++;
+				rp->v6.roam_prof[i].channel_usage = simple_strtol(data, &data, 10);
+				data++;
+				rp->v6.roam_prof[i].cu_avg_calc_dur =
+					simple_strtol(data, &data, 10);
+				rp->v6.roam_prof[i].boost_bitmap = 0;
+				rp->v6.roam_prof[i].cca_meas_span = 0;
+				rp->v6.roam_prof[i].lp_roamscan_period = 0;
+				rp->v6.roam_prof[i].max_fullscan_period = 0;
 			}
 
 			rp_len += roam_prof_size;
@@ -15962,6 +16017,14 @@ wl_cfg80211_wbtext_delta_config(struct net_device *ndev, char *data, char *comma
 				}
 				if (rp->v4.roam_prof[i].channel_usage != 0) {
 					rp->v4.roam_prof[i].roam_delta = val;
+				}
+			} else if (roam_prof_ver == WL_ROAM_PROF_VER_5) {
+				if (rp->v6.roam_prof[i].fullscan_period == 0) {
+					WL_ERR(("%s: Incorrect fullscan period value\n", __func__));
+					break;
+				}
+				if (rp->v6.roam_prof[i].channel_usage != 0) {
+					rp->v6.roam_prof[i].roam_delta = val;
 				}
 			}
 			len += roam_prof_size;

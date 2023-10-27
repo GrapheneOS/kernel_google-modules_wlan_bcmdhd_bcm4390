@@ -1010,7 +1010,14 @@ extern void osl_spin_unlock_bh(void *lock, unsigned long flags);
 extern void *osl_mutex_lock_init(osl_t *osh);
 extern void osl_mutex_lock_deinit(osl_t *osh, void *lock);
 extern unsigned long osl_mutex_lock(void *lock);
-void osl_mutex_unlock(void *lock, unsigned long flags);
+extern void osl_mutex_unlock(void *lock, unsigned long flags);
+extern int osl_alloc_fatal_logbuf(osl_t *osh);
+extern void osl_dealloc_fatal_logbuf(osl_t *osh);
+extern uint32 osl_get_fatal_logbuf_size(osl_t *osh);
+extern uchar *osl_get_fatal_logbuf_addr(osl_t *osh);
+extern void *osl_get_fatal_logbuf(osl_t *osh, uint32 request_size, uint32 *allocated_size);
+extern void *osl_get_fatal_logbuf_end(osl_t *osh, uint32 request_size, uint32 *allocated_size);
+extern int osl_create_directory(char *pathname, int mode);
 
 #ifndef CUSTOM_PREFIX
 #define OSL_PRINT(args)	\

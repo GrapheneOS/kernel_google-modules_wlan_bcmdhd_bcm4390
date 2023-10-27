@@ -363,6 +363,10 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
 	DHDCFLAGS += -DDHD_SKIP_COREDUMP_OLDER_CHIPS
 	# Skip coredump for continousy pkt drop health check
 	DHDCFLAGS += -DSKIP_COREDUMP_PKTDROP_RXHC
+	# Boost host cpufreq to max for peak tput. default is false
+	DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST
+	# Boost host cpufreq to max for peak tput. default is true
+	DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST_DEFAULT_ENAB
 endif
 endif
 
@@ -800,8 +804,41 @@ DHDCFLAGS += -DMAX_PFN_LIST_COUNT=16
 # Enable idsup for 4-way HS offload
 DHDCFLAGS += -DBCMSUP_4WAY_HANDSHAKE -DWL_ENABLE_IDSUP
 
+# Enable idauth for AP 4-way HS offload
+#DHDCFLAGS += -DWL_IDAUTH
+
+# Enable SAE standard kernel path
+#DHDCFLAGS += -DWL_SAE_STD_API
+
 # STA DUMP
 DHDCFLAGS += -DWL_BSS_STA_INFO
+
+ifneq ($(CONFIG_PORT_AUTH_BKPORT),)
+    # Support for TDI, P2P GC.
+    DHDCFLAGS += -DWL_MLO_BKPORT_NEW_PORT_AUTH
+    # Enable AP port auth support
+    DHDCFLAGS += -DWL_AP_PORT_AUTH_BKPORT
+    $(warning "AUTH Backported kernel")
+endif
+ifneq ($(CONFIG_AP_4WAY_HS_BKPORT),)
+    # Enable AP_PSK support
+	DHDCFLAGS += -DWL_AP_4WAY_HS_BKPORT
+    $(warning "AP 4WAY HS Backported kernel")
+endif
+ifneq ($(CONFIG_SAE_AP_CAP_BKPORT),)
+    # Enable SAE AP capability backport
+    DHDCFLAGS += -DWL_SAE_AP_CAP_BKPORT
+    $(warning "SAE AP Backported kernel")
+endif
+ifneq ($(CONFIG_SAE_PWE_BKPORT),)
+    # Enable SAE PWE standard path backport
+    DHDCFLAGS += -DWL_SAE_PWE_BKPORT
+    $(warning "AP PWE Backported kernel")
+endif
+ifneq ($(CONFIG_OWE_OFFLD_BKPORT),)
+    DHDCFLAGS += -DWL_OWE_OFFLD_BKPORT
+    $(warning "OWE Backported kernel")
+endif
 
 ##########################
 # driver type

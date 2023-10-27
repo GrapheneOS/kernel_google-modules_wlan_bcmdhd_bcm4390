@@ -1656,4 +1656,10 @@ extern uint64 div_1M(uint64 q);
 #define _BCM_STR(x) #x
 #define BCM_STR(x) _BCM_STR(x)
 
+/* For use in ecounters XTLV gather desc packing */
+typedef struct ver_len_info {
+	uint16 ver;
+	uint16 len;
+} ver_len_info_t;
+
 #endif	/* _bcmutils_h_ */

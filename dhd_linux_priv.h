@@ -418,7 +418,6 @@ typedef struct dhd_info {
 #endif	/* BTLOG */
 #ifdef PCIE_INB_DW
 	wait_queue_head_t ds_exit_wait;
-	wait_queue_head_t d0_exit_wait;
 #endif /* PCIE_INB_DW */
 #ifdef DHD_DEBUG_UART
 	bool duart_execute;

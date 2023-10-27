@@ -27,6 +27,9 @@
 #include <bcmutils.h>
 #include <wlioctl.h>
 #include <hnd_pktpool.h>
+#if defined(BCMPKTIDMAP) || defined(BCMPKTIDMAP_MIN)
+#include <hnd_pktid.h>
+#endif /* BCMPKTIDMAP || BCMPKTIDMAP_MIN */
 #ifdef BCMRESVFRAGPOOL
 #include <hnd_resvpool.h>
 #endif /* BCMRESVFRAGPOOL */
@@ -2215,13 +2218,16 @@ hnd_pktpool_heap_pkt_release(osl_t *osh, pktpool_t *pktp, uint32 flag)
 		PKTSETPOOL(osh, p, FALSE, NULL); /* clear pool ID tag in pkt */
 
 		lb_set_nofree(p);
-		TOTAL_POOL_PKTID_CNT_INC(pktp);
 		PKTFREE(osh, p, pktp->istx); /* free the packet */
 
 		rte_freelist_mgr_add(p, pktp->mem_handle);
 		pktp->avail--;
 		pktp->n_pkts--;
 		pktp->poolheap_count++;
+		/* reserve the pktid while the pkt is released from pool to heap,
+		 * to be used later when retrieving the pkt from heap to pool
+		 */
+		hnd_pktid_rsvd_poolheap_inc(1u);
 	}
 
 	/* Execute call back for upper layer which used pkt from heap */
@@ -2283,11 +2289,12 @@ hnd_pktpool_heap_get_cb(uint8 handle, void *ctxt, void *pkt, uint pktsize)
 	struct lbuf *lb;
 	int ret = BCME_ERROR;
 	if (pktp != NULL) {
+		/* Decrement reserved pktid as pkt is being allocated from heap to pool */
+		hnd_pktid_rsvd_poolheap_dec(1u);
 		if ((lb = PKTALLOC_ON_LOC(pktpool_osh, pktp->max_pkt_bytes,
 			pktp->type, pkt, pktsize)) != NULL) {
 			if ((ret = pktpool_add(pktp, lb)) == BCME_OK) {
 				pktp->poolheap_count--;
-				TOTAL_POOL_PKTID_CNT_DEC(pktp);
 				if (pktp->poolheap_count == 0) {
 					pktp->release_active = FALSE;
 					hnd_pktpool_release_active_reset(pktp);
@@ -2304,8 +2311,13 @@ hnd_pktpool_heap_get_cb(uint8 handle, void *ctxt, void *pkt, uint pktsize)
 				 */
 				PKTFREE(pktpool_osh, lb, pktsize);
 				pktpool_add_fail_cnt++;
+				/* Increment back reserved pktid upon failure to add pkt */
+				hnd_pktid_rsvd_poolheap_inc(1u);
 			}
 			ret = BCME_OK;
+		} else {
+			/* Increment back reserved pktid upon failure to alloc pkt */
+			hnd_pktid_rsvd_poolheap_inc(1u);
 		}
 	}
 	return ret;

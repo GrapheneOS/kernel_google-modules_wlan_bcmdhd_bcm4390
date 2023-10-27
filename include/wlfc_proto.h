@@ -488,6 +488,7 @@ typedef enum {
 #define FLOW_RING_HP2P_TXQ_STOP      17u
 #define FLOW_RING_GET_TXPARAMS       18u
 #define FLOW_RING_GET_ONCHAN_TIME    19u
+#define FLOW_RING_GET_BCMC_SUPPORT   20u
 
 /* bit 7, indicating if is TID(1) or AC(0) mapped info in tid field) */
 #define PCIEDEV_IS_AC_TID_MAP_MASK	0x80

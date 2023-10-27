@@ -171,12 +171,13 @@ typedef struct bcm_xtlv {
 } bcm_xtlv_t;
 
 /* xtlv options */
-#define BCM_XTLV_OPTION_NONE	0x0000u
-#define BCM_XTLV_OPTION_ALIGN32	0x0001u /* 32bit alignment of type.len.data */
-#define BCM_XTLV_OPTION_IDU8	0x0002u /* shorter id */
-#define BCM_XTLV_OPTION_LENU8	0x0004u /* shorted length */
-#define BCM_XTLV_OPTION_IDBE	0x0008u /* big endian format id */
-#define BCM_XTLV_OPTION_LENBE	0x0010u /* big endian format length */
+#define BCM_XTLV_OPTION_NONE		0x0000u
+#define BCM_XTLV_OPTION_ALIGN32		0x0001u /* 32bit alignment of type.len.data */
+#define BCM_XTLV_OPTION_IDU8		0x0002u /* shorter id */
+#define BCM_XTLV_OPTION_LENU8		0x0004u /* shorted length */
+#define BCM_XTLV_OPTION_IDBE		0x0008u /* big endian format id */
+#define BCM_XTLV_OPTION_LENBE		0x0010u /* big endian format length */
+#define BCM_XTLV_OPTION_GATHER_DESC	0x0020u /* Gather descriptor */
 typedef uint16 bcm_xtlv_opts_t;
 
 /* header size. depends on options. Macros names ending w/ _EX are where
@@ -334,6 +335,8 @@ int bcm_pack_xtlv_buf(void *ctx, uint8 *tlv_buf, uint16 buflen,
 
 /* pack an xtlv. does not do any error checking. if data is not NULL
  * data of given length is copied  to buffer (xtlv)
+ * If opts has BCM_XTLV_OPTION_GATHER_DESC bit set, then the data arg is treated as a pointer
+ * to a gather descriptor
  */
 void bcm_xtlv_pack_xtlv(bcm_xtlv_t *xtlv, uint16 type, uint16 len,
 	const uint8 *data, bcm_xtlv_opts_t opts);
@@ -374,9 +377,62 @@ struct bcm_const_ulvp {
 
 typedef struct bcm_const_ulvp bcm_const_ulvp_t;
 
+#define BCM_XTLV_GATHER_DESC_TUPLES_MAX		(3u)
+
+/* Bits 3..0 are for num tuples but really only 1..0 are used others are reserved
+ * for now
+ */
+#define BCM_XTLV_GATHER_DESC_NUM_TUPLES_MASK		(0x3u)
+/* Bit 4 indicates if the tuple is a container level descriptor set */
+/* Support for 2 level packing with one container and leaf level XTLVs */
+/* If set, the last tuple in the descriptor points to a another set of
+ * gather XTLV descs
+ */
+#define BCM_XTLV_GATHER_DESC_CONTAINER_MASK	(0x10u)
+/* Bit 5 and later are reserved */
+
+#define BCM_XTLV_GATHER_DESC_NUM_TUPLES(desc)	\
+	((desc)->flags & BCM_XTLV_GATHER_DESC_NUM_TUPLES_MASK)
+
+#define BCM_XTLV_GATHER_DESC_NUM_TUPLES_SET(desc, num_tuples)		\
+	(((desc)->flags & (~BCM_XTLV_GATHER_DESC_NUM_TUPLES_MASK)) |	\
+	((num_tuples) & (BCM_XTLV_GATHER_DESC_NUM_TUPLES_MASK)))
+
+/* Sets if a descriptor is container. If next level is present,
+ * the last tuple must point to set of XTLV gather descriptors
+ */
+#define BCM_XTLV_GATHER_DESC_CONTAINER_SET(desc)			\
+	((desc)->flags | BCM_XTLV_GATHER_DESC_CONTAINER_MASK |		\
+	(0x1u & BCM_XTLV_GATHER_DESC_NUM_TUPLES_MASK))
+
+#define BCM_XTLV_GATHER_DESC_IS_CONTAINER(desc)			\
+	((desc)->flags & BCM_XTLV_GATHER_DESC_CONTAINER_MASK)
+
+/* A gather descriptor. Tuples are located elsewhere in memory */
+typedef struct xtlv_gather_desc {
+	uint16	type;
+	uint16	flags;	/* bit 3:0: number of tuples capped to 3 */
+	union {
+		bcm_xlvp_t *tuples;
+		struct xtlv_gather_desc *descs;
+	};
+} xtlv_gather_desc_t;
+
+/* Process one leaf level gather descriptor */
+int bcm_xtlv_put_gather_desc_leaf(xtlv_gather_desc_t *desc, struct bcm_xtlvbuf *xtlvbuf,
+	uint16 *attempted_write_len);
+
+/* Process a bunch of leaf level gather descriptors */
+int bcm_xtlv_process_gather_descs_leaf(xtlv_gather_desc_t *desc, struct bcm_xtlvbuf *xtlvbuf,
+	uint16 *stopped_at, uint16 *attempted_write_len);
+
+/* Process one container desc + leaf level gather descriptors for XTLVs that fit in the enclosing
+ * container
+ */
+int bcm_xtlv_process_gather_descs_fill_container(xtlv_gather_desc_t *desc,
+	struct bcm_xtlvbuf *xtlvbuf, uint16 *stopped_at, uint16 *attempted_write_len, uint8 ecc);
 /* end length value pairs */
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
-
 #endif	/* _bcmtlv_h_ */

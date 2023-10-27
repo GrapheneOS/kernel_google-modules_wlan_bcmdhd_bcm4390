@@ -756,7 +756,8 @@ typedef enum {
 	WL_AMPDU_STATS_TYPE_MLO_LINK_INFO	= 75
 } wl_ampdu_stat_enum_t;
 
-#define	WL_AMPDU_STATS_MAX_CNTS	(64)	/* Possible max number of counters in any sub-categary */
+#define	WL_AMPDU_STATS_MAX_CNTS		64u	/* Max number of counters in any sub-categary */
+#define	WL_AMPDU_STATS_MAX_CNTS_EXT	64u	/* Extended counters */
 
 typedef struct {
 	uint16	type;		/* AMPDU statistics sub-type */
@@ -767,12 +768,16 @@ typedef struct {
 typedef wl_ampdu_stats_generic_t wl_ampdu_stats_rx_t;
 typedef wl_ampdu_stats_generic_t wl_ampdu_stats_tx_t;
 
+#define WL_AMPDU_STATS_AGGRSZ_MAX_SIZE	(sizeof(wl_ampdu_stats_aggrsz_t) + \
+	WL_AMPDU_STATS_MAX_CNTS_EXT * sizeof(uint32))
 typedef struct {
 	uint16	type;		/* AMPDU statistics sub-type */
 	uint16	len;		/* Number of 32-bit counters + 2 */
 	uint32	total_ampdu;
 	uint32	total_mpdu;
+	/* The following must be contiguous arrays */
 	uint32	aggr_dist[WL_AMPDU_STATS_MAX_CNTS + 1];
+	uint32  aggr_dist_ext[];
 } wl_ampdu_stats_aggrsz_t;
 
 /* AMPDU_RX module's per-slice counters. Sent by ecounters as subtype of

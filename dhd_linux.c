@@ -176,6 +176,10 @@ extern void register_page_corrupt_cb(page_corrupt_cb_t cb, void* handle);
 #include <wb_regon_coordinator.h>
 #endif /* WBRC */
 
+#ifdef COEX_CPU
+#include <coex_shared_memfile.h>
+#endif /* COEX_CPU */
+
 #define IP_PROT_RESERVED	0xFF
 
 #ifdef DHD_MQ
@@ -916,9 +920,6 @@ int dhd_ioctl_timeout_msec = IOCTL_RESP_TIMEOUT;
 
 /* DS Exit response timeout */
 int ds_exit_timeout_msec = DS_EXIT_TIMEOUT;
-
-/* D0 Exit response timeout */
-int d0_exit_timeout_msec = D0_EXIT_TIMEOUT;
 
 /* Idle timeout for backplane clock */
 int dhd_idletime = DHD_IDLETIME_TICKS;
@@ -5259,7 +5260,7 @@ static bool dhd_check_hang(struct net_device *net, dhd_pub_t *dhdp, int error)
 #ifdef BCMPCIE
 		DHD_ERROR(("%s: Event HANG send up due to  re=%d te=%d d3acke=%d e=%d s=%d\n",
 			__FUNCTION__, dhdp->rxcnt_timeout, dhdp->txcnt_timeout,
-			dhdp->d3d0ackcnt_timeout, error, dhdp->busstate));
+			dhdp->d3ackcnt_timeout, error, dhdp->busstate));
 #else
 		DHD_ERROR(("%s: Event HANG send up due to  re=%d te=%d e=%d s=%d\n", __FUNCTION__,
 			dhdp->rxcnt_timeout, dhdp->txcnt_timeout, error, dhdp->busstate));
@@ -5268,7 +5269,7 @@ static bool dhd_check_hang(struct net_device *net, dhd_pub_t *dhdp, int error)
 			if (dhdp->dongle_trap_occured) {
 				dhdp->hang_reason = HANG_REASON_DONGLE_TRAP;
 #ifdef BCMPCIE
-			} else if (dhdp->d3d0ackcnt_timeout) {
+			} else if (dhdp->d3ackcnt_timeout) {
 				dhdp->hang_reason = dhdp->is_sched_error ?
 					HANG_REASON_D3_ACK_TIMEOUT_SCHED_ERROR :
 					HANG_REASON_D3_ACK_TIMEOUT;
@@ -6484,7 +6485,7 @@ dhd_stop(struct net_device *net)
 	dhd->pub.txcnt_timeout = 0;
 
 #ifdef BCMPCIE
-	dhd->pub.d3d0ackcnt_timeout = 0;
+	dhd->pub.d3ackcnt_timeout = 0;
 #endif /* BCMPCIE */
 	/* Synchronize between the stop and rx path */
 	dhd->pub.stop_in_progress = true;
@@ -9264,7 +9265,6 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	init_waitqueue_head(&dhd->d3ack_wait);
 #ifdef PCIE_INB_DW
 	init_waitqueue_head(&dhd->ds_exit_wait);
-	init_waitqueue_head(&dhd->d0_exit_wait);
 #endif /* PCIE_INB_DW */
 	init_waitqueue_head(&dhd->ctrl_wait);
 	init_waitqueue_head(&dhd->dhd_bus_busy_state_wait);
@@ -15692,32 +15692,6 @@ dhd_os_ds_exit_wake(dhd_pub_t *pub)
 	return 0;
 }
 
-int
-dhd_os_d0_exit_wait(dhd_pub_t *pub, uint *condition)
-{
-	dhd_info_t * dhd = (dhd_info_t *)(pub->info);
-	int timeout;
-
-	/* Convert timeout in millsecond to jiffies */
-	timeout = msecs_to_jiffies(d0_exit_timeout_msec);
-#ifdef BCMSLTGT
-	timeout *= htclkratio;
-#endif /* BCMSLTGT */
-
-	timeout = wait_event_timeout(dhd->d0_exit_wait, (*condition), timeout);
-
-	return timeout;
-}
-
-int
-dhd_os_d0_exit_wake(dhd_pub_t *pub)
-{
-	dhd_info_t *dhd = (dhd_info_t *)(pub->info);
-
-	wake_up_all(&dhd->d0_exit_wait);
-	return 0;
-}
-
 #endif /* PCIE_INB_DW */
 
 int
@@ -20029,6 +20003,9 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 #if defined(DHD_LOG_DUMP) && !defined(DHD_DUMP_FILE_WRITE_FROM_KERNEL)
 	log_dump_type_t type = DLD_BUF_TYPE_ALL;
 #endif /* DHD_LOG_DUMP && !DHD_DUMP_FILE_WRITE_FROM_KERNEL */
+#ifdef COEX_CPU
+	coex_combined_fw_t *comb_hdr;
+#endif /* COEX_CPU */
 
 	dhd_info = (dhd_info_t *)dhdp->info;
 	dump = (dhd_dump_t *)MALLOC(dhdp->osh, sizeof(dhd_dump_t));
@@ -20043,8 +20020,11 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 	 * even though all instances calling it are using the same dhdp->soc_ram.
 	 * For now directly populating coex tcm related info from dhdp
 	 */
-	dump->coex_buf = dhdp->coex_dump;
-	dump->coex_bufsize = dhdp->coex_dump_length;
+	comb_hdr = (coex_combined_fw_t *)dhdp->coex_dump;
+	if (comb_hdr && comb_hdr->len > 0) {
+		dump->coex_buf = dhdp->coex_dump;
+		dump->coex_bufsize = dhdp->coex_dump_length;
+	}
 #endif /* COEX_CPU */
 #ifdef BCMPCIE
 	dhd_get_hscb_info(dhdp, (void*)(&dump->hscb_buf),
@@ -20357,6 +20337,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	DHD_PRINT(("%s: dump reason: %s\n", __FUNCTION__, dhdp->memdump_str));
 
 #ifdef DHD_SSSR_COREDUMP
+	/* Only for dongle trap case, generate coredump header and TLVs */
 	if (dhd_is_coredump_reqd(dhdp->memdump_str,
 		strnlen(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN), dhdp) &&
 		sssr_enab && collect_sssr) {
@@ -20369,16 +20350,22 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		}
 		collect_coredump = TRUE;
 	} else {
-		DHD_PRINT(("%s: coredump not collected, dhd_is_coredump_reqd returns false "
+		DHD_PRINT(("%s: coredump header not filled, dhd_is_coredump_reqd returns false "
 			"or sssr is not enabled sssr_enab:%d collect_sssr:%d\n",
 			__FUNCTION__, sssr_enab, collect_sssr));
 	}
 #endif /* DHD_SSSR_COREDUMP */
 	if (memdump_type == DUMP_TYPE_BY_SYSDUMP) {
+		/* This case is triggered by upper layer intentionally to fill logs to ring */
 		DHD_LOG_MEM(("%s: coredump is not supported for BY_SYSDUMP/non trap cases\n",
 			__FUNCTION__));
-	} else if (collect_coredump) {
-		DHD_ERROR(("%s: writing SoC_RAM dump\n", __FUNCTION__));
+	} else if (collect_coredump || memdump_type == DUMP_TYPE_COREDUMP_BY_USER) {
+		/* There are two cases to dump coredump or socram through Pixel driver
+		 * Generating coredump after filling header and TLVs in case of dongle trap
+		 * Generating socram without coredump header. SOCRAM_DUMP prvcmd case
+		 */
+		DHD_ERROR(("%s: writing SoC_RAM dump collect_coredump:%d type:%d\n",
+			__FUNCTION__, collect_coredump, memdump_type));
 		if (wifi_platform_set_coredump(dhd->adapter, dump->buf,
 			dump->bufsize, dhdp->memdump_str)) {
 			DHD_ERROR(("%s: wifi_platform_set_coredump failed\n", __FUNCTION__));

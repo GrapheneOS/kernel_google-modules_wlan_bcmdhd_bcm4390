@@ -38,6 +38,7 @@
 #include <bcmutils.h>
 #include <linux/delay.h>
 #include <linux/vmalloc.h>
+#include <linux/namei.h>
 #include <pcicfg.h>
 
 #if defined(BCMASSERT_LOG) && !defined(OEM_ANDROID)
@@ -54,6 +55,20 @@
 #define PCI_CFG_RETRY		10	/* PR15065: retry count for pci cfg accesses */
 
 #define DUMPBUFSZ 1024
+
+#if defined(NICBUILD) && defined(WL_MACDBG)
+/* TODO: This buffer size is good enough for register dump
+ * collection. In future when other dumps like ucode code
+ * dump is going to be supported, this needs to be relooked
+ */
+#define FATAL_LOGBUF_SIZE	(256 * 1024)
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+#define USER_NS mnt_user_ns(path.mnt),
+#else
+#define USER_NS
+#endif
+#endif /* NICBUILD && WL_MACDBG */
 
 #if defined(CUSTOMER_HW4_DEBUG) || defined(CUSTOMER_HW2_DEBUG) || defined(CUSTOMER_HW7_DEBUG)
 uint32 g_assert_type = 1; /* By Default not cause Kernel Panic */
@@ -2349,3 +2364,96 @@ osl_update_pcie_win(osl_t *osh, volatile void *reg_addr)
 		(r_addr & BAR0_WINDOW_OFFSET_MASK));
 }
 #endif /* defined(NIC_REG_ACCESS_LEGACY) || defined(NIC_REG_ACCESS_LEGACY_DBG) */
+
+#if defined(NICBUILD) && defined(WL_MACDBG)
+/* Allocates the fatal log buffer used for mac dump collection */
+int
+osl_alloc_fatal_logbuf(osl_t *osh)
+{
+	int ret = BCME_OK;
+	osh->fatal_logbuf = VMALLOCZ(osh, FATAL_LOGBUF_SIZE);
+	if (!osh->fatal_logbuf) {
+		ret = BCME_NOMEM;
+	} else {
+		osh->fatal_logbuf_size = FATAL_LOGBUF_SIZE;
+	}
+	return ret;
+}
+
+/* Free the fatal logbuffer */
+void
+osl_dealloc_fatal_logbuf(osl_t *osh)
+{
+	if (osh->fatal_logbuf) {
+		VMFREE(osh, osh->fatal_logbuf, FATAL_LOGBUF_SIZE);
+		osh->fatal_logbuf_size = 0;
+	}
+}
+
+/* Returns the address of the fatal logbuffer */
+uchar *
+osl_get_fatal_logbuf_addr(osl_t *osh)
+{
+	return (osh->fatal_logbuf);
+}
+
+/* Returns the size of the fatal logbuffer */
+uint32
+osl_get_fatal_logbuf_size(osl_t *osh)
+{
+	return (osh->fatal_logbuf_size);
+}
+
+/* Clears fatal logbuffer contents and return its address */
+void*
+osl_get_fatal_logbuf(osl_t *osh, uint32 size, uint32 *alloced)
+{
+	BCM_REFERENCE(size);
+
+	memset_s(osh->fatal_logbuf, osh->fatal_logbuf_size, 0, osh->fatal_logbuf_size);
+	*alloced = osh->fatal_logbuf_size;
+	return (osh->fatal_logbuf);
+}
+
+/* Clear size bytes from end of fatal logbuf and return the address */
+void*
+osl_get_fatal_logbuf_end(osl_t *osh, uint32 size, uint32 *alloced)
+{
+	void *fatal_logbuf_endaddr;
+	BCM_REFERENCE(alloced);
+
+	fatal_logbuf_endaddr = osh->fatal_logbuf + osh->fatal_logbuf_size - size;
+	memset_s(fatal_logbuf_endaddr, size, 0, size);
+	return (fatal_logbuf_endaddr);
+}
+
+int
+osl_create_directory(char *pathname, int mode)
+{
+	struct path path;
+	struct dentry *dentry;
+	int err;
+
+	dentry = kern_path_create(AT_FDCWD, pathname, &path, LOOKUP_DIRECTORY);
+	if (IS_ERR(dentry)) {
+		err = PTR_ERR(dentry);
+		printf("%s: kern_path_create failed %d\n", __FUNCTION__, err);
+		return BCME_ERROR;
+	}
+
+	err = security_path_mkdir(&path, dentry, mode);
+	if (err) {
+		printf("%s: create path %s not allowed %d\n",
+			__FUNCTION__, pathname, err);
+		goto exit;
+	}
+
+	err = vfs_mkdir(USER_NS path.dentry->d_inode, dentry, mode);
+	if (err) {
+		printf("%s: failed to create %s %d\n", __FUNCTION__, pathname, err);
+	}
+exit:
+	done_path_create(&path, dentry);
+	return err ? BCME_ERROR : BCME_OK;
+}
+#endif /* NICBUILD && WL_MACDBG */
