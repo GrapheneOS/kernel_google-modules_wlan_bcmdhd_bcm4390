@@ -994,6 +994,43 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_dev_cap_ext_s {
 	uint8 data[];
 } BWL_POST_PACKED_STRUCT wifi_nan_dev_cap_ext_t;
 
+/* NAN R4 - Pairing Bootsrapping Attribute */
+typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_npba_attr_s {
+	uint8	id;	      /* NAN_ATTR_NPBA = 0x2C */
+	uint16	len;	      /* Length of the fields in the attribute */
+	uint8	dialog_token; /* Identify req and resp */
+	uint8	type_status;  /* Bits[3-0] type subfield, Bits[7-4] status subfield */
+	uint8	reason;	      /* Identifies reject reason */
+	uint8	var[];	      /* Optional fields follow */
+} BWL_POST_PACKED_STRUCT wifi_nan_npba_attr_t;
+
+/* NPBA attribute macros */
+#define	NAN_NPBA_ATTR_COMEBACK_LEN	    2u
+#define	NAN_NPBA_ATTR_COOKIE_HDR_LEN	    1u
+#define	NAN_NPBA_ATTR_PAIRING_BS_METHOD_LEN 2u
+#define	NAN_NPBA_ATTR_STATUS_SHIFT	    4u
+
+#define	NAN_BOOTSTRAPPING_ADVERTISE	    0u
+#define	NAN_BOOTSTRAPPING_REQUEST	    1u
+#define NAN_BOOTSTRAPPING_RESPONSE	    2u
+
+#define NAN_BOOTSTRAPPING_STATUS_ACCEPT	    0u
+#define NAN_BOOTSTRAPPING_STATUS_REJECT	    1u
+#define NAN_BOOTSTRAPPING_STATUS_COMEBACK   2u
+
+/* Supported bootstrapping methods */
+#define NAN_PAIRING_BOOTSTRAPPING_OPPORTUNISTIC_MASK          0x0001u
+#define NAN_PAIRING_BOOTSTRAPPING_PIN_CODE_DISPLAY_MASK       0x0002u
+#define NAN_PAIRING_BOOTSTRAPPING_PASSPHRASE_DISPLAY_MASK     0x0004u
+#define NAN_PAIRING_BOOTSTRAPPING_QR_DISPLAY_MASK             0x0008u
+#define NAN_PAIRING_BOOTSTRAPPING_NFC_TAG_MASK                0x0010u
+#define NAN_PAIRING_BOOTSTRAPPING_PIN_CODE_KEYPAD_MASK        0x0020u
+#define NAN_PAIRING_BOOTSTRAPPING_PASSPHRASE_KEYPAD_MASK      0x0040u
+#define NAN_PAIRING_BOOTSTRAPPING_QR_SCAN_MASK                0x0080u
+#define NAN_PAIRING_BOOTSTRAPPING_NFC_READER_MASK             0x0100u
+#define NAN_PAIRING_BOOTSTRAPPING_SERVICE_MANAGED_MASK        0x4000u
+#define NAN_PAIRING_BOOTSTRAPPING_HANDSHAKE_SHIP_MASK         0x8000u
+
 /* Fixed string for the NIK (NAN Identity Key) generation algorithm */
 static const uint8 nan_pairing_nik_prefix[] = "NIK Generation";
 

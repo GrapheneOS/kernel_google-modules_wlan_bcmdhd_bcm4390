@@ -53,7 +53,7 @@ do {	\
 		DHD_LOG_DUMP_WRITE_FW args; \
 	}	\
 } while (0)
-#elif defined(CUSTOM_PREFIX)
+#elif defined(LOG_CUSTOM_PREFIX_AND_RTC)
 #define MSCH_EVENT(args) \
 do {	\
 	if (dhd_msg_level & DHD_EVENT_VAL) {	\

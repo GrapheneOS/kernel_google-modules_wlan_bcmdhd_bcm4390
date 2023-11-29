@@ -287,6 +287,11 @@ dhd_bus_dump_console_buffer(dhd_bus_t *bus)
 		return;
 	}
 
+	if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+		DHD_ERROR(("%s : wlan backplane is down. skip\n", __FUNCTION__));
+		return;
+	}
+
 	addr =	bus->pcie_sh->console_addr + OFFSETOF(hnd_cons_t, log);
 	if ((rv = dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1, addr,
 		(uint8 *)&console_ptr, sizeof(console_ptr))) < 0) {
@@ -1154,6 +1159,13 @@ dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 
 	if (dhdp->busstate != DHD_BUS_DATA)
 		return;
+
+#ifdef DHD_SSSR_DUMP
+	if (dhdp->bus->sssr_in_progress) {
+		DHD_ERROR_RLMT(("%s: SSSR in progress, skip\n", __FUNCTION__));
+		return;
+	}
+#endif /* DHD_SSSR_DUMP */
 
 #ifdef DHD_WAKE_STATUS
 	bcm_bprintf(strbuf, "wake %u rxwake %u readctrlwake %u\n",
@@ -2062,6 +2074,11 @@ dhd_pcie_dma_info_dump(dhd_pub_t *dhd)
 		return 0;
 	}
 
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+		DHD_ERROR(("%s : wlan backplane is down. skip\n", __FUNCTION__));
+		return 0;
+	}
+
 	DHD_PRINT(("\n ------- DUMPING DMA Registers ------- \r\n"));
 
 	//HostToDev
@@ -2299,6 +2316,11 @@ dhd_pcie_debug_info_dump(dhd_pub_t *dhd)
 
 	if (dhd->bus->is_linkdown) {
 		DHD_ERROR(("Skip dumping the PCIe Core registers. link may be DOWN\n"));
+		return 0;
+	}
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+		DHD_ERROR(("%s : wlan backplane is down. skip dumping pcie core regs\n",
+			__FUNCTION__));
 		return 0;
 	}
 

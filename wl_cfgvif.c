@@ -973,8 +973,10 @@ wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, u8 *mac_addr, u16 wl_iftype)
 #endif /* WL_NAN */
 	{
 		/* Fetch last two bytes of mac address */
+		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 		org_toggle_bytes = ntoh16(*((u16 *)&ndev->dev_addr[4]));
 		cur_toggle_bytes = ntoh16(*((u16 *)&mac_addr[4]));
+		GCC_DIAGNOSTIC_POP();
 
 		toggled_bit = (org_toggle_bytes ^ cur_toggle_bytes);
 		WL_DBG(("org_toggle_bytes:%04X cur_toggle_bytes:%04X\n",
@@ -1930,12 +1932,11 @@ wl_get_overlapping_chspecs(chanspec_t sel_chspec,
 	bzero(new_arr, sizeof(new_arr));
 	band = CHSPEC_BAND(sel_chspec);
 	wf_get_all_ext(sel_chspec, chan_array);
+	max_num_chans = MIN(wl_cfgscan_get_max_num_chans_per_bw(sel_chspec),
+		MAX_20MHZ_CHANNELS);
 	for (i = 0; i < max_idx; i++) {
 		chspec = overlap[i].chanspec;
 		chaninfo = overlap[i].chaninfo;
-		max_num_chans =
-			MIN(wl_cfgscan_get_max_num_chans_per_bw(chspec),
-				MAX_20MHZ_CHANNELS);
 
 		if (band != CHSPEC_BAND(chspec)) {
 			continue;
@@ -2035,13 +2036,12 @@ wl_filter_restricted_subbands(struct bcm_cfg80211 *cfg,
 
 	band = CHSPEC_BAND(sel_chspec);
 	wf_get_all_ext(sel_chspec, chan_array);
+	max_num_chans = MIN(wl_cfgscan_get_max_num_chans_per_bw(sel_chspec),
+		MAX_20MHZ_CHANNELS);
 	bzero(overlap, sizeof(overlap));
 	for (i = 0; i < dtoh32(list_count); i++) {
 		chspec = dtoh32(chan_list->chspecs[i].chanspec);
 		chaninfo = dtoh32(chan_list->chspecs[i].chaninfo);
-		max_num_chans =
-			MIN(wl_cfgscan_get_max_num_chans_per_bw(chspec),
-				MAX_20MHZ_CHANNELS);
 
 		/* get overlapping chanspec, chaninfo details based on current chanspec */
 		if ((CHSPEC_BAND(chspec) == band) && (CHSPEC_BW(chspec) == WL_CHANSPEC_BW_20)) {
@@ -2068,6 +2068,8 @@ wl_filter_restricted_subbands(struct bcm_cfg80211 *cfg,
 			sel_chspec, bw, arr_idx));
 		 for (k = 0; k < arr_idx; k++) {
 			retry_bw = FALSE;
+			WL_DBG(("chanspec:0x%x chaninfo:%d index:%d\n",
+				overlap[k].chanspec, overlap[k].chaninfo, k));
 			if (wl_cfgscan_chaninfo_restricted(cfg, dev, overlap[k].chaninfo,
 					overlap[k].chanspec)) {
 				if ((bw == WL_CHANSPEC_BW_80) || (bw == WL_CHANSPEC_BW_40) ||
@@ -2184,10 +2186,10 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 				return -EINVAL;
 			}
 		} else {
-			chanspec_t sta_chanspec;
+			chanspec_t sta_chanspec = INVCHANSPEC;
 			s32 sta_ieee_band;
 			if (ap_oper_data.count == 1) {
-				chanspec_t sta_chspec;
+				chanspec_t sta_chspec = INVCHANSPEC;
 				u16 incoming_band;
 
 				incoming_band = CHSPEC_TO_WLC_BAND(chspec);
@@ -2213,6 +2215,10 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 			}
 
 			sta_chanspec = wl_cfg80211_get_sta_chanspec(cfg);
+			if (!sta_chanspec || !wf_chspec_valid(sta_chanspec)) {
+				WL_ERR(("Invalid chanspec 0x%x\n", sta_chanspec));
+				return -EINVAL;
+			}
 			sta_ieee_band = wl_get_nl80211_band(CHSPEC_BAND(sta_chanspec));
 
 			if (chan->band == sta_ieee_band ||
@@ -3323,7 +3329,8 @@ exit:
 }
 #endif /* SUPPORT_SOFTAP_WPAWPA2_MIXED */
 
-static s32
+#if defined(WL_SAE) || defined(WL_SAE_STD_API)
+s32
 wl_set_ap_passphrase(struct net_device *dev, struct cfg80211_crypto_settings *crypto)
 {
 #ifndef WL_SAE_STD_API
@@ -3371,6 +3378,7 @@ wl_set_ap_passphrase(struct net_device *dev, struct cfg80211_crypto_settings *cr
 done:
 	return err;
 }
+#endif /* defined(WL_SAE) || defined(WL_SAE_STD_API) */
 
 static s32
 wl_cfg80211_bcn_validate_sec(
@@ -3397,9 +3405,36 @@ wl_cfg80211_bcn_validate_sec(
 	if (dev_role == NL80211_IFTYPE_P2P_GO && (ies->wpa2_ie)) {
 		/* For P2P GO, the sec type is WPA2-PSK */
 		WL_DBG(("P2P GO: validating wpa2_ie"));
-		if (wl_validate_wpa2ie(dev, ies->wpa2_ie, bssidx)  < 0)
+		if (wl_validate_wpa2ie(dev, ies->wpa2_ie, bssidx)  < 0) {
 			return BCME_ERROR;
+		}
 
+		/* Plumb PMK for P2P GO case, needed for trigger of 4way HS in FW */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && defined(WL_IDAUTH)
+		if (cfg->idauth_enabled &&
+			(sec->fw_wpa_auth & WPA2_AUTH_PSK) && crypto && crypto->psk) {
+			wsec_pmk_t pmk = {0};
+
+			pmk.key_len = WL_SUPP_PMK_LEN;
+			if (pmk.key_len > sizeof(pmk.key)) {
+				return -EINVAL;
+			}
+
+			pmk.flags = 0;
+			err = memcpy_s(&pmk.key, sizeof(pmk.key), crypto->psk, pmk.key_len);
+			if (err) {
+				return -EINVAL;
+			}
+
+			err = wldev_ioctl_set(dev, WLC_SET_WSEC_PMK, &pmk, sizeof(pmk));
+			if (err) {
+				WL_ERR(("pmk set with WLC_SET_WSEC_PMK failed, error:%d\n", err));
+				return err;
+			} else {
+				WL_INFORM_MEM(("pmk added successfully\n"));
+			}
+		}
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && WL_IDAUTH */
 	} else if (dev_role == NL80211_IFTYPE_AP) {
 
 		WL_DBG(("SoftAP: validating security"));
@@ -3422,45 +3457,61 @@ wl_cfg80211_bcn_validate_sec(
 		}
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && defined(WL_IDAUTH)
-		if (cfg->idauth_enabled &&
-			(sec->fw_wpa_auth & WPA2_AUTH_PSK) && crypto && crypto->psk) {
-			wsec_pmk_t pmk = {0};
+		if (cfg->idauth_enabled && sec->fw_wpa_auth) {
+			WL_INFORM_MEM(("fw_wpa_auth=0x%x\n", sec->fw_wpa_auth));
 
-			pmk.key_len = WL_SUPP_PMK_LEN;
-			if (pmk.key_len > sizeof(pmk.key)) {
-				return -EINVAL;
+			if (sec->fw_wpa_auth & WPA2_AUTH_PSK) {
+				wsec_pmk_t pmk = {0};
+
+				/* For WPA-PSK case, the upper layer provides the PSK (PMK) */
+				if (!crypto || !crypto->psk) {
+					WL_INFORM_MEM(("idauth enabled. crypto->psk is null\n"));
+					if (!(sec->fw_wpa_auth & WPA3_AUTH_SAE_PSK)) {
+						return -EINVAL;
+					}
+					/* multi AKM case, host can provide single passphrase for
+					 * wpa-psk and sae. so gracefully proceed for multi AKM
+					 * involving SAE.
+					 */
+				} else {
+					pmk.key_len = WL_SUPP_PMK_LEN;
+					if (pmk.key_len > sizeof(pmk.key)) {
+						return -EINVAL;
+					}
+
+					pmk.flags = 0;
+					err = memcpy_s(&pmk.key,
+						sizeof(pmk.key), crypto->psk, pmk.key_len);
+					if (err) {
+						return -EINVAL;
+					}
+
+					err = wldev_ioctl_set(dev,
+						WLC_SET_WSEC_PMK, &pmk, sizeof(pmk));
+					if (err) {
+						WL_ERR(("WLC_SET_WSEC_PMK failed, err:%d\n", err));
+						return err;
+					} else {
+						WL_INFORM(("pmk added successfully\n"));
+					}
+				}
 			}
 
-			pmk.flags = 0;
-			err = memcpy_s(&pmk.key, sizeof(pmk.key), crypto->psk, pmk.key_len);
-			if (err) {
-				return -EINVAL;
+#if defined(WL_SAE) || defined(WL_SAE_STD_API)
+			/* Set SAE passphrase */
+			if (sec->fw_wpa_auth & WPA3_AUTH_SAE_PSK) {
+				wl_set_ap_passphrase(dev, crypto);
+#ifdef WL_SAE_STD_API
+				err = wl_set_sae_pwe(dev, crypto->sae_pwe);
+				if (unlikely(err)) {
+					WL_ERR(("Unable to set sae_pwe\n"));
+					return err;
+				}
+#endif /* WL_SAE_STD_API */
 			}
-
-			err = wldev_ioctl_set(dev, WLC_SET_WSEC_PMK, &pmk, sizeof(pmk));
-			if (err) {
-				WL_ERR(("pmk set with WLC_SET_WSEC_PMK failed, error:%d\n", err));
-				return err;
-			} else {
-				WL_INFORM(("pmk added succesfully\n"));
-			}
+#endif /* WL_SAE || WL_SAE_STD_API */
 		}
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && WL_IDAUTH */
-
-		BCM_REFERENCE(wl_set_ap_passphrase);
-#if defined(WL_SAE) || defined(WL_SAE_STD_API)
-		/* Set SAE passphrase */
-		if (sec->fw_wpa_auth & WPA3_AUTH_SAE_PSK) {
-			wl_set_ap_passphrase(dev, crypto);
-#ifdef WL_SAE_STD_API
-			err = wl_set_sae_pwe(dev, crypto->sae_pwe);
-			if (unlikely(err)) {
-				WL_ERR(("Unable to set sae_pwe\n"));
-				return err;
-			}
-#endif /* WL_SAE_STD_API */
-		}
-#endif /* WL_SAE || WL_SAE_STD_API */
 
 		if (ies->fils_ind_ie &&
 			(wl_validate_fils_ind_ie(dev, ies->fils_ind_ie, bssidx)  < 0)) {
@@ -4824,18 +4875,19 @@ wl_cfg80211_start_ap(
  *      center frequencies present in 'preset_chandef' instead of using the
  *      hardcoded values in 'wl_cfg80211_set_channel()'.
  */
-#if ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) && !defined(WL_COMPAT_WIRELESS))
-	if ((err = wl_cfg80211_set_channel(wiphy, dev,
+	mutex_lock(&cfg->usr_sync);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)) || defined(WL_MLO_BKPORT)
-		dev->ieee80211_ptr->u.ap.preset_chandef.chan,
-#else
-		dev->ieee80211_ptr->preset_chandef.chan,
-#endif /* LINUX_VERSION_CODE > KERNEL_VERSION(6, 0, 0) || WL_MLO_BKPORT */
-		NL80211_CHAN_HT20)) < 0) {
+	err = wl_cfg80211_set_channel(wiphy, dev, dev->ieee80211_ptr->u.ap.preset_chandef.chan,
+			NL80211_CHAN_HT20);
+#elif ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) && !defined(WL_COMPAT_WIRELESS))
+	err = wl_cfg80211_set_channel(wiphy, dev, dev->ieee80211_ptr->preset_chandef.chan,
+			NL80211_CHAN_HT20);
+#endif
+	mutex_unlock(&cfg->usr_sync);
+	if (err) {
 		WL_ERR(("Set channel failed \n"));
 		goto fail;
 	}
-#endif /* ((LINUX_VERSION >= VERSION(3, 6, 0) && !WL_COMPAT_WIRELESS) */
 
 	if ((err = wl_cfg80211_bcn_set_params(info, dev,
 		dev_role, bssidx)) < 0) {
@@ -5046,6 +5098,10 @@ wl_cfg80211_stop_ap(
 		/* since bus is down, iovar will fail. recovery path will bringup the bus. */
 		WL_ERR(("bus is not ready\n"));
 		return BCME_OK;
+	}
+
+	if (wl_cfg80211_flush_pmksa(bcmcfg_to_wiphy(cfg), dev)) {
+		WL_ERR(("flush pmksa failed\n"));
 	}
 
 	if ((err = wl_cfg80211_bss_up(cfg, dev, bssidx, 0)) < 0) {

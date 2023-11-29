@@ -33,6 +33,9 @@
 #include <dhd_flowring.h>
 #endif
 
+#ifdef DHD_FWTRACE
+#include <bcm_fwtrace.h>
+#endif
 
 #define DEFAULT_IOCTL_RESP_TIMEOUT	(5 * 1000) /* 5 seconds */
 #ifndef IOCTL_RESP_TIMEOUT

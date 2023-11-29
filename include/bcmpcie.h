@@ -471,6 +471,7 @@ typedef struct {
 
 #define HOSTCAP2_DURATION_SCALE_MASK            0x0000003Fu
 #define HOSTCAP2_PCIE_PTM			0x00000100u
+#define HOSTCAP2_TRAP_ON_BAD_RECOVERY		0x00000200u
 
 /* extended trap debug buffer allocation sizes. Note that this buffer can be used for
  * other trap related purposes also.

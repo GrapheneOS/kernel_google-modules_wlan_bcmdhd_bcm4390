@@ -386,6 +386,13 @@ typedef struct debug_buf_dest_stat {
 } debug_buf_dest_stat_t;
 
 
+#ifdef DHD_FWTRACE
+/* firmware trace information */
+typedef struct dhd_fwtrace_info {
+	uint32 val;	/* value which specifies firmware trace ON/OFF */
+	uint8 filename[32]; /* 32 bytes for filename */
+} dhd_fwtrace_info_t;
+#endif /* DHD_FWTRACE */
 
 /* devreset */
 #define DHD_DEVRESET_VERSION 1

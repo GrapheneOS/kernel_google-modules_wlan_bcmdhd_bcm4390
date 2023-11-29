@@ -1122,6 +1122,13 @@ typedef struct _regs_bmp_list {
 					((_reglist)->bmp_cnt[2u] << 8) | \
 					((_reglist)->bmp_cnt[3u]))
 
+#define REGLIST_STORE_BMP32(_reglist, bitmap) { \
+					(_reglist)->bmp_cnt[3u] = (uint8)bitmap; \
+					(_reglist)->bmp_cnt[2u] = (uint8)(bitmap >> 8); \
+					(_reglist)->bmp_cnt[1u] = (uint8)(bitmap >> 16); \
+					(_reglist)->bmp_cnt[0u] = (uint8)(bitmap >> 24); \
+}
+
 #define REGLIST_WIDTH(rlst)		(((REGLIST_LOAD_BMP32((rlst)) & REGLIST_SIZE_MASK) >> \
 					REGLIST_SIZE_SHIFT))
 

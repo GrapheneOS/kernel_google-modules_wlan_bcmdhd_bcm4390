@@ -1110,7 +1110,7 @@ pktpool_dbg_dump(pktpool_t *pktp)
 	printf("pool len=%d maxlen=%d\n",  pktp->dbg_qlen, pktp->maxlen);
 	for (i = 0; i < pktp->dbg_qlen; i++) {
 		ASSERT(pktp->dbg_q[i].p);
-		printf("%d, p: 0x%x dur:%lu us state:%d\n", i,
+		printf("%d, p: %p dur:%du us state:%d\n", i,
 			pktp->dbg_q[i].p, pktp->dbg_q[i].dur/100, PKTPOOLSTATE(pktp->dbg_q[i].p));
 	}
 

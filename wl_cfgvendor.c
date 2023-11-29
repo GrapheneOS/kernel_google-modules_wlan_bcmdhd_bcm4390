@@ -4040,6 +4040,8 @@ nan_attr_to_str(u16 cmd)
 		break;
 	C2S(NAN_ATTRIBUTE_INSTANT_COMM_CHAN);
 		break;
+	C2S(NAN_ATTRIBUTE_KEY_DATA_PASSPHRASE);
+		break;
 	default:
 		id2str = "NAN_ATTRIBUTE_UNKNOWN";
 	}
@@ -4179,6 +4181,29 @@ wl_cfgvendor_free_disc_cmd_data(struct bcm_cfg80211 *cfg,
 	}
 	if (cmd_data->sde_svc_info.data) {
 		MFREE(cfg->osh, cmd_data->sde_svc_info.data, cmd_data->sde_svc_info.dlen);
+	}
+	if (cmd_data->cookie.data) {
+		MFREE(cfg->osh, cmd_data->cookie.data, cmd_data->cookie.dlen);
+	}
+	if (cmd_data->local_nik.data) {
+		MFREE(cfg->osh, cmd_data->local_nik.data, cmd_data->local_nik.dlen);
+	}
+	if (cmd_data->npba_info.data) {
+		MFREE(cfg->osh, cmd_data->npba_info.data, cmd_data->npba_info.dlen);
+	}
+	MFREE(cfg->osh, cmd_data, sizeof(*cmd_data));
+}
+
+static void
+wl_cfgvendor_free_pairing_cmd_data(struct bcm_cfg80211 *cfg,
+	nan_pairing_bs_cmd_data_t *cmd_data)
+{
+	if (!cmd_data) {
+		WL_ERR(("Cmd_data is null\n"));
+		return;
+	}
+	if (cmd_data->key.data) {
+		MFREE(cfg->osh, cmd_data->key.data, cmd_data->key.dlen);
 	}
 	MFREE(cfg->osh, cmd_data, sizeof(*cmd_data));
 }
@@ -5323,8 +5348,128 @@ wl_cfgvendor_nan_parse_discover_args(struct wiphy *wiphy,
 			}
 			cmd_data->svc_suspendable = nla_get_u8(iter);
 			break;
+		case NAN_ATTRIBUTE_LOCAL_NIK:
+			if (nla_len(iter) != NAN_IDENTITY_KEY_LEN) {
+				WL_ERR(("Invalid NIK len \n"));
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->local_nik.dlen = NAN_IDENTITY_KEY_LEN;
+			if (cmd_data->local_nik.data) {
+				WL_ERR(("trying to overwrite:%d\n", attr_type));
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->local_nik.data = MALLOCZ(cfg->osh, cmd_data->local_nik.dlen);
+			if (cmd_data->local_nik.data == NULL) {
+				WL_ERR(("failed to allocate local_nik data, len=%d\n",
+					cmd_data->local_nik.dlen));
+				ret = -ENOMEM;
+				goto exit;
+			}
+			ret = memcpy_s(cmd_data->local_nik.data, cmd_data->local_nik.dlen,
+					nla_data(iter), nla_len(iter));
+			if (ret != BCME_OK) {
+				WL_ERR(("Failed to copy local_nik data\n"));
+				return ret;
+			}
+			break;
+		case NAN_ATTRIBUTE_COOKIE_LEN:
+			if (nla_len(iter) != sizeof(uint16)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			if (cmd_data->cookie.dlen) {
+				WL_ERR(("trying to overwrite:%d\n", attr_type));
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->cookie.dlen = nla_get_u16(iter);
+			if (cmd_data->cookie.dlen > NAN_MAX_COOKIE_LEN) {
+				ret = -EINVAL;
+				WL_ERR_RLMT(("Not allowed beyond %d\n", NAN_MAX_COOKIE_LEN));
+				goto exit;
+			}
+			break;
+		case NAN_ATTRIBUTE_COOKIE:
+			if ((!cmd_data->cookie.dlen) ||
+			    (nla_len(iter) != cmd_data->cookie.dlen)) {
+				WL_ERR(("wrong cookie len:%d,%d\n",
+					cmd_data->cookie.dlen, nla_len(iter)));
+				ret = -EINVAL;
+				goto exit;
+			}
+			if (cmd_data->cookie.data) {
+				WL_ERR(("trying to overwrite:%d\n", attr_type));
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->cookie.data = MALLOCZ(cfg->osh, cmd_data->cookie.dlen);
+			if (cmd_data->cookie.data == NULL) {
+				WL_ERR(("failed to allocate cookie data, len=%d\n",
+					cmd_data->cookie.dlen));
+				ret = -ENOMEM;
+				goto exit;
+			}
+			ret = memcpy_s(cmd_data->cookie.data, cmd_data->cookie.dlen,
+					nla_data(iter), nla_len(iter));
+			if (ret != BCME_OK) {
+				WL_ERR(("Failed to copy cookie data\n"));
+				return ret;
+			}
+			break;
+		case NAN_ATTRIBUTE_COME_BACK_DELAY:
+			if (nla_len(iter) != sizeof(uint32)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->comeback_delay = nla_get_u32(iter);
+			break;
+		case NAN_ATTRIBUTE_BS_METHODS:
+			if (nla_len(iter) != sizeof(uint16)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->pairing_config.supported_bootstrapping_methods =
+					nla_get_u16(iter);
+			break;
+		case NAN_ATTRIBUTE_PAIRING_CACHE:
+			if (nla_len(iter) != sizeof(uint32)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			if (nla_get_u32(iter)) {
+				cmd_data->pairing_config.flags |= WL_NAN_SVC_CFG_ENAB_PAIRING_CACHE;
+			}
+			break;
+		case NAN_ATTRIBUTE_ENAB_PAIRING_SETUP:
+			if (nla_len(iter) != sizeof(uint32)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			if (nla_get_u32(iter)) {
+				cmd_data->pairing_config.flags |= WL_NAN_SVC_CFG_ENAB_PAIRING_SETUP;
+			}
+			break;
+		case NAN_ATTRIBUTE_ENAB_PAIRING_VERIFICATION:
+			if (nla_len(iter) != sizeof(uint32)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			if (nla_get_u32(iter)) {
+				cmd_data->pairing_config.flags |=
+						WL_NAN_SVC_CFG_ENAB_PAIRING_VERIFICATION;
+			}
+			break;
+		case NAN_ATTRIBUTE_RSP_CODE:
+			if (nla_len(iter) != sizeof(uint8)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->response = nla_get_u8(iter);
+			break;
 		default:
-			WL_ERR(("Unknown type, %d\n", attr_type));
+			WL_ERR(("Unknown attr type, %d\n", attr_type));
 			ret = -EINVAL;
 			goto exit;
 		}
@@ -5917,6 +6062,187 @@ exit:
 }
 
 static int
+wl_cfgvendor_nan_parse_pairing_args(struct wiphy *wiphy, const void *buf,
+	int len, nan_pairing_bs_cmd_data_t *cmd_data)
+{
+	int ret = BCME_OK;
+	int attr_type;
+	int rem = len;
+	const struct nlattr *iter;
+	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+
+	NAN_DBG_ENTER();
+
+	nla_for_each_attr(iter, buf, len, rem) {
+		attr_type = nla_type(iter);
+		WL_TRACE(("attr: %s (%u)\n", nan_attr_to_str(attr_type), attr_type));
+
+		switch (attr_type) {
+		/* NAN Pairing and Bootstrapping attributes */
+		case NAN_ATTRIBUTE_PEER_ID:
+			if (nla_len(iter) != sizeof(uint32)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->req_inst_id = nla_get_u32(iter);
+			break;
+		case NAN_ATTRIBUTE_INST_ID:
+			if (nla_len(iter) != sizeof(uint16)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->inst_id = nla_get_u16(iter);
+			break;
+		case NAN_ATTRIBUTE_MAC_ADDR:
+			if (nla_len(iter) != ETHER_ADDR_LEN) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			ret = memcpy_s((char*)&cmd_data->mac_addr, ETHER_ADDR_LEN,
+					(char*)nla_data(iter), nla_len(iter));
+			if (ret != BCME_OK) {
+				WL_ERR(("Failed to copy mac addr\n"));
+				return ret;
+			}
+			break;
+		case NAN_ATTRIBUTE_REQUEST_TYPE:
+			if (nla_len(iter) != sizeof(uint16)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->request_type = nla_get_u16(iter);
+			break;
+		case NAN_ATTRIBUTE_OPPURTUNISTIC:
+			if (nla_len(iter) != sizeof(uint16)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->is_opportunistic = nla_get_u16(iter);
+			break;
+		case NAN_ATTRIBUTE_AKM:
+			if (nla_len(iter) != sizeof(uint8)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->nan_akm = nla_get_u8(iter);
+			break;
+		case NAN_ATTRIBUTE_PAIRING_CACHE:
+			if (nla_len(iter) != sizeof(uint32)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->enab_pairing_cache = nla_get_u32(iter);
+			break;
+		case NAN_ATTRIBUTE_CIPHER_SUITE_TYPE:
+			if (nla_len(iter) != sizeof(uint8)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->csid = nla_get_u8(iter);
+			WL_TRACE(("CSID = %u\n", cmd_data->csid));
+			break;
+		case NAN_ATTRIBUTE_KEY_TYPE:
+			if (nla_len(iter) != sizeof(uint8)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->key_type = nla_get_u8(iter);
+			WL_TRACE(("Key Type = %u\n", cmd_data->key_type));
+			break;
+		case NAN_ATTRIBUTE_KEY_LEN:
+			if (nla_len(iter) != sizeof(uint32)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			if (cmd_data->key.dlen) {
+				WL_ERR(("trying to overwrite:%d\n", attr_type));
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->key.dlen = nla_get_u32(iter);
+			if ((!cmd_data->key.dlen) ||
+					(cmd_data->key.dlen > NAN_MAX_PASSPHRASE_LEN)) {
+				WL_ERR(("invalid key length = %u\n",
+					cmd_data->key.dlen));
+				break;
+			}
+			WL_TRACE(("valid key length = %u\n", cmd_data->key.dlen));
+			break;
+		case NAN_ATTRIBUTE_KEY_DATA:
+			if ((!cmd_data->key.dlen) || (cmd_data->key.dlen > NAN_MAX_PMK_LEN)) {
+				WL_ERR(("invalid key length = %u\n",
+					cmd_data->key.dlen));
+				break;
+			}
+			BCM_FALLTHROUGH;
+			/* Intentional fall through */
+		case NAN_ATTRIBUTE_KEY_DATA_PASSPHRASE:
+			if (!cmd_data->key.dlen ||
+			    (nla_len(iter) != cmd_data->key.dlen)) {
+				WL_ERR(("failed to allocate key data by invalid len=%d,%d\n",
+					cmd_data->key.dlen, nla_len(iter)));
+				ret = -EINVAL;
+				goto exit;
+			}
+			if (cmd_data->key.data) {
+				WL_ERR(("trying to overwrite:%d\n", attr_type));
+				ret = -EINVAL;
+				goto exit;
+			}
+
+			cmd_data->key.data = MALLOCZ(cfg->osh, cmd_data->key.dlen);
+			if (cmd_data->key.data == NULL) {
+				WL_ERR(("failed to allocate key data, len=%d\n",
+					cmd_data->key.dlen));
+				ret = -ENOMEM;
+				goto exit;
+			}
+			ret = memcpy_s(cmd_data->key.data, cmd_data->key.dlen,
+					nla_data(iter), nla_len(iter));
+			if (ret != BCME_OK) {
+				WL_ERR(("Failed to key data\n"));
+				return ret;
+			}
+			break;
+		case NAN_ATTRIBUTE_LOCAL_NIK:
+			if (nla_len(iter) != NAN_IDENTITY_KEY_LEN) {
+				WL_ERR(("Invalid NIK len \n"));
+				ret = -EINVAL;
+				goto exit;
+			}
+			ret = memcpy_s(cmd_data->nan_identity_key, NAN_IDENTITY_KEY_LEN,
+					nla_data(iter), nla_len(iter));
+			if (ret != BCME_OK) {
+				WL_ERR(("Failed to update NIK \n"));
+				goto exit;
+			}
+			break;
+		case NAN_ATTRIBUTE_RSP_CODE:
+			if (nla_len(iter) != sizeof(uint8)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->rsp_code = nla_get_u8(iter);
+			break;
+		default:
+			WL_ERR(("%s: Unknown type, %d\n", __FUNCTION__, attr_type));
+			ret = -EINVAL;
+			goto exit;
+		}
+	}
+
+exit:
+	/* We need to call set_config_handler b/f calling start enable TBD */
+	NAN_DBG_EXIT();
+	if (ret) {
+		WL_ERR(("%s: Failed to parse attribute %d ret %d",
+			__FUNCTION__, attr_type, ret));
+	}
+	return ret;
+
+}
+
+static int
 wl_cfgvendor_nan_dp_estb_event_data_filler(struct sk_buff *msg,
 	nan_event_data_t *event_data) {
 	int ret = BCME_OK;
@@ -5981,9 +6307,222 @@ wl_cfgvendor_nan_dp_estb_event_data_filler(struct sk_buff *msg,
 fail:
 	return ret;
 }
+
+static int
+wl_cfgvendor_nan_pairing_req_ind_event_data_filler(struct sk_buff *msg,
+		nan_event_data_t *event_data)
+{
+	int ret = BCME_OK;
+
+	ret = nla_put_u16(msg, NAN_ATTRIBUTE_PUBLISH_ID, event_data->pub_id);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put Publish ID, ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u32(msg, NAN_ATTRIBUTE_INST_ID, event_data->pairing_id);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put Pairing instance ID, ret=%d\n", ret));
+		goto fail;
+	}
+	/* Discovery MAC addr of the peer/initiator */
+	ret = nla_put(msg, NAN_ATTRIBUTE_MAC_ADDR, ETH_ALEN, event_data->remote_nmi.octet);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put remote NMI, ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u8(msg, NAN_ATTRIBUTE_PAIRING_CACHE, event_data->enable_pairing_cache);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put pairing cache, ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u16(msg, NAN_ATTRIBUTE_REQUEST_TYPE, event_data->type);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put pairing cache, ret=%d\n", ret));
+		goto fail;
+	}
+	if (event_data->nira_tag.dlen) {
+		ret = nla_put(msg, NAN_ATTRIBUTE_NIRA_TAG,
+				event_data->nira_tag.dlen, event_data->nira_tag.data);
+		if (unlikely(ret) || (event_data->nira_tag.dlen != NAN_NIRA_TAG_LEN)) {
+			WL_ERR(("Failed to put Nira tag info, ret=%d\n", ret));
+			goto fail;
+		}
+	}
+	if (event_data->nira_nonce.dlen) {
+		ret = nla_put(msg, NAN_ATTRIBUTE_NIRA_NONCE,
+				event_data->nira_nonce.dlen, event_data->nira_nonce.data);
+		if (unlikely(ret) || (event_data->nira_nonce.dlen != NAN_NIRA_NONCE_LEN)) {
+			WL_ERR(("Failed to put Nira nonce info, ret=%d\n", ret));
+			goto fail;
+		}
+	}
+fail:
+	return ret;
+}
+
+static int
+wl_cfgvendor_nan_pairing_confirm_event_data_filler(struct sk_buff *msg,
+		nan_event_data_t *event_data)
+{
+	int ret = BCME_OK;
+
+	ret = nla_put_u8(msg, NAN_ATTRIBUTE_RSP_CODE, event_data->status);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put Response code , ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u8(msg, NAN_ATTRIBUTE_STATUS, event_data->reason);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put status return value , ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u32(msg, NAN_ATTRIBUTE_INST_ID, event_data->pairing_id);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put Pairing instance ID, ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u8(msg, NAN_ATTRIBUTE_PAIRING_CACHE, event_data->enable_pairing_cache);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put pairing cache, ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u16(msg, NAN_ATTRIBUTE_REQUEST_TYPE, event_data->type);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put pairing cache, ret=%d\n", ret));
+		goto fail;
+	}
+
+	if (event_data->peer_nik.dlen && event_data->peer_nik.data) {
+		ret = nla_put(msg, NAN_ATTRIBUTE_PEER_NIK,
+				event_data->peer_nik.dlen, event_data->peer_nik.data);
+		if (unlikely(ret) || (event_data->peer_nik.dlen != NAN_IDENTITY_KEY_LEN)) {
+			WL_ERR(("Failed to put peer_nik info, ret=%d\n", ret));
+			goto fail;
+		}
+	}
+
+	if (event_data->local_nik.dlen && event_data->local_nik.data) {
+		ret = nla_put(msg, NAN_ATTRIBUTE_LOCAL_NIK,
+				event_data->local_nik.dlen, event_data->local_nik.data);
+		if (unlikely(ret) || (event_data->local_nik.dlen != NAN_IDENTITY_KEY_LEN)) {
+			WL_ERR(("Failed to put local_nik info, ret=%d\n", ret));
+			goto fail;
+		}
+	}
+
+	ret = nla_put_u32(msg, NAN_ATTRIBUTE_CIPHER_SUITE_TYPE, event_data->peer_cipher_suite);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put peer cipher suite, ret=%d\n", ret));
+		goto fail;
+	}
+
+	ret = nla_put_u8(msg, NAN_ATTRIBUTE_AKM, event_data->nan_akm);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put Nan AKM, ret=%d\n", ret));
+		goto fail;
+	}
+
+	if (event_data->npk.dlen && event_data->npk.data) {
+		ret = nla_put_u32(msg, NAN_ATTRIBUTE_KEY_LEN, event_data->npk.dlen);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put npk len, ret=%d\n", ret));
+			goto fail;
+		}
+		ret = nla_put(msg, NAN_ATTRIBUTE_KEY_DATA,
+				event_data->npk.dlen, event_data->npk.data);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put npk data, ret=%d\n", ret));
+			goto fail;
+		}
+		WL_TRACE(("npk info len = %d\n", event_data->npk.dlen));
+	}
+fail:
+	return ret;
+}
+
+static int
+wl_cfgvendor_nan_bootstrapping_req_ind_event_data_filler(struct sk_buff *msg,
+		nan_event_data_t *event_data)
+{
+	int ret = BCME_OK;
+
+	ret = nla_put_u16(msg, NAN_ATTRIBUTE_SUBSCRIBE_ID, event_data->local_inst_id);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put local instance ID, ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u32(msg, NAN_ATTRIBUTE_PUBLISH_ID, event_data->requestor_id);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put requestor instance ID, ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u32(msg, NAN_ATTRIBUTE_INST_ID, event_data->bootstrapping_id);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put boostrapping instance ID, ret=%d\n", ret));
+		goto fail;
+	}
+	/* Discovery MAC addr of the peer/initiator */
+	ret = nla_put(msg, NAN_ATTRIBUTE_MAC_ADDR, ETH_ALEN, event_data->remote_nmi.octet);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put remote NMI, ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u32(msg, NAN_ATTRIBUTE_BS_METHODS, event_data->peer_bs_methods);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put Bootstapping methods supported, ret=%d\n", ret));
+		goto fail;
+	}
+fail:
+	return ret;
+}
+
+static int
+wl_cfgvendor_nan_bootstrapping_confirm_event_data_filler(struct sk_buff *msg,
+		nan_event_data_t *event_data)
+{
+	int ret = BCME_OK;
+
+	ret = nla_put_u8(msg, NAN_ATTRIBUTE_RSP_CODE, event_data->status);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put Response code , ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u8(msg, NAN_ATTRIBUTE_REASON, event_data->reason);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put status return value , ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u32(msg, NAN_ATTRIBUTE_INST_ID, event_data->bootstrapping_id);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put Boostrapping instance ID, ret=%d\n", ret));
+		goto fail;
+	}
+	ret = nla_put_u32(msg, NAN_ATTRIBUTE_COME_BACK_DELAY, event_data->bs_comeback_delay);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put bs_comeback_delay, ret=%d\n", ret));
+		goto fail;
+	}
+	if (event_data->cookie.dlen && event_data->cookie.data) {
+		ret = nla_put_u32(msg, NAN_ATTRIBUTE_COOKIE_LEN, event_data->cookie.dlen);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put cookie len, ret=%d\n", ret));
+			goto fail;
+		}
+		ret = nla_put(msg, NAN_ATTRIBUTE_COOKIE,
+				event_data->cookie.dlen, event_data->cookie.data);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put cookie data, ret=%d\n", ret));
+			goto fail;
+		}
+		WL_TRACE(("cookie info len = %d\n", event_data->cookie.dlen));
+	}
+fail:
+	return ret;
+}
+
 static int
 wl_cfgvendor_nan_dp_ind_event_data_filler(struct sk_buff *msg,
-		nan_event_data_t *event_data)
+	nan_event_data_t *event_data)
 {
 	int ret = BCME_OK;
 
@@ -6260,7 +6799,8 @@ fail:
 
 static int
 wl_cfgvendor_nan_sub_match_event_filler(struct sk_buff *msg,
-	nan_event_data_t *event_data) {
+	nan_event_data_t *event_data)
+{
 	int ret = BCME_OK;
 	WL_TRACE(("handle (sub_id)=%d\n", event_data->sub_id));
 	WL_TRACE(("pub id=%d\n", event_data->pub_id));
@@ -6362,6 +6902,68 @@ wl_cfgvendor_nan_sub_match_event_filler(struct sk_buff *msg,
 		WL_TRACE(("scid info len = %d\n", event_data->scid.dlen));
 	}
 #endif /* WL_NAN_INSTANT_MODE */
+
+	if (event_data->enable_pairing_cache) {
+		ret = nla_put_u32(msg, NAN_ATTRIBUTE_PAIRING_CACHE,
+				event_data->enable_pairing_cache);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put enable_pairing_cache, ret=%d\n", ret));
+			goto fail;
+		}
+	}
+
+	if (event_data->pairing_setup_supported) {
+		ret = nla_put_u32(msg, NAN_ATTRIBUTE_ENAB_PAIRING_SETUP,
+				event_data->pairing_setup_supported);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put pairing_setup_supported, ret=%d\n", ret));
+			goto fail;
+		}
+	}
+
+	ret = nla_put_u16(msg, NAN_ATTRIBUTE_BS_METHODS, event_data->peer_bs_methods);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to put Bootstapping methods supported, ret=%d\n", ret));
+		goto fail;
+	}
+
+	if (event_data->nira_tag.dlen && event_data->nira_tag.data) {
+		if (event_data->nira_tag.dlen != NAN_NIRA_TAG_LEN) {
+			WL_ERR(("Invalid NIRA tag len =%d\n", event_data->nira_tag.dlen));
+			ret = BCME_BADLEN;
+			goto fail;
+		}
+		ret = nla_put(msg, NAN_ATTRIBUTE_NIRA_TAG,
+				event_data->nira_tag.dlen, event_data->nira_tag.data);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put nira_tag info, ret=%d\n", ret));
+			goto fail;
+		}
+		WL_TRACE(("nira_tag info len = %d\n", event_data->nira_tag.dlen));
+	}
+
+	if (event_data->nira_nonce.dlen && event_data->nira_nonce.data) {
+
+		ret = nla_put_u32(msg, NAN_ATTRIBUTE_ENAB_PAIRING_VERIFICATION,
+				!!(event_data->nira_nonce.dlen));
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put pairing verification supported, ret=%d\n", ret));
+			goto fail;
+		}
+
+		if (event_data->nira_nonce.dlen != NAN_NIRA_NONCE_LEN) {
+			WL_ERR(("Invalid NIRA tag len =%d\n", event_data->nira_nonce.dlen));
+			ret = BCME_BADLEN;
+			goto fail;
+		}
+		ret = nla_put(msg, NAN_ATTRIBUTE_NIRA_NONCE,
+				event_data->nira_nonce.dlen, event_data->nira_nonce.data);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put nira_nonce info, ret=%d\n", ret));
+			goto fail;
+		}
+		WL_TRACE(("nira_nonce info len = %d\n", event_data->nira_nonce.dlen));
+	}
 
 fail:
 	return ret;
@@ -6725,6 +7327,59 @@ wl_cfgvendor_send_nan_event(struct wiphy *wiphy, struct net_device *dev,
 		}
 		break;
 	}
+
+	case GOOGLE_NAN_EVENT_PAIRING_REQ_IND: {
+		WL_INFORM_MEM(("[NAN] GOOGLE_NAN_EVENT_PAIRING_REQ_IND\n"));
+		ret = wl_cfgvendor_nan_pairing_req_ind_event_data_filler(msg, event_data);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to fill pairing req ind event data, ret=%d\n", ret));
+			goto fail;
+		}
+		break;
+	}
+
+	case GOOGLE_NAN_EVENT_PAIRING_CONFIRM: {
+		WL_INFORM_MEM(("[NAN] GOOGLE_NAN_EVENT_PAIRING_CONFIRM, resp_code %d\n",
+				event_data->status));
+		ret = wl_cfgvendor_nan_pairing_confirm_event_data_filler(msg, event_data);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to fill pairing establish event data, ret=%d\n", ret));
+			goto fail;
+		}
+		break;
+	}
+
+	case GOOGLE_NAN_EVENT_PAIRING_END: {
+		WL_INFORM_MEM(("[NAN] GOOGLE_NAN_EVENT_PAIRING_END\n"));
+		ret = nla_put_u32(msg, NAN_ATTRIBUTE_INST_ID, event_data->pairing_id);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to put pairing instance ID, ret=%d\n", ret));
+			goto fail;
+		}
+		break;
+	}
+
+	case GOOGLE_NAN_EVENT_BOOTSTRAPPING_REQ_IND: {
+		WL_INFORM_MEM(("[NAN] GOOGLE_NAN_EVENT_BOOTSTRAPPING_REQ_IND\n"));
+		ret = wl_cfgvendor_nan_bootstrapping_req_ind_event_data_filler(msg, event_data);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to fill bootstrapping req ind event data, ret=%d\n", ret));
+			goto fail;
+		}
+		break;
+	}
+
+	case GOOGLE_NAN_EVENT_BOOTSTRAPPING_CONFIRM: {
+		WL_INFORM_MEM(("[NAN] GOOGLE_NAN_EVENT_BOOTSTRAPPING_CONFIRM, resp_code %d\n",
+				event_data->status));
+		ret = wl_cfgvendor_nan_bootstrapping_confirm_event_data_filler(msg, event_data);
+		if (unlikely(ret)) {
+			WL_ERR(("Failed to fill bootstrapping establish event data ret=%d\n", ret));
+			goto fail;
+		}
+		break;
+	}
+
 
 	default:
 		goto fail;
@@ -7735,6 +8390,157 @@ wl_cfgvendor_nan_resume(struct wiphy *wiphy,
 {
 	return wl_cfgvendor_nan_cmn_suspend_resume(wiphy, wdev, data, len, WL_NAN_CMD_RESUME);
 }
+
+static int
+wl_cfgvendor_nan_cmn_process_bootstrapping_cmd(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void * data, int len, uint32 cmd)
+{
+	int ret = 0;
+	nan_discover_cmd_data_t *cmd_data = NULL;
+	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	nan_hal_resp_t nan_req_resp;
+
+	bzero(&nan_req_resp, sizeof(nan_req_resp));
+
+	if (!cfg->nancfg->capabilities.is_pairing_supported) {
+		ret = BCME_UNSUPPORTED;
+		goto exit;
+	}
+
+	NAN_DBG_ENTER();
+	cmd_data = (nan_discover_cmd_data_t *)MALLOCZ(cfg->osh, sizeof(*cmd_data));
+	if (!cmd_data) {
+		WL_ERR(("memory allocation failed\n"));
+		ret = BCME_NOMEM;
+		goto exit;
+	}
+
+	wdev = bcmcfg_to_prmry_wdev(cfg);
+	ret = wl_cfgvendor_nan_parse_discover_args(wiphy, data, len, cmd_data);
+	if (ret) {
+		WL_ERR((" Failed to parse nan pairing and BS vendor args, ret = %d\n",
+				ret));
+		goto exit;
+	}
+
+	ret = wl_cfgnan_bootstrapping_request_n_response(cfg, cmd_data, cmd);
+	if (unlikely(ret)) {
+		WL_ERR(("Failed to set BS config request  [%d]\n", ret));
+		goto exit;
+	}
+	nan_req_resp.instance_id = cmd_data->bootstrapping_id;
+exit:
+	ret = wl_cfgvendor_nan_cmd_reply(wiphy, cmd, &nan_req_resp, ret,
+			(cmd_data ? cmd_data->status : BCME_OK));
+
+	wl_cfgvendor_free_disc_cmd_data(cfg, cmd_data);
+	NAN_DBG_EXIT();
+	return ret;
+}
+
+static int
+wl_cfgvendor_nan_cmn_process_pairing_cmd(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void * data, int len, uint32 cmd)
+{
+	int ret = 0;
+	nan_pairing_bs_cmd_data_t *cmd_data = NULL;
+	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	int status = BCME_OK;
+	nan_hal_resp_t nan_req_resp;
+
+	if (!cfg->nancfg->capabilities.is_pairing_supported) {
+		ret = BCME_UNSUPPORTED;
+		goto exit;
+	}
+
+	NAN_DBG_ENTER();
+
+	bzero(&nan_req_resp, sizeof(nan_req_resp));
+	cmd_data = (nan_pairing_bs_cmd_data_t *)MALLOCZ(cfg->osh, sizeof(*cmd_data));
+	if (!cmd_data) {
+		WL_ERR(("memory allocation failed\n"));
+		ret = BCME_NOMEM;
+		goto exit;
+	}
+
+	wdev = bcmcfg_to_prmry_wdev(cfg);
+	ret = wl_cfgvendor_nan_parse_pairing_args(wiphy, data, len, cmd_data);
+	if (ret) {
+		WL_ERR((" Failed to parse nan pairing and BS vendor args, ret = %d\n",
+				ret));
+		goto exit;
+	}
+
+	switch (cmd) {
+	case NAN_WIFI_SUBCMD_PAIRING_REQUEST:
+	case NAN_WIFI_SUBCMD_PAIRING_RESPONSE:
+		ret = wl_cfgnan_pairing_request_n_response(wdev->netdev, cfg, cmd_data, cmd);
+		break;
+	case NAN_WIFI_SUBCMD_PAIRING_END:
+		ret = wl_cfgnan_pairing_end_handler(wdev->netdev, cfg, cmd_data->inst_id, &status);
+		break;
+	default:
+		WL_ERR(("Unknown cmd type: %d\n", cmd));
+		ret = BCME_ERROR;
+		goto exit;
+	}
+	if (unlikely(ret) || unlikely(status)) {
+		WL_ERR(("Failed to set Pairing and BS config request  [%d]\n", ret));
+		/* As there is no cmd_reply, return status if error is in status return ret */
+		if (status) {
+			ret = status;
+		}
+		goto exit;
+	}
+	nan_req_resp.instance_id = cmd_data->inst_id;
+exit:
+	ret = wl_cfgvendor_nan_cmd_reply(wiphy, cmd, &nan_req_resp, ret,
+			(cmd_data ? cmd_data->status : BCME_OK));
+
+	wl_cfgvendor_free_pairing_cmd_data(cfg, cmd_data);
+	NAN_DBG_EXIT();
+	return ret;
+}
+
+static int
+wl_cfgvendor_nan_pairing_request(struct wiphy *wiphy, struct wireless_dev *wdev,
+		const void * data, int len)
+{
+	return wl_cfgvendor_nan_cmn_process_pairing_cmd(wiphy, wdev, data, len,
+			NAN_WIFI_SUBCMD_PAIRING_REQUEST);
+}
+
+static int
+wl_cfgvendor_nan_pairing_response(struct wiphy *wiphy, struct wireless_dev *wdev,
+		const void * data, int len)
+{
+	return wl_cfgvendor_nan_cmn_process_pairing_cmd(wiphy, wdev, data, len,
+			NAN_WIFI_SUBCMD_PAIRING_RESPONSE);
+}
+
+static int
+wl_cfgvendor_nan_pairing_end(struct wiphy *wiphy, struct wireless_dev *wdev,
+		const void * data, int len)
+{
+	return wl_cfgvendor_nan_cmn_process_pairing_cmd(wiphy, wdev, data, len,
+			NAN_WIFI_SUBCMD_PAIRING_END);
+}
+
+static int
+wl_cfgvendor_nan_bootstrapping_request(struct wiphy *wiphy, struct wireless_dev *wdev,
+		const void * data, int len)
+{
+	return wl_cfgvendor_nan_cmn_process_bootstrapping_cmd(wiphy, wdev, data, len,
+			NAN_WIFI_SUBCMD_BOOTSTRAPPING_REQUEST);
+}
+
+static int
+wl_cfgvendor_nan_bootstrapping_response(struct wiphy *wiphy, struct wireless_dev *wdev,
+		const void * data, int len)
+{
+	return wl_cfgvendor_nan_cmn_process_bootstrapping_cmd(wiphy, wdev, data, len,
+			NAN_WIFI_SUBCMD_BOOTSTRAPPING_RESPONSE);
+}
 #endif /* WL_NAN */
 
 #ifdef LINKSTAT_SUPPORT
@@ -8376,7 +9182,7 @@ static int wl_update_ml_link_stat(struct bcm_cfg80211 *cfg, struct net_device *i
 				peer_list_info->peer_info->ea.octet, ETH_ALEN);
 		}
 	} else if (err == BCME_UNSUPPORTED) {
-		WL_ERR(("bssload_report is unsupported \n"));
+		WL_ERR(("bss_peer_info is unsupported \n"));
 	} else if (err == BCME_NOTASSOCIATED) {
 		WL_ERR(("bss_peer_info IOVAR failed. STA is not associated.\n"));
 	} else {
@@ -8407,7 +9213,9 @@ static int wl_update_ml_link_stat(struct bcm_cfg80211 *cfg, struct net_device *i
 		COMPAT_ASSIGN_VALUE(iface, peer_info->bssload.sta_count, bssload->sta_count);
 		COMPAT_ASSIGN_VALUE(iface, peer_info->bssload.chan_util, bssload->chan_util);
 	} else if (err == BCME_UNSUPPORTED) {
+		/* err return causes wifi turn off in android. print err and exit gracefully */
 		WL_ERR(("bssload_report is unsupported \n"));
+		err = BCME_OK;
 	} else if (err == BCME_NOTASSOCIATED) {
 		WL_ERR(("bssload_report IOVAR failed. STA is not associated.\n"));
 	} else {
@@ -8451,7 +9259,7 @@ static int wl_update_ml_link_stat(struct bcm_cfg80211 *cfg, struct net_device *i
 		*total_len = *total_len -
 			sizeof(wifi_rate_stat_v1) +
 			(NUM_PEER * num_rate * sizeof(wifi_rate_stat_v1));
-	} else if (err == BCME_NOTASSOCIATED) {
+	} else if (err == BCME_NOTASSOCIATED || err == BCME_UNSUPPORTED) {
 		/* Skipping to read the rate stat for not associated case,
 		 * as cca stats are still needed, not returning the err code
 		 */
@@ -12655,9 +13463,8 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 	int found_idx = BCME_NOTFOUND;
 	bool ch_160mhz_5g;
 	u32 restrict_chan;
-#ifdef WL_SOFTAP_6G
-	u32 vlp_psc_include;
-#endif /* WL_SOFTAP_6G */
+	u32 vlp_include;
+	u32 psc_include;
 	uint32 conn[WL_IF_TYPE_MAX] = {0};
 	struct net_device *p2p_ndev = NULL;
 	chanspec_t sta_chanspec = INVCHANSPEC, ap_chanspec = INVCHANSPEC;
@@ -12799,10 +13606,8 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 				(chaninfo & WL_CHAN_CLM_RESTRICTED) ||
 				(chaninfo & WL_CHAN_INDOOR_ONLY));
 
-#ifdef WL_SOFTAP_6G
-		vlp_psc_include = ((chaninfo & WL_CHAN_BAND_6G_PSC) &&
-			(chaninfo & WL_CHAN_BAND_6G_VLP));
-#endif /* WL_SOFTAP_6G */
+		psc_include = chaninfo & WL_CHAN_BAND_6G_PSC;
+		vlp_include = chaninfo & WL_CHAN_BAND_6G_VLP;
 #ifdef WL_UNII4_CHAN
 		is_unii4 = (CHSPEC_IS5G(chspec) &&
 				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec)));
@@ -12838,20 +13643,22 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 		if (!restrict_chan && !ch_160mhz_5g) {
 			if (!is_unii4) {
 				if (CHSPEC_IS6G(chspec)) {
-#if defined(WL_NAN) && defined(WL_NAN_6G)
+#ifdef WL_NAN
+					if (cfg->nancfg->is_6g_nan_supported) {
 #ifdef WL_NAN_INSTANT_MODE
-					if (wl_cfgvendor_is_nan_instant_mask_set(u_info)) {
-						WL_DBG(("No support of nan "
-								"instant 6g channel\n"));
-					} else
+						if (wl_cfgvendor_is_nan_instant_mask_set(u_info)) {
+							WL_DBG(("No support of nan "
+									"instant 6g channel\n"));
+						} else
 #endif /* WL_NAN_INSTANT_MODE */
-					{
-						mask |= (1 << WIFI_INTERFACE_NAN);
+						if (vlp_include) {
+							mask |= (1 << WIFI_INTERFACE_NAN);
+						}
 					}
-#endif /* WL_NAN && WL_NAN_6G */
+#endif /* WL_NAN */
 #ifdef WL_SOFTAP_6G
 					/* consider only VLP and PSC channel in 6g for softap */
-					if (vlp_psc_include) {
+					if (vlp_include && psc_include) {
 						mask |= (1 << WIFI_INTERFACE_SOFTAP);
 					}
 #endif /* WL_SOFTAP_6G */
@@ -13714,6 +14521,21 @@ const struct nla_policy nan_attr_policy[NAN_ATTRIBUTE_MAX] = {
 	[NAN_ATTRIBUTE_INSTANT_COMM_CHAN] = { .type = NLA_U32, .len = sizeof(uint32) },
 	[NAN_ATTRIBUTE_CHRE_REQUEST] = { .type = NLA_U8, .len = sizeof(uint8) },
 	[NAN_ATTRIBUTE_SVC_CFG_SUSPENDABLE] = { .type = NLA_U8, .len = sizeof(uint8) },
+	[NAN_ATTRIBUTE_REQUEST_TYPE] = { .type = NLA_U16, .len = sizeof(uint16) },
+	[NAN_ATTRIBUTE_AKM] = { .type = NLA_U8, .len = sizeof(uint8) },
+	[NAN_ATTRIBUTE_PAIRING_CACHE] = { .type = NLA_U32, .len = sizeof(uint32) },
+	[NAN_ATTRIBUTE_OPPURTUNISTIC] = { .type = NLA_U16, .len = sizeof(uint16) },
+	[NAN_ATTRIBUTE_COOKIE_LEN] = { .type = NLA_U32, .len = sizeof(uint32) },
+	[NAN_ATTRIBUTE_COOKIE] = { .type = NLA_BINARY, .len = NAN_MAX_COOKIE_LEN },
+	[NAN_ATTRIBUTE_COME_BACK_DELAY] = { .type = NLA_U32, .len = sizeof(uint32) },
+	[NAN_ATTRIBUTE_NIRA_NONCE] = { .type = NLA_BINARY, .len = NAN_NIRA_NONCE_LEN},
+	[NAN_ATTRIBUTE_NIRA_TAG] = { .type = NLA_BINARY, .len = NAN_NIRA_TAG_LEN },
+	[NAN_ATTRIBUTE_PEER_NIK] = { .type = NLA_BINARY, .len = NAN_IDENTITY_KEY_LEN },
+	[NAN_ATTRIBUTE_LOCAL_NIK] = { .type = NLA_BINARY, .len = NAN_IDENTITY_KEY_LEN },
+	[NAN_ATTRIBUTE_ENAB_PAIRING_SETUP] = { .type = NLA_U32, .len = sizeof(uint32) },
+	[NAN_ATTRIBUTE_ENAB_PAIRING_VERIFICATION] = { .type = NLA_U32, .len = sizeof(uint32) },
+	[NAN_ATTRIBUTE_BS_METHODS] = { .type = NLA_U16, .len = sizeof(uint16) },
+	[NAN_ATTRIBUTE_KEY_DATA_PASSPHRASE] = { .type = NLA_BINARY, .len = NAN_MAX_PASSPHRASE_LEN},
 };
 #endif /* WL_NAN */
 
@@ -14667,6 +15489,66 @@ static struct wiphy_vendor_command wl_vendor_cmds [] = {
 		.maxattr = NAN_ATTRIBUTE_MAX
 #endif /* LINUX_VERSION >= 5.3 */
 	},
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = NAN_WIFI_SUBCMD_PAIRING_REQUEST
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_nan_pairing_request,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = nan_attr_policy,
+		.maxattr = NAN_ATTRIBUTE_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = NAN_WIFI_SUBCMD_PAIRING_RESPONSE
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_nan_pairing_response,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = nan_attr_policy,
+		.maxattr = NAN_ATTRIBUTE_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = NAN_WIFI_SUBCMD_PAIRING_END
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_nan_pairing_end,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = nan_attr_policy,
+		.maxattr = NAN_ATTRIBUTE_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = NAN_WIFI_SUBCMD_BOOTSTRAPPING_REQUEST
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_nan_bootstrapping_request,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = nan_attr_policy,
+		.maxattr = NAN_ATTRIBUTE_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
+	{
+		{
+			.vendor_id = OUI_GOOGLE,
+			.subcmd = NAN_WIFI_SUBCMD_BOOTSTRAPPING_RESPONSE
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_nan_bootstrapping_response,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+		.policy = nan_attr_policy,
+		.maxattr = NAN_ATTRIBUTE_MAX
+#endif /* LINUX_VERSION >= 5.3 */
+	},
 #endif /* WL_NAN */
 #if defined(APF)
 	{
@@ -15261,6 +16143,11 @@ static const struct  nl80211_vendor_cmd_info wl_vendor_events [] = {
 		{ OUI_BRCM, BRCM_VENDOR_EVENT_CONNECTIVITY_LOG},
 		{ OUI_BRCM, BRCM_VENDOR_EVENT_HAPD_TSF},
 		{ OUI_GOOGLE, GOOGLE_NAN_EVENT_SUSPENSION_STATUS},
+		{ OUI_GOOGLE, GOOGLE_NAN_EVENT_PAIRING_REQ_IND},
+		{ OUI_GOOGLE, GOOGLE_NAN_EVENT_PAIRING_CONFIRM},
+		{ OUI_GOOGLE, GOOGLE_NAN_EVENT_PAIRING_END},
+		{ OUI_GOOGLE, GOOGLE_NAN_EVENT_BOOTSTRAPPING_REQ_IND},
+		{ OUI_GOOGLE, GOOGLE_NAN_EVENT_BOOTSTRAPPING_CONFIRM},
 };
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))

@@ -972,6 +972,10 @@ dhd_dbg_verboselog_printf(dhd_pub_t *dhdp, prcd_event_log_hdr_t *plog_hdr,
 			}
 		}
 		if (plog_hdr->binary_payload) {
+			if (coex_log) {
+				/* Do not print out binary payload log from coex cpu */
+				return;
+			}
 			dhd_dbg_fw_time(dhdp, log_ptr[plog_hdr->count - 1],
 				ptm_fw_time, sizeof(ptm_fw_time));
 			DHD_ECNTR_LOG(("%s %s:tag=%d len=%d fmt=0x%x",

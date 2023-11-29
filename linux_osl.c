@@ -1622,7 +1622,7 @@ osl_systztime_us(void)
 	return tzusec;
 }
 
-#ifdef CUSTOM_PREFIX
+#ifdef LOG_CUSTOM_PREFIX_AND_RTC
 char *
 osl_get_rtctime(void)
 {
@@ -1638,7 +1638,7 @@ osl_get_rtctime(void)
 			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec/NSEC_PER_USEC);
 	return timebuf;
 }
-#endif /* CUSTOM_PREFIX */
+#endif /* LOG_CUSTOM_PREFIX_AND_RTC */
 
 uint64
 osl_getcycles(void)

@@ -81,8 +81,8 @@
 #define COMPLETION_WAIT_QUEUE_ACTIVE(wait_queue) waitqueue_active(wait_queue)
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0) */
 
-#ifdef CUSTOM_PREFIX
-#define PNO_PRINT_PREFIX "[%s]"CUSTOM_PREFIX, OSL_GET_RTCTIME()
+#ifdef LOG_CUSTOM_PREFIX_AND_RTC
+#define PNO_PRINT_PREFIX "[%s]"LOG_CUSTOM_PREFIX_AND_RTC, OSL_GET_RTCTIME()
 #define PNO_PRINT_SYSTEM_TIME pr_cont(PNO_PRINT_PREFIX)
 #define PNO_CONS_ONLY(args)     \
 do {    \
@@ -92,7 +92,7 @@ do {    \
 #else
 #define PNO_PRINT_SYSTEM_TIME
 #define PNO_CONS_ONLY(args) do { printf args;} while (0)
-#endif /* CUSTOM_PREFIX */
+#endif /* LOG_CUSTOM_PREFIX_AND_RTC */
 
 #define NULL_CHECK(p, s, err)  \
 do { \

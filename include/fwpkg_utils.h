@@ -71,9 +71,19 @@ typedef struct fwpkg_info
 #define FWPKG_FILE	FILE
 #endif /* BCMDRIVER */
 
+#ifndef DHD_LINUX_STD_FW_API
+/* fwpkg_utils variant using file ops */
 int fwpkg_init(fwpkg_info_t *fwpkg, char *fname);
 int fwpkg_open_firmware_img(fwpkg_info_t *fwpkg, char *fname, FWPKG_FILE **fp);
 int fwpkg_open_signature_img(fwpkg_info_t *fwpkg, char *fname, FWPKG_FILE **fp);
+#else
+/* fwpkg_utils variant using FW data buffer */
+int fwpkg_init(fwpkg_info_t *fwpkg, uint32 fwsize, const uint8 *fwdata);
+int fwpkg_open_firmware_img(fwpkg_info_t *fwpkg, uint32* data_offset);
+int fwpkg_open_signature_img(fwpkg_info_t *fwpkg, uint32* data_offset);
+#endif /* DHD_LINUX_STD_FW_API */
+
+/* common util function which do not need access to FW data buffer or file ops */
 uint32 fwpkg_get_firmware_img_size(fwpkg_info_t *fwpkg);
 uint32 fwpkg_get_signature_img_size(fwpkg_info_t *fwpkg);
 

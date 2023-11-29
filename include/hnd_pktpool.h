@@ -90,6 +90,10 @@ typedef struct {
 	void *arg;
 } pktpool_cbextn_info_t;
 
+#define PKTPOOL_RESV_MODE_OFF	(0)	/* resv mode is not enabled */
+#define PKTPOOL_RESV_MODE_ON	(1u)	/* Use resv resource if ran out of regular resource */
+#define PKTPOOL_RESV_MODE_CRIT	(2u)	/* Only critical reserve resources are available */
+#define PKTPOOL_RESV_MODE_DROP	(3u)	/* If resv resource are critcally low, use it & drop pkts */
 
 #ifdef BCMDBG_POOL
 /* pkt pool debug states */
@@ -152,6 +156,7 @@ typedef struct pktpool {
 	bool is_heap_pool;	/* Whether this pool can be used as heap */
 	bool release_active;
 	uint8 mem_handle;
+	uint8 resv_mode; 	/* reserve mode for using reserved rx host address for rxpool */
 
 	struct resv_info *resv_info; /* Resv frag pool info */
 	uint resv_pool_idx;

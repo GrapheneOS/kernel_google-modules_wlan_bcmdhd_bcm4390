@@ -7752,6 +7752,8 @@ wl_is_channel_dynamic(struct bcm_cfg80211 *cfg, chanspec_t in_chspec)
 	WL_DBG(("dfs:%d indoor:%d chan_cnt:%d in_band:%d\n",
 			dyn_dfs, dyn_indoor, dtoh32(list_count), in_chan_band));
 	wf_get_all_ext(in_chspec, chan_array);
+	max_num_chans = MIN(wl_cfgscan_get_max_num_chans_per_bw(in_chspec),
+		MAX_20MHZ_CHANNELS);
 	for (i = 0; i < dtoh32(list_count); i++) {
 		chspec = (chanspec_t)dtoh32
 			(((wl_chanspec_list_v1_t *)list)->chspecs[i].chanspec);
@@ -7761,9 +7763,6 @@ wl_is_channel_dynamic(struct bcm_cfg80211 *cfg, chanspec_t in_chspec)
 
 		if ((in_chan_band == CHSPEC_BAND(chspec)) &&
 				(CHSPEC_BW(chspec) == WL_CHANSPEC_BW_20)) {
-			max_num_chans =
-				MIN(wl_cfgscan_get_max_num_chans_per_bw(chspec),
-					MAX_20MHZ_CHANNELS);
 
 			for (j = 0; j < max_num_chans; j++) {
 				if (!chan_array[j]) {

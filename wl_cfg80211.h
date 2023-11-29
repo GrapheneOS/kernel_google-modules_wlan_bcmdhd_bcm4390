@@ -102,15 +102,27 @@ struct wl_ibss;
 #endif /* !WL_CLIENT_SAE */
 
 #ifdef WL_SAE_STD_API
-#if !(LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)) && \
-	(!defined(WL_AP_PORT_AUTH_BKPORT) || !defined(WL_AP_4WAY_HS_BKPORT) || \
+#if (LINUX_VERSION_CODE == KERNEL_VERSION(5, 4, 55))
+#if (!defined(WL_AP_PORT_AUTH_BKPORT) || !defined(WL_AP_4WAY_HS_BKPORT) || \
 	!defined(WL_SAE_AP_CAP_BKPORT) || !defined(WL_SAE_PWE_BKPORT))
 #error "required backports are not present to enable STD SAE"
 #endif /* !(KERNEL > 6.7.0) && (!AUTH_BKPORT || !4WAY_BKPORT || !APCAP_BKPORT || !PWE_BKPORT) */
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 25))
+#if !defined(WL_AP_PORT_AUTH_BKPORT)
+#error "required backports are not present to enable STD SAE"
+#endif /* !WL_AP_PORT_AUTH_BKPORT */
+#endif /* KERNEL_VERSION == 5. 4. 55 */
 #ifndef WL_IDAUTH
 #error "WL_IDAUTH is needed to enable WL_SAE_STD_API for softap"
 #endif /* !WL_IDAUTH */
 #endif /* WL_SAE_STD_API */
+
+#if defined(WL_SAE_STD_API) || defined(WL_OWE_OFFLD)
+#ifndef WL_WSEC_IE_OFFLD
+/* WPAIE/RSNIE/RSNXE is generated in the dongle when WL_WSEC_IE_OFFLD is enabled. */
+#error "WL_WSEC_IE_OFFLD is needed to enable STD SAE/OWE OFFLD"
+#endif /* WL_WSEC_IE_OFFLD */
+#endif /* (WL_SAE_STD_API) || (WL_OWE_OFFLD) */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)) && !defined(WL_DISABLE_SCAN_TYPE) && \
 	!defined(WL_SCAN_TYPE)
@@ -2253,7 +2265,8 @@ struct bcm_cfg80211 {
 	struct ether_addr ibss_if_addr;
 	bcm_struct_cfgdev *ibss_cfgdev; /* For AIBSS */
 #endif /* WLAIBSS_MCHAN */
-	bool bss_pending_op;		/* indicate where there is a pending IF operation */
+	bool bss_pending_add_op;	/* indicate where there is a pending ADD IF operation */
+	bool bss_pending_del_op;	/* indicate where there is a pending DEL IF operation */
 #ifdef WLFBT
 	uint8 fbt_key[FBT_KEYLEN];
 #endif
@@ -3280,6 +3293,12 @@ wl_sup_event_ieee80211_error(u32 reason)
 #define IS_AP_IFACE(wdev) (wdev && \
 	(wdev->iftype == NL80211_IFTYPE_AP))
 
+#define IS_P2P_CLIENT_IFACE(wdev) (wdev && \
+		(wdev->iftype == NL80211_IFTYPE_P2P_CLIENT))
+
+#define IS_P2P_GO_IFACE(wdev) (wdev && \
+		(wdev->iftype == NL80211_IFTYPE_P2P_GO))
+
 #if defined(WL_ENABLE_P2P_IF)
 #define ndev_to_wlc_ndev(ndev, cfg)	((ndev == cfg->p2p_net) ? \
 	bcmcfg_to_prmry_ndev(cfg) : ndev)
@@ -4004,4 +4023,5 @@ extern void wl_cfg80211_get_bss_sta_info(struct bcm_cfg80211 *cfg, struct net_de
 #ifdef WL_SAE_STD_API
 extern int wl_set_sae_pwe(struct net_device *dev, enum nl80211_sae_pwe_mechanism sae_pwe_value);
 #endif /* WL_SAE_STD_API */
+extern s32 wl_cfg80211_flush_pmksa(struct wiphy *wiphy, struct net_device *dev);
 #endif /* _wl_cfg80211_h_ */

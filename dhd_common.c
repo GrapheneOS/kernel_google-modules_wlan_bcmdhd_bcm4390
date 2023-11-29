@@ -879,6 +879,12 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 		ret = TRUE;
 	}
 
+	if (dhd_bus_is_wl_bp_down(dhdp)) {
+		DHD_ERROR_RLMT(("%s : wlan backplane down, cannot proceed\n",
+			__FUNCTION__));
+		ret = TRUE;
+	}
+
 	return ret;
 }
 
@@ -2748,6 +2754,7 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		dhd_pub->tx_realloc = 0;
 		dhd_pub->wd_dpc_sched = 0;
 		dhd_pub->tx_big_packets = 0;
+		dhd_pub->tx_errors = 0;
 #ifdef TX_CSO
 		dhd_pub->tx_cso_cnt = dhd_pub->tx_nocso_cnt = 0;
 #endif
@@ -11681,6 +11688,9 @@ dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int subs
 			break;
 		case DUMP_TYPE_NO_DB7_ACK:
 			type_str = "NO_DB7_ACK";
+			break;
+		case DUMP_TYPE_WL_BP_DOWN:
+			type_str = "WL_BP_DOWN";
 			break;
 		default:
 			type_str = "Unknown_type";

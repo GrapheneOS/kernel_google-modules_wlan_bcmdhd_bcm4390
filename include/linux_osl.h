@@ -313,6 +313,7 @@ extern void * osl_virt_to_phys(void * va);
 #define OSL_RMB()		rmb()
 #define OSL_SMP_WMB()		smp_wmb()
 #define OSL_SMP_RMB()		smp_rmb()
+#define DMB()		OSL_MB()
 
 #if defined(__aarch64__)
 #define OSL_ISB()	isb()
@@ -383,10 +384,16 @@ extern uint64 osl_sysuptime_ns(void);
 extern uint64 osl_localtime_ns(void);
 extern void osl_get_localtime(uint64 *sec, uint64 *usec);
 extern uint64 osl_systztime_us(void);
-#ifdef CUSTOM_PREFIX
+
+/* Temporary change till CUSTOM_PREFIX is removed from all src */
+#if defined(CUSTOM_PREFIX) && !defined(LOG_CUSTOM_PREFIX_AND_RTC)
+#define LOG_CUSTOM_PREFIX_AND_RTC
+#endif /* CUSTOM_PREFIX && !LOG_CUSTOM_PREFIX_AND_RTC */
+
+#ifdef LOG_CUSTOM_PREFIX_AND_RTC
 extern char* osl_get_rtctime(void);
 #define OSL_GET_RTCTIME()	osl_get_rtctime()
-#endif /* CUSTOM_PREFIX */
+#endif /* LOG_CUSTOM_PREFIX_AND_RTC */
 
 #define OSL_LOCALTIME_NS()	osl_localtime_ns()
 #define OSL_GET_LOCALTIME(sec, usec)	osl_get_localtime((sec), (usec))
@@ -1019,17 +1026,30 @@ extern void *osl_get_fatal_logbuf(osl_t *osh, uint32 request_size, uint32 *alloc
 extern void *osl_get_fatal_logbuf_end(osl_t *osh, uint32 request_size, uint32 *allocated_size);
 extern int osl_create_directory(char *pathname, int mode);
 
-#ifndef CUSTOM_PREFIX
+/*
+ * LOG_CUSTOM_PREFIX - Adds only a custom string to all the logs emitted out
+ * of the driver
+ * LOG_CUSTOM_PREFIX_AND_RTC - Existing feature that adds a custom string and also
+ * RTC time stamp to all the logs emitted out of the driver
+ */
+#if defined(LOG_CUSTOM_PREFIX)
+#define OSL_PRINT_PREFIX LOG_CUSTOM_PREFIX
+#endif /* LOG_CUSTOM_PREFIX */
+
+#if defined(LOG_CUSTOM_PREFIX_AND_RTC)
+#define OSL_PRINT_PREFIX "[%s]"LOG_CUSTOM_PREFIX_AND_RTC, OSL_GET_RTCTIME()
+#endif /* LOG_CUSTOM_PREFIX_AND_RTC */
+
+#if !defined (LOG_CUSTOM_PREFIX_AND_RTC) && !defined(LOG_CUSTOM_PREFIX)
 #define OSL_PRINT(args)	\
 do {			\
 	pr_cont args;	\
 } while (0)
 #else
-#define OSL_PRINT_PREFIX "[%s]"CUSTOM_PREFIX, OSL_GET_RTCTIME()
 #define OSL_PRINT(args)			\
 do {					\
 	pr_cont(OSL_PRINT_PREFIX);	\
 	pr_cont args;			\
 } while (0)
-#endif /* CUSTOM_PREFIX */
+#endif /* LOG_CUSTOM_PREFIX_AND_RTC || LOG_CUSTOM_PREFIX */
 #endif	/* _linux_osl_h_ */

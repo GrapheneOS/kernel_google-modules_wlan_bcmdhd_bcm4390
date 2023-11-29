@@ -190,6 +190,9 @@ module_param(enable_mq, int, 0644);
 int mq_select_disable = FALSE;
 #endif
 
+#ifdef DHD_FWTRACE
+#include <dhd_fwtrace.h>
+#endif	/* DHD_FWTRACE */
 
 #ifdef DHD_SSSR_DUMP
 #include <dhd_pcie_sssr_dump.h>
@@ -2493,9 +2496,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				 */
 				dhd_enable_packet_filter(1, dhd);
 #endif /* PKT_FILTER_SUPPORT */
-#ifdef APF
-				dhd_dev_apf_enable_filter(dhd_linux_get_primary_netdev(dhd));
-#endif /* APF */
 #ifdef ARP_OFFLOAD_SUPPORT
 				if (dhd->arpoe_enable) {
 					dhd_arp_offload_enable(dhd, TRUE);
@@ -2594,9 +2594,6 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				/* disable pkt filter */
 				dhd_enable_packet_filter(0, dhd);
 #endif /* PKT_FILTER_SUPPORT */
-#ifdef APF
-				dhd_dev_apf_disable_filter(dhd_linux_get_primary_netdev(dhd));
-#endif /* APF */
 #ifdef PASS_ALL_MCAST_PKTS
 				allmulti = 1;
 				for (i = 0; i < DHD_MAX_IFS; i++) {
@@ -5295,18 +5292,50 @@ dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 	/* Distinguish rx/tx frame */
 	wl_aml_header_v1_t hdr;
 	bool wpa_sup;
+	struct sk_buff *skb = pkt;
 	frame_type type;
+#ifdef DHD_PKT_LOGGING
+	struct ether_header *eh;
+	uint32 pktid;
+	uint16 ether_type;
+	uint16 status;
+#endif /* DHD_PKT_LOGGING */
 
-	hdr = *(wl_aml_header_v1_t *)PKTDATA(dhdp->osh, pkt);
-	PKTPULL(dhdp->osh, pkt, sizeof(hdr));
+	hdr = *(wl_aml_header_v1_t *)PKTDATA(dhdp->osh, skb);
+	PKTPULL(dhdp->osh, skb, sizeof(hdr));
 	wpa_sup = !!(hdr.flags & WL_AML_F_EAPOL);
 	type = wpa_sup ? FRAME_TYPE_ETHERNET_II : FRAME_TYPE_80211_MGMT;
 
 	if (hdr.flags & WL_AML_F_DIRECTION) {
 		bool ack = !!(hdr.flags & WL_AML_F_ACKED);
-		DHD_DBG_PKT_MON_TX(dhdp, pkt, 0, type, (uint8)ack, TRUE);
+#ifdef DHD_PKT_LOGGING
+		/* Send Tx-ed 4HS packet in dongle to packet logging buffer */
+		if (skb && type == FRAME_TYPE_ETHERNET_II) {
+			pktid = (uint32)(unsigned long)pkt;
+			status = (ack) ? WLFC_CTL_PKTFLAG_DISCARD : WLFC_CTL_PKTFLAG_DISCARD_NOACK;
+			DHD_PKTLOG_TX(dhdp, skb, skb->data, pktid);
+			DHD_PKTLOG_TXS(dhdp, skb, skb->data, pktid, status);
+		}
+#endif /* DHD_PKT_LOGGING */
+
+		/* Send Tx-ed mgmt frame and 4HS packet in dongle to upper layer */
+		DHD_DBG_PKT_MON_TX(dhdp, skb, 0, type, (uint8)ack, TRUE);
+
+		/* skb can be null here. do null check if skb is used */
 	} else {
-		DHD_DBG_PKT_MON_RX(dhdp, (struct sk_buff *)pkt, type, TRUE);
+#ifdef DHD_PKT_LOGGING
+		/* Send Rx-ed 4HS packet in dongle to packet logging buffer */
+		if (skb && type == FRAME_TYPE_ETHERNET_II) {
+			eh = (struct ether_header *)skb->data;
+			ether_type = ntoh16(eh->ether_type);
+			DHD_PKTLOG_RX(dhdp, (struct sk_buff *)skb, skb->data, ether_type);
+		}
+#endif /* DHD_PKT_LOGGING */
+
+		/* Send Rx-ed mgmt frame and 4HS packet in dongle to upper layer */
+		DHD_DBG_PKT_MON_RX(dhdp, (struct sk_buff *)skb, type, TRUE);
+
+		/* skb can be null here. do null check if skb is used */
 	}
 }
 #endif /* DBG_PKT_MON && PCIE_FULL_DONGLE */
@@ -6783,14 +6812,18 @@ dhd_verify_firmware_mode_change(dhd_info_t *dhd)
 	DHD_INFO(("%s : check monitor mode with fw_path : %s\n", __FUNCTION__, dhd->fw_path));
 
 	if (strstr(dhd->fw_path, "_mon") != NULL) {
-		DHD_PRINT(("%s : monitor mode is enabled, set force reg on\n", __FUNCTION__));
+		DHD_PRINT(("%s : monitor mode is enabled, set force reg on "
+			"and big hammer\n", __FUNCTION__));
 		dhd->wl_accel_force_reg_on = TRUE;
 		dhd->pub.fw_mode_changed = TRUE;
+		dhd->pub.do_chip_bighammer = TRUE;
 		return;
 	} else if (dhd->pub.monitor_enable == TRUE) {
-		DHD_PRINT(("%s : monitor was enabled, changed to other fw_mode\n", __FUNCTION__));
+		DHD_PRINT(("%s : monitor was enabled, changed to other fw_mode, "
+			"set force reg on and big hammer\n", __FUNCTION__));
 		dhd->wl_accel_force_reg_on = TRUE;
 		dhd->pub.fw_mode_changed = TRUE;
+		dhd->pub.do_chip_bighammer = TRUE;
 		return;
 	}
 #endif /* WL_MONITOR */
@@ -6800,9 +6833,11 @@ dhd_verify_firmware_mode_change(dhd_info_t *dhd)
 		current_mode, dhd->pub.op_mode));
 
 	if (!(dhd->pub.op_mode & current_mode)) {
-		DHD_PRINT(("%s: firmware path has changed, set force reg on\n", __FUNCTION__));
+		DHD_PRINT(("%s: firmware path has changed, set force reg on "
+			"and big hammer\n", __FUNCTION__));
 		dhd->wl_accel_force_reg_on = TRUE;
 		dhd->pub.fw_mode_changed = TRUE;
+		dhd->pub.do_chip_bighammer = TRUE;
 	}
 }
 #endif /* WLAN_ACCEL_BOOT */
@@ -9804,6 +9839,13 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	}
 #endif /* DHD_DUMP_MNGR */
 
+#ifdef DHD_FWTRACE
+	/* Attach the fwtrace */
+	if (dhd_fwtrace_attach(&dhd->pub) != 0) {
+		DHD_ERROR(("dhd_fwtrace_attach has failed\n"));
+		goto fail;
+	}
+#endif /* DHD_FWTRACE */
 
 #ifdef RTT_SUPPORT
 	if (dhd_rtt_attach(&dhd->pub)) {
@@ -11344,6 +11386,7 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 	/*  Room for "event_msgs_ext" + '\0' + bitvec  */
 	char iovbuf[WL_EVENTING_MASK_EXT_LEN + EVENTMSGS_EXT_STRUCT_SIZE + 16];
 
+	uint32 val = 0;
 
 	uint32 event_log_max_sets = 0;
 	char* iov_buf = NULL;
@@ -11405,6 +11448,8 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 #endif /* SUPPORT_MULTIPLE_CLMBLOB */
 	char* apply_clm;
 	char* apply_txcap;
+
+	BCM_REFERENCE(val);
 
 #ifdef PKT_FILTER_SUPPORT
 	dhd_pkt_filter_enable = TRUE;
@@ -12215,6 +12260,16 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 		ret = BCME_OK;
 	}
 #endif /* DHD_SPMI */
+
+#if defined(BOARD_HIKEY) || defined (BOARD_STB)
+	val = 1;
+	ret2 = dhd_iovar(dhd, 0, "assoc_early_prsv_log_flush", (char *)&val,
+		sizeof(val), NULL, 0, TRUE);
+	if (ret2 < 0) {
+		DHD_ERROR(("%s: failed to set assoc_early_prsv_log_flush ret=%d\n",
+			__FUNCTION__, ret2));
+	}
+#endif /* (BOARD_HIKEY) || (BOARD_STB) */
 
 done:
 	if (iov_buf) {
@@ -15195,6 +15250,9 @@ void dhd_detach(dhd_pub_t *dhdp)
 	mutex_destroy(&dhd->bus_user_lock);
 #endif /* BT_OVER_SDIO */
 
+#ifdef DHD_FWTRACE
+	(void) dhd_fwtrace_detach(dhdp);
+#endif /* DHD_FWTRACE */
 
 #ifdef DHD_TX_PROFILE
 	(void)dhd_tx_profile_detach(dhdp);
@@ -15321,6 +15379,10 @@ dhd_module_cleanup(void)
 #endif /* ENABLE_NOT_LOAD_DHD_MODULE */
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
+#ifdef DHD_COREDUMP
+	dhd_plat_unregister_coredump();
+#endif /* DHD_COREDUMP */
+
 	dhd_bus_unregister();
 
 #if defined(OEM_ANDROID)
@@ -15355,7 +15417,7 @@ _dhd_module_init(void)
 	int err;
 	int retry = POWERUP_MAX_RETRY;
 
-	DHD_PRINT(("%s in\n", __FUNCTION__));
+	DHD_PRINT(("%s in, retry=%d\n", __FUNCTION__, retry));
 
 #ifdef DHD_BUZZZ_LOG_ENABLED
 	dhd_buzzz_attach();
@@ -15415,6 +15477,9 @@ _dhd_module_init(void)
 		if (!dhd_download_fw_on_driverload) {
 			dhd_driver_init_done = TRUE;
 		}
+#ifdef DHD_COREDUMP
+		dhd_plat_register_coredump();
+#endif /* DHD_COREDUMP */
 	}
 
 	DHD_PRINT(("%s out\n", __FUNCTION__));
@@ -17802,16 +17867,6 @@ dhd_dev_apf_add_filter(struct net_device *ndev, u8* program,
 
 	DHD_APF_LOCK(ndev);
 
-	/* delete, if filter already exists */
-	if (dhdp->apf_set) {
-		ret = _dhd_apf_delete_filter(ndev, PKT_FILTER_APF_ID);
-		if (unlikely(ret)) {
-			DHD_ERROR(("%s: Failed to delete APF filter\n", __FUNCTION__));
-			goto exit;
-		}
-		dhdp->apf_set = FALSE;
-	}
-
 	ret = _dhd_apf_add_filter(ndev, PKT_FILTER_APF_ID, program, program_len);
 	if (ret) {
 		DHD_ERROR(("%s: Failed to add APF filter\n", __FUNCTION__));
@@ -20008,7 +20063,7 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 #endif /* COEX_CPU */
 
 	dhd_info = (dhd_info_t *)dhdp->info;
-	dump = (dhd_dump_t *)MALLOC(dhdp->osh, sizeof(dhd_dump_t));
+	dump = (dhd_dump_t *)MALLOCZ(dhdp->osh, sizeof(dhd_dump_t));
 	if (dump == NULL) {
 		DHD_ERROR(("%s: dhd dump memory allocation failed\n", __FUNCTION__));
 		return;
@@ -24748,6 +24803,12 @@ dhd_get_reboot_status(struct dhd_pub *dhdp)
 	int restart_in_progress = 0;
 	restart_in_progress = OSL_ATOMIC_READ(dhdp->osh, &reboot_in_progress);
 	return restart_in_progress;
+}
+
+int
+dhd_get_module_exit_status(struct dhd_pub *dhdp)
+{
+	return OSL_ATOMIC_READ(dhdp->osh, &exit_in_progress);
 }
 
 /**

@@ -772,6 +772,9 @@ BCMPOSTTRAPFASTPATH(wf_chspec_malformed)(chanspec_t chanspec)
 	uint chspec_bw = CHSPEC_BW(chanspec);
 	uint chspec_sb;
 
+	if (chanspec == INVCHANSPEC) {
+		return TRUE;
+	}
 	if (CHSPEC_IS2G(chanspec)) {
 		/* must be valid bandwidth for 2G */
 		if (!BW_LE40(chspec_bw)) {

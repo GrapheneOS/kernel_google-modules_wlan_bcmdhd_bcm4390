@@ -622,22 +622,26 @@ typedef struct {
 	int		up_cnt;
 } tsk_ctl_t;
 
+/* Temporary change till CUSTOM_PREFIX is removed from all src */
+#if defined(CUSTOM_PREFIX) && !defined(LOG_CUSTOM_PREFIX_AND_RTC)
+#define LOG_CUSTOM_PREFIX_AND_RTC
+#endif /* CUSTOM_PREFIX && !LOG_CUSTOM_PREFIX_AND_RTC */
 
 /* ANDREY: new MACROs to start stop threads(OLD kthread API STYLE) */
 /* requires  tsk_ctl_t tsk  argument, the caller's priv data is passed in owner ptr */
 /* note this macro assumes there may be only one context waiting on thread's completion */
 #ifdef DHD_DEBUG
-#ifndef CUSTOM_PREFIX
+#ifndef LOG_CUSTOM_PREFIX_AND_RTC
 #define DBG_THR(x) printk x
 #else
 extern char* osl_get_rtctime(void);
-#define DBG_THR_PREFIX "[%s]"CUSTOM_PREFIX, osl_get_rtctime()
+#define DBG_THR_PREFIX "[%s]"LOG_CUSTOM_PREFIX_AND_RTC, osl_get_rtctime()
 #define DBG_THR(x)	\
 do {	\
 	pr_cont(DBG_THR_PREFIX);	\
 	pr_cont x;			\
 } while (0)
-#endif /* !CUSTOM_PREFIX */
+#endif /* !LOG_CUSTOM_PREFIX_AND_RTC */
 #else
 #define DBG_THR(x)
 #endif /* DHD_DEBUG */

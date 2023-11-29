@@ -838,9 +838,11 @@ DECLARE_MAP_API(8, 2, 3, 3u, 0x00FFu) /* setbit8() and getbit8() */
 #define MACOUI2STR(ea) (ea)[0], (ea)[1], (ea)[2]
 
 #ifdef DONGLEBUILD
-#define PMKIDDBG		"%016llx%016llx"
-#define PMKID2STRDBG(pmkid)	(uint64)HTON64(*((const uint64*)&(pmkid)[0])), \
-				(uint64)HTON64(*((const uint64*)&(pmkid)[8]))
+#define PMKIDDBG		"%08x%08x%08x%08x"
+#define PMKID2STRDBG(pmkid)	(uint32)HTON32(*((const uint32*)&(pmkid)[ 0])), \
+				(uint32)HTON32(*((const uint32*)&(pmkid)[ 4])), \
+				(uint32)HTON32(*((const uint32*)&(pmkid)[ 8])), \
+				(uint32)HTON32(*((const uint32*)&(pmkid)[12]))
 #else
 #define PMKIDDBG		"%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x"
 #define PMKID2STRDBG(pmkid)	(pmkid)[ 0], (pmkid)[ 1], (pmkid)[ 2], (pmkid)[ 3], \

@@ -5660,6 +5660,7 @@ wbrc2wl_wlan_on_request(void *dhd_pub)
 	int ret = 0;
 	struct net_device *dev = NULL;
 	dhd_pub_t *dhdp = NULL;
+	int retry = POWERUP_MAX_RETRY;
 
 	DHD_PRINT(("%s: ENTER \n", __FUNCTION__));
 
@@ -5674,30 +5675,39 @@ wbrc2wl_wlan_on_request(void *dhd_pub)
 		return BCME_NOTFOUND;
 	}
 
+	if (dhd_get_reboot_status(dhdp) >= 0 || dhd_get_module_exit_status(dhdp) > 0) {
+		DHD_PRINT(("%s: reboot or exit in progress\n", __FUNCTION__));
+		return BCME_BUSY;
+	}
+
 	dhd_net_if_lock(dev);
 	if (!g_wifi_on) {
-		dhd_net_wifi_platform_set_power(dev, TRUE, WIFI_TURNON_DELAY);
-		ret = dhd_net_bus_devreset(dev, FALSE);
-		if (!ret) {
-			uint32 val = 0;
-			/* Make wl up, so that minresmask is programmed */
-			DHD_PRINT(("%s: calling wl up\n", __FUNCTION__));
-			ret = wldev_ioctl_set(dev, WLC_UP, &val, sizeof(val));
-			if (unlikely(ret)) {
-				DHD_ERROR(("WLC_UP error (%d)\n", ret));
+		do {
+			dhd_net_wifi_platform_set_power(dev, TRUE, WIFI_TURNON_DELAY);
+			ret = dhd_net_bus_devreset(dev, FALSE);
+			if (!ret) {
+				uint32 val = 0;
+				/* Make wl up, so that minresmask is programmed */
+				DHD_PRINT(("%s: calling wl up\n", __FUNCTION__));
+				ret = wldev_ioctl_set(dev, WLC_UP, &val, sizeof(val));
+				if (unlikely(ret)) {
+					DHD_ERROR(("WLC_UP error (%d)\n", ret));
+				} else {
+					/* Keep the link in L2 */
+					DHD_PRINT(("%s: calling suspend\n", __FUNCTION__));
+					dhd_net_bus_suspend(dev);
+				}
+				g_wifi_on = TRUE;
+				g_wifi_accel_on = TRUE;
+				break;
 			} else {
-				/* Keep the link in L2 */
-				DHD_PRINT(("%s: calling suspend\n", __FUNCTION__));
-				dhd_net_bus_suspend(dev);
+				/* if wlan on fails, turn it off to keep it in a sane state */
+				DHD_ERROR(("%s: wlan on failed! turning wlan off...\n",
+					__FUNCTION__));
+				dhd_net_bus_devreset(dev, TRUE);
+				dhd_net_wifi_platform_set_power(dev, FALSE, WIFI_TURNOFF_DELAY);
 			}
-			g_wifi_on = TRUE;
-			g_wifi_accel_on = TRUE;
-		} else {
-			/* if wlan on fails, turn it off to keep it in a sane state */
-			DHD_ERROR(("%s: wlan on failed! turning wlan off...\n", __FUNCTION__));
-			dhd_net_bus_devreset(dev, TRUE);
-			dhd_net_wifi_platform_set_power(dev, FALSE, WIFI_TURNOFF_DELAY);
-		}
+		} while (retry-- > 0);
 	} else {
 		DHD_PRINT(("%s: wlan is already ON\n", __FUNCTION__));
 	}

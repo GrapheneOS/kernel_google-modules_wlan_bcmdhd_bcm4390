@@ -1349,8 +1349,8 @@ wl_cellavoid_find_widechspec_fromchspec(void *cai, chanspec_t chanspec, struct n
 }
 
 static wl_cellavoid_chan_info_t *
-wl_cellavoid_find_ap_chan_info(struct bcm_cfg80211 *cfg, chanspec_t ap_chspec,
-	chanspec_t sta_chspec, int csa_target_band)
+wl_cellavoid_find_ap_chan_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+	chanspec_t ap_chspec, chanspec_t sta_chspec, int csa_target_band)
 {
 	int ap_band, sta_band = WLC_BAND_INVALID;
 	wl_cellavoid_chan_info_t *chan_info = NULL;
@@ -1378,7 +1378,7 @@ wl_cellavoid_find_ap_chan_info(struct bcm_cfg80211 *cfg, chanspec_t ap_chspec,
 			/* SCC in this core */
 			WL_INFORM_MEM(("STA in the same core, band %d\n", sta_band));
 			chan_info = wl_cellavoid_find_chinfo_fromchspec(cfg->cellavoid_info,
-					sta_chspec, bcmcfg_to_prmry_ndev(cfg));
+					sta_chspec, ndev);
 		} else {
 			/* No STA in this core */
 			WL_INFORM_MEM(("No STA in the same core, band %d\n", ap_band));
@@ -1397,7 +1397,7 @@ wl_cellavoid_find_ap_chan_info(struct bcm_cfg80211 *cfg, chanspec_t ap_chspec,
 			WL_INFORM_MEM(("STA in the another core. band %d\n", csa_target_band));
 			if (!wl_is_chanspec_restricted(cfg, sta_chspec)) {
 				chan_info = wl_cellavoid_find_chinfo_fromchspec(cfg->cellavoid_info,
-					sta_chspec, bcmcfg_to_prmry_ndev(cfg));
+					sta_chspec, ndev);
 			}
 		} else {
 			/* No STA in another core */
@@ -1492,7 +1492,8 @@ wl_cellavoid_handle_apsta_concurrency(struct bcm_cfg80211 *cfg)
 
 			/* Handle STA concurrency scenario and get chan into to switch channel */
 			csa_chan_info = wl_cellavoid_find_ap_chan_info(cfg,
-				ap_oper_data.iface[i].chspec, sta_chanspec, csa_target_band);
+				ap_oper_data.iface[i].ndev, ap_oper_data.iface[i].chspec,
+				sta_chanspec, csa_target_band);
 
 			/* If channel exists, schedule channel swith for this AP */
 			if (csa_chan_info) {

@@ -81,13 +81,28 @@ const uint32 FWPKG_MAX_SUPPORTED_VER = 1;
 
 #define UNIT_TYPE_IDX(type)	((type) - 1)
 
+/* common util function which do not need access to FW data buffer or file ops */
 static int fwpkg_hdr_validation(fwpkg_hdr_t *hdr, uint32 pkg_len);
+static uint32 fwpkg_get_unit_size(fwpkg_info_t *fwpkg, uint32 unit_type);
+
+/*
+ * With DHD_LINUX_STD_FW_API, FW contents are available to DHD as a data buffer via
+ * LINUX_STD_FW_API calls and file operations(vfs_read) are not allowed
+ * Hence functions that do file access are rewritten to
+ * operate on FW data buffer obtained from LINUX_STD_FW_API
+ */
+#ifndef DHD_LINUX_STD_FW_API
 static bool fwpkg_parse_rtlvs(fwpkg_info_t *fwpkg, uint32 file_size, char *fname);
 static int fwpkg_parse(fwpkg_info_t *fwpkg, char *fname);
 static int fwpkg_open_unit(fwpkg_info_t *fwpkg, char *fname,
 	uint32 unit_type, FWPKG_FILE **fp);
-static uint32 fwpkg_get_unit_size(fwpkg_info_t *fwpkg, uint32 unit_type);
+#else
+static bool fwpkg_parse_rtlvs(fwpkg_info_t *fwpkg, uint32 fwsize, const uint8 *fwdata);
+static int fwpkg_parse(fwpkg_info_t *fwpkg, uint32 fwsize, const uint8 *fwdata);
+static int fwpkg_open_unit(fwpkg_info_t *fwpkg, uint32 unit_type, uint32* data_offset);
+#endif /* DHD_LINUX_STD_FW_API */
 
+#ifndef DHD_LINUX_STD_FW_API
 /* open file, if combined fw package parse common header,
  * parse each unit header, keep information
  */
@@ -129,28 +144,6 @@ fwpkg_open_signature_img(fwpkg_info_t *fwpkg, char *fname, FWPKG_FILE **fp)
 	return fwpkg_open_unit(fwpkg, fname, FWPKG_TAG_SIG, fp);
 }
 
-uint32
-fwpkg_get_firmware_img_size(fwpkg_info_t *fwpkg)
-{
-	if (fwpkg == NULL) {
-		FWPKG_ERR(("fwpkg_get_firmware_size: missing argument\n"));
-		return 0;
-	}
-
-	return fwpkg_get_unit_size(fwpkg, FWPKG_TAG_FW);
-}
-
-uint32
-fwpkg_get_signature_img_size(fwpkg_info_t *fwpkg)
-{
-	if (fwpkg == NULL) {
-		FWPKG_ERR(("fwpkg_get_signature_img_size: missing argument\n"));
-		return 0;
-	}
-
-	return fwpkg_get_unit_size(fwpkg, FWPKG_TAG_SIG);
-}
-
 #ifndef BCMDRIVER
 static int
 app_getsize(FILE *file)
@@ -177,39 +170,6 @@ app_fread(char *buf, int len, void *file)
 	return status;
 }
 #endif /* !BCMDRIVER */
-
-/* check package header information */
-static int
-fwpkg_hdr_validation(fwpkg_hdr_t *hdr, uint32 pkg_len)
-{
-	int ret = BCME_ERROR;
-	uint32 len = 0;
-
-	/* check megic word0 */
-	len += sizeof(hdr->magic_word0);
-	if (hdr->magic_word0 != FWPKG_HDR_MGCW0) {
-		ret = BCME_UNSUPPORTED;
-		goto done;
-	}
-	/* check megic word1 */
-	len += sizeof(hdr->magic_word1);
-	if (hdr->magic_word1 != FWPKG_HDR_MGCW1) {
-		goto done;
-	}
-	/* check length */
-	len += sizeof(hdr->length);
-	if (hdr->length != (pkg_len - len)) {
-		goto done;
-	}
-	/* check version */
-	if (hdr->version > FWPKG_MAX_SUPPORTED_VER) {
-		goto done;
-	}
-
-	ret = BCME_OK;
-done:
-	return ret;
-}
 
 /* parse rtlvs in combined fw package */
 static bool
@@ -369,6 +329,193 @@ done:
 	return ret;
 }
 
+#else
+/*
+ * input: FW data buffer received form request_firmware API
+ * if combined fw package parse common header,
+ * parse each unit header, keep information
+ */
+int
+fwpkg_init(fwpkg_info_t *fwpkg, uint32 fwsize, const uint8 *fwdata)
+{
+	if (fwpkg == NULL || fwdata == NULL) {
+		FWPKG_ERR(("fwpkg_init: missing argument\n"));
+		return BCME_ERROR;
+	}
+	/* if status already set, no need to initialize */
+	if (fwpkg->status) {
+		return BCME_OK;
+	}
+	bzero(fwpkg, sizeof(*fwpkg));
+
+	return fwpkg_parse(fwpkg, fwsize, fwdata);
+}
+
+/* parse rtlvs in combined fw package's FW Data buffer  */
+static bool
+fwpkg_parse_rtlvs(fwpkg_info_t *fwpkg, uint32 fwsize, const uint8 *fwdata)
+{
+	bool ret = FALSE;
+	const uint32 l_len = sizeof(uint32);		/* len of rTLV's field length */
+	const uint32 t_len = sizeof(uint32);		/* len of rTLV's field type */
+	uint32 unit_size = 0, unit_type = 0;
+	uint32 left_size = fwsize - sizeof(fwpkg_hdr_t);
+	uint32 data_offset = 0;
+
+	if (fwdata == NULL || fwsize == 0) {
+		FWPKG_ERR(("fwpkg_parse_rtlvs: fwdata invalid\n"));
+		goto done;
+	}
+	while (left_size) {
+
+		/* remove length of rTLV's fields type, length */
+		left_size -= (t_len + l_len);
+		data_offset = left_size;
+
+		if (memcpy_s((char *)&unit_size, l_len, (fwdata + data_offset), l_len) != 0) {
+			FWPKG_ERR(("fwpkg_parse_rtlvs: can't read rtlv data len\n"));
+			goto done;
+		}
+		data_offset += l_len;
+
+		if (memcpy_s((char *)&unit_type, t_len, (fwdata + data_offset), t_len) != 0) {
+			FWPKG_ERR(("fwpkg_parse_rtlvs: can't read rtlv data type\n"));
+			goto done;
+		}
+		data_offset += t_len;
+
+		if ((unit_type == 0) || (unit_type >= FWPKG_TAG_LAST)) {
+			FWPKG_ERR(("fwpkg_parse_rtlvs: unsupported data type(%d)\n",
+				unit_type));
+			goto done;
+		}
+		fwpkg->units[UNIT_TYPE_IDX(unit_type)].type = unit_type;
+		fwpkg->units[UNIT_TYPE_IDX(unit_type)].size = unit_size;
+		left_size -= unit_size;
+		fwpkg->units[UNIT_TYPE_IDX(unit_type)].offset = left_size;
+
+		FWPKG_ERR(("fwpkg_parse_rtlvs: type x%04x, len %d, off %d\n",
+			unit_type, unit_size, left_size));
+	}
+
+	ret = TRUE;
+done:
+	return ret;
+}
+
+/*
+ * parse FW data buffer received form request_firmware API
+ * if is combined fw package
+ */
+static int
+fwpkg_parse(fwpkg_info_t *fwpkg, uint32 fwsize, const uint8 *fwdata)
+{
+	int ret = BCME_ERROR;
+	fwpkg_hdr_t hdr = {0};
+	int data_offset = 0;
+
+	if (fwdata == NULL) {
+		FWPKG_ERR(("fwpkg_parse: no fwdata\n"));
+		goto done;
+	}
+	if (!fwsize) {
+		FWPKG_ERR(("fwpkg_parse: fwsize is 0\n"));
+		goto done;
+	}
+
+	/* get the last sizeof(fwpkg_hdr_t) bytes in the data buffer */
+	data_offset = fwsize - sizeof(fwpkg_hdr_t);
+	ret = memcpy_s(&hdr, sizeof(fwpkg_hdr_t), (fwdata + data_offset), sizeof(fwpkg_hdr_t));
+	if (ret) {
+		FWPKG_ERR(("fwpkg_parse: memcpy_s of fwpkg_hdr failed\n"));
+		goto done;
+	}
+
+	/* if combined firmware package validates it's common header
+	 * otherwise return BCME_UNSUPPORTED as it may be
+	 * another type of firmware binary
+	 */
+	ret = fwpkg_hdr_validation(&hdr, fwsize);
+	if (ret == BCME_ERROR) {
+		FWPKG_ERR(("fwpkg_parse: can't parse pkg header\n"));
+		goto done;
+	}
+	/* parse rTLVs only in case of combined firmware package */
+	if (ret == BCME_OK) {
+		fwpkg->status = FWPKG_COMBND_FLG;
+		if (fwpkg_parse_rtlvs(fwpkg, fwsize, fwdata) == FALSE) {
+			FWPKG_ERR(("fwpkg_parse: can't parse rtlvs\n"));
+			ret = BCME_ERROR;
+			goto done;
+		}
+	} else {
+		fwpkg->status = FWPKG_SINGLE_FLG;
+	}
+
+	fwpkg->file_size = fwsize;
+done:
+	return ret;
+}
+
+/*
+ * Looks at the package FW data buffer and returns offset to requested unit.
+ * in case of single binary file return UNSUPPORTED
+ */
+static int
+fwpkg_open_unit(fwpkg_info_t *fwpkg, uint32 unit_type, uint32* data_offset)
+{
+	int ret = BCME_OK;
+	fwpkg_unit_t *fw_unit = NULL;
+
+	if (data_offset == NULL || fwpkg == NULL) {
+		FWPKG_ERR(("fwpkg_open_unit: invalid args data_offset %p fwpkg %p\n",
+			data_offset, fwpkg));
+		ret = BCME_ERROR;
+		goto done;
+	}
+
+	/*
+	 * status is FWPKG_SINGLE_FLG
+	 * means, this is single binary file format.
+	 */
+	if (IS_FWPKG_SINGLE(fwpkg)) {
+		ret = BCME_UNSUPPORTED;
+		goto done;
+	}
+
+	fw_unit = &fwpkg->units[FWPKG_UNIT_IDX(unit_type)];
+
+	/* return requested unit offset */
+	*data_offset = fw_unit->offset;
+done:
+	return ret;
+}
+
+/* returns data_offset of FW img inside FW data buffer */
+int
+fwpkg_open_firmware_img(fwpkg_info_t *fwpkg, uint32* data_offset)
+{
+	if (fwpkg == NULL || data_offset == NULL) {
+		FWPKG_ERR(("fwpkg_open_firmware: missing argument\n"));
+		return BCME_ERROR;
+	}
+
+	return fwpkg_open_unit(fwpkg, FWPKG_TAG_FW, data_offset);
+}
+
+/* returns data_offset of signature img inside FW data buffer */
+int
+fwpkg_open_signature_img(fwpkg_info_t *fwpkg, uint32* data_offset)
+{
+	if (fwpkg == NULL || data_offset == NULL) {
+		FWPKG_ERR(("fwpkg_open_signature: missing argument\n"));
+		return BCME_ERROR;
+	}
+
+	return fwpkg_open_unit(fwpkg, FWPKG_TAG_SIG, data_offset);
+}
+#endif /* DHD_LINUX_STD_FW_API */
+
 static uint32
 fwpkg_get_unit_size(fwpkg_info_t *fwpkg, uint32 unit_type)
 {
@@ -385,4 +532,59 @@ fwpkg_get_unit_size(fwpkg_info_t *fwpkg, uint32 unit_type)
 
 done:
 	return size;
+}
+
+/* check package header information */
+static int
+fwpkg_hdr_validation(fwpkg_hdr_t *hdr, uint32 pkg_len)
+{
+	int ret = BCME_ERROR;
+	uint32 len = 0;
+
+	/* check megic word0 */
+	len += sizeof(hdr->magic_word0);
+	if (hdr->magic_word0 != FWPKG_HDR_MGCW0) {
+		ret = BCME_UNSUPPORTED;
+		goto done;
+	}
+	/* check megic word1 */
+	len += sizeof(hdr->magic_word1);
+	if (hdr->magic_word1 != FWPKG_HDR_MGCW1) {
+		goto done;
+	}
+	/* check length */
+	len += sizeof(hdr->length);
+	if (hdr->length != (pkg_len - len)) {
+		goto done;
+	}
+	/* check version */
+	if (hdr->version > FWPKG_MAX_SUPPORTED_VER) {
+		goto done;
+	}
+
+	ret = BCME_OK;
+done:
+	return ret;
+}
+
+uint32
+fwpkg_get_firmware_img_size(fwpkg_info_t *fwpkg)
+{
+	if (fwpkg == NULL) {
+		FWPKG_ERR(("fwpkg_get_firmware_size: missing argument\n"));
+		return 0;
+	}
+
+	return fwpkg_get_unit_size(fwpkg, FWPKG_TAG_FW);
+}
+
+uint32
+fwpkg_get_signature_img_size(fwpkg_info_t *fwpkg)
+{
+	if (fwpkg == NULL) {
+		FWPKG_ERR(("fwpkg_get_signature_img_size: missing argument\n"));
+		return 0;
+	}
+
+	return fwpkg_get_unit_size(fwpkg, FWPKG_TAG_SIG);
 }

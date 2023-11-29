@@ -324,7 +324,9 @@ typedef union bcm_event_msg_u {
 
 
 #define WLC_E_CSA_IGNORED		211	/* CSA IE is ignored */
-#define WLC_E_LAST			212	/* highest val + 1 for range checking */
+#define WLC_E_EDS_EVENT			212
+#define WLC_E_LAST			213	/* highest val + 1 for range checking */
+
 
 /* define an API for getting the string name of an event */
 extern const char *bcmevent_get_name(uint event_type);
@@ -450,6 +452,7 @@ typedef enum wlc_roam_cache_update_reason {
 #define WLC_E_STATUS_LOWPOWER_ON_LOWSPAN	21	/* LOWPOWER scan request during LOWSPAN */
 #define WLC_E_STATUS_WAIT_RXBCN_TIMEOUT	22	/* Time out happened waiting of beacon  */
 #define WLC_E_STATUS_6G_NO_TPE		23	/* No tpe in the fw cache for 6g channels  */
+#define WLC_E_STATUS_CHANNELSWITCH	24	/* scan aborted due to CSA event */
 #define WLC_E_STATUS_INVALID 0xff  /* Invalid status code to init variables. */
 
 /* 4-way handshake event type */
@@ -1898,4 +1901,142 @@ typedef struct nan_tether_event_s {
 	uint8   num_clients;			/* num of end clients below */
 	uint8   end_clients[];			/* SA of end clients:  n*ETHER_ADDR_LEN */
 } nan_tether_event_t;
+
+enum wl_eds_radio_enc {
+	WL_EDS_RADIO_ENC_TRUE_2G_CORE	= 0u,
+	WL_EDS_RADIO_ENC_TRUE_5G6G_CORE	= 1u,
+	WL_EDS_RADIO_ENC_LISTENING_CORE	= 2u,
+	WL_EDS_RADIO_ENC_MAX		= 3u,
+	WL_EDS_RADIO_ENC_TRUE_5G_CORE	= WL_EDS_RADIO_ENC_TRUE_5G6G_CORE,
+	WL_EDS_RADIO_ENC_TRUE_6G_CORE	= WL_EDS_RADIO_ENC_TRUE_5G6G_CORE
+};
+typedef uint8 wl_eds_radio_enc_t;
+
+enum wl_eds_status {
+	WL_EDS_STATUS_INACTIVE			= 0u,
+	WL_EDS_STATUS_ACTIVE			= 1u,
+	WL_EDS_STATUS_MAX
+};
+typedef uint8 wl_eds_status_t;
+
+enum wl_eds_inactive_reason {
+	WL_EDS_INACTIVE_REASON_NONE		= 0,
+	WL_EDS_INACTIVE_REASON_TIMEOUT		= (1u << 0),
+	WL_EDS_INACTIVE_REASON_ABORTED		= (1u << 1),
+	WL_EDS_INACTIVE_REASON_ABORTED_ALL	= (1u << 2),
+	WL_EDS_INACTIVE_REASON_DELETED		= (1u << 3),
+	WL_EDS_INACTIVE_REASON_DELETED_ALL	= (1u << 4),
+	WL_EDS_INACTIVE_REASON_NUMRPTS		= (1u << 5),
+	WL_EDS_INACTIVE_REASON_SCAN_ERROR	= (1u << 6),
+	WL_EDS_INACTIVE_REASON_ERROR		= (1u << 7),
+	WL_EDS_INACTIVE_REASON_ADDR_CONFLICT	= (1u << 8),
+	WL_EDS_INACTIVE_REASON_START_STOP_ERROR	= (1u << 9),
+	WL_EDS_INACTIVE_REASON_INVALID		= 0xFFFFu
+};
+typedef uint16 wl_eds_inactive_reason_t;
+
+/* EDS sub event types */
+enum wl_eds_event_sub_type {
+	WLC_E_EDS_STATUS_EVENT		= 1u,
+	WLC_E_EDS_MATCH_REPORT_EVENT	= 2u,
+	WLC_E_EDS_FILTER_STATUS_EVENT	= 3u,
+	WLC_E_EDS_EVENT_MAX		= 4u
+};
+typedef uint8 wl_eds_event_sub_type_t;
+
+/* WLC_E_EDS_MATCH_REPORT_EVENT */
+#define WL_EDS_MATCH_REPORT_EVENT_VERSION_1	(1u)
+#define WL_EDS_RADIO_INDICATOR_RADIO_ENC_MASK	(0x0Fu)
+#define WL_EDS_RADIO_INDICATOR_BAND_SHIFT	4u
+#define WL_EDS_RADIO_INDICATOR_BAND_MASK	(0xF0u)
+/* low nibble indicates radio bitmap (wl_eds_radio_enc_t).
+ * high nibble indicates band bitmap (wl_eds_radio_ind_band).
+ */
+enum wl_eds_radio_ind_band {
+	WL_EDS_RADIO_INDICATOR_BAND_2G		= (1u << 0),
+	WL_EDS_RADIO_INDICATOR_BAND_5G		= (1u << 1),
+	WL_EDS_RADIO_INDICATOR_BAND_6G		= (1u << 2),
+	WL_EDS_RADIO_INDICATOR_BAND_MAX
+};
+typedef uint8 wl_eds_radio_ind_t;
+
+/* see 802.11.h for FC_TYPE_MASK/SHIFT and FC_TYPE_SUBTYPE_MASK/SHIFT */
+typedef uint8 wl_eds_frame_type_subtype_t;
+
+typedef struct wl_eds_report_v1 {
+	uint64				timestamp;	/* ingress timestamp */
+	struct ether_addr               a1;
+	struct ether_addr               a2;
+	struct ether_addr               a3;
+	uint8				filter_id;
+	wl_eds_frame_type_subtype_t	ftype;		/* frame type/subtype */
+	int8				rssi[MAX_PHY_CORE_NUM];	/* RSSI per RF chain */
+	uint8				num_ant;	/* num Rx ant (num valid entry in rssi[] */
+	wl_eds_radio_ind_t		radio_ind;	/* which radio on what band */
+	chanspec_t			chanspec;	/* bandwidth/channel */
+	uint32				ratespec;
+	uint16				fc;		/* frame control for debugging purpose. */
+	uint8				PAD[2];
+} wl_eds_report_v1_t;
+
+typedef struct wl_eds_match_report_event_v1 {
+	uint16			version;
+	uint16			length;
+	wl_eds_report_v1_t	report;
+} wl_eds_match_report_event_v1_t;
+
+typedef struct wl_eds_radio_status_collection_v1 {
+	uint32			remain_dur;
+	uint32			accumulated_dur;
+	uint8			xtlvs[];
+} wl_eds_radio_status_container_v1_t;
+
+typedef struct wl_eds_filter_status_container_v1 {
+	wl_eds_radio_enc_t	radio_enc;
+	uint8			num_filters;
+	uint8			num_inactive;
+	uint8			PAD;
+	uint8			xtlvs[];
+} wl_eds_filter_status_container_v1_t;
+
+enum wl_eds_validity_mask_bitpos {
+	WLC_EDS_VALIDITY_BITPOS_A1	= 0u,
+	WLC_EDS_VALIDITY_BITPOS_A2	= 1u,
+	WLC_EDS_VALIDITY_BITPOS_A3	= 2u,
+	WLC_EDS_VALIDITY_BITPOS_FTYPE	= 3u,
+	WLC_EDS_VALIDITY_BITPOS_MAX
+};
+typedef uint8 wl_eds_validity_mask_t;
+
+/* WLC_E_EDS_FILTER_STATUS_EVENT */
+#define WL_EDS_FILTER_STATUS_EVENT_VERSION_1    (1u)
+typedef struct wl_eds_filter_status_v1 {
+	uint8				filter_id;
+	wl_eds_radio_enc_t		radio_enc;
+	/* num_rpts snapshot as of emmiting of this event */
+	uint16				cur_num_rpts;
+	wl_eds_validity_mask_t		validity_mask;
+	wl_eds_status_t			filter_status;
+	/* valid if filter_status is inactive */
+	wl_eds_inactive_reason_t	inactive_reason;
+} wl_eds_filter_status_v1_t;
+
+/* Sent when a filter is started/stopped */
+typedef struct wl_eds_filter_status_event_v1 {
+	uint16				version;
+	uint16				length;
+	wl_eds_filter_status_v1_t	filter_status;
+} wl_eds_filter_status_event_v1_t;
+
+/* WLC_E_EDS_STATUS_EVENT */
+#define WL_EDS_STATUS_EVENT_VERSION_1    (1u)
+typedef struct wl_eds_status_event_v1 {
+	uint16				version;
+	uint16				length;
+	wl_eds_inactive_reason_t	inactive_reason;
+	wl_eds_status_t			status;
+	uint8				PAD[3];
+	uint32				remain_dur;
+	uint32				accumulated_dur;
+} wl_eds_status_event_v1_t;
 #endif /* _BCMEVENT_H_ */

@@ -690,7 +690,8 @@ enum dhd_dongledump_type {
 	DUMP_TYPE_NO_DB7_ACK			= 35,
 	DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF	= 36,
 	DUMP_TYPE_ESCAN_SYNCID_MISMATCH		= 37,
-	DUMP_TYPE_COREDUMP_BY_USER		= 38
+	DUMP_TYPE_COREDUMP_BY_USER		= 38,
+	DUMP_TYPE_WL_BP_DOWN			= 39
 };
 
 enum dhd_hang_reason {
@@ -1110,6 +1111,9 @@ typedef enum {
 
 #ifdef BCMINTERNAL
 
+#ifdef DHD_FWTRACE
+typedef struct fwtrace_info fwtrace_info_t; /* forward declaration */
+#endif	/* DHD_FWTRACE */
 
 #endif	/* BCMINTERNAL */
 
@@ -1923,6 +1927,9 @@ typedef struct dhd_pub {
 #endif /* DHD_DUMP_MNGR */
 #ifdef BCMINTERNAL
 
+#ifdef DHD_FWTRACE
+	fwtrace_info_t *fwtrace_info; /* f/w trace information */
+#endif	/* DHD_FWTRACE */
 
 #endif	/* BCMINTERNAL */
 	bool event_log_max_sets_queried;
@@ -2094,6 +2101,7 @@ typedef struct dhd_pub {
 	bool no_pcie_access_during_dump;
 #endif /* DHD_TREAT_D3ACKTO_AS_LINKDWN */
 	uint *sssr_srcb_buf_after;
+	uint *sssr_cmn_buf_after;
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -5035,8 +5043,10 @@ void dhd_prot_tx_flow_ring_trace_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 
 #if defined(__linux__)
 int dhd_get_reboot_status(struct dhd_pub *dhdp);
+int dhd_get_module_exit_status(struct dhd_pub *dhdp);
 #else
 static INLINE int dhd_get_reboot_status(struct dhd_pub *dhdp) { return 0; }
+static INLINE int dhd_get_module_exit_status(struct dhd_pub *dhdp) { return 0; }
 #endif /* __linux__ */
 
 #if defined(WBRC) && defined(BT_FW_DWNLD)

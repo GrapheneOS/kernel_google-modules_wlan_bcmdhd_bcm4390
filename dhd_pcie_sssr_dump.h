@@ -33,6 +33,8 @@ bool dhd_bus_fis_fw_triggered_check(dhd_pub_t *dhd);
 int dhdpcie_sssr_dump(dhd_pub_t *dhd);
 int dhd_append_sssr_tlv(uint8 *buf_dst, int type_idx, int buf_remain);
 
+#define SSSR_REG_INFO_VER_MAX	128u
+
 #ifdef DHD_SSSR_DUMP_BEFORE_SR
 #define DHD_SSSR_MEMPOOL_SIZE	(2 * 1024 * 1024) /* 2MB size */
 #else
@@ -71,6 +73,12 @@ typedef struct sssr_header {
 #define SSSR_HEADER_MAGIC 0x53535352u /* SSSR */
 #endif /* SSSR_HEADER_MAGIC */
 
+typedef enum sssr_subtype {
+	SSSR_SAQM_DUMP = 0,
+	SSSR_SRCB_DUMP = 1,
+	SSSR_CMN_DUMP = 2
+} sssr_subtype_t;
+
 extern int dhd_sssr_mempool_init(dhd_pub_t *dhd);
 extern void dhd_sssr_mempool_deinit(dhd_pub_t *dhd);
 extern int dhd_sssr_dump_init(dhd_pub_t *dhd, bool fis_dump);
@@ -92,6 +100,8 @@ extern uint dhd_sssr_saqm_buf_size(dhd_pub_t *dhdp);
 extern uint dhd_sssr_saqm_buf_addr(dhd_pub_t *dhdp);
 extern uint dhd_sssr_srcb_buf_size(dhd_pub_t *dhdp);
 extern uint dhd_sssr_srcb_buf_addr(dhd_pub_t *dhdp);
+extern uint dhd_sssr_cmn_buf_size(dhd_pub_t *dhdp);
+extern uint dhd_sssr_cmn_buf_addr(dhd_pub_t *dhdp);
 #define DHD_SSSR_MEMPOOL_INIT(dhdp)	dhd_sssr_mempool_init(dhdp)
 #define DHD_SSSR_MEMPOOL_DEINIT(dhdp) dhd_sssr_mempool_deinit(dhdp)
 #define DHD_SSSR_DUMP_INIT(dhdp)	dhd_sssr_dump_init(dhdp, FALSE)

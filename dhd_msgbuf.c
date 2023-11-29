@@ -4165,6 +4165,9 @@ dhd_set_host_cap2(dhd_pub_t *dhd)
 	}
 #endif /* DHD_HP2P */
 
+	/* Enable firmware to take a trap on improper fatal error recovery */
+	data |= HOSTCAP2_TRAP_ON_BAD_RECOVERY;
+
 	dhd_bus_cmn_writeshared(dhd->bus, &data, sizeof(uint32), HOST_CAP2, 0);
 	DHD_PRINT(("%s set host_cap2 0x%x\n", __FUNCTION__, data));
 }
@@ -8659,6 +8662,13 @@ BCMFASTPATH(dhd_prot_process_trapbuf)(dhd_pub_t *dhd)
 			dhd->dongle_trap_due_to_bt = TRUE;
 		}
 #endif /* BT_OVER_PCIE */
+		if (data & D2H_DEV_TRAP_FATAL) {
+			DHD_PRINT(("%s, WLAN Firmware encountered fatal error\n", __FUNCTION__));
+#ifdef OEM_ANDROID
+			DHD_ERROR_RLMT(("%s: set do_chip_bighammer\n", __FUNCTION__));
+			dhd->do_chip_bighammer = TRUE;
+#endif /* OEM_ANDROID */
+		}
 		return data;
 	}
 	return 0;
@@ -11251,6 +11261,12 @@ int dhd_prot_ioctl(dhd_pub_t *dhd, int ifidx, wl_ioctl_t * ioc, void * buf, int 
 		goto done;
 	}
 
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+		DHD_ERROR_RLMT(("%s : wlan backplane is down. we have nothing to do\n",
+			__FUNCTION__));
+		goto done;
+	}
+
 	if (dhd_query_bus_erros(dhd)) {
 		DHD_ERROR_RLMT(("%s : some BUS error. we have nothing to do\n", __FUNCTION__));
 		goto done;
@@ -11795,6 +11811,11 @@ dhd_msgbuf_query_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len,
 		return -EIO;
 	}
 
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+		DHD_ERROR(("%s : wlan backplane is down. return\n", __FUNCTION__));
+		return -EIO;
+	}
+
 	if (dhd->busstate == DHD_BUS_DOWN) {
 		DHD_ERROR(("%s : bus is down. we have nothing to do\n", __FUNCTION__));
 		return -EIO;
@@ -11994,7 +12015,11 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 		/* dump deep-sleep trace */
 		dhd_dump_ds_trace_console(dhd);
 		dhd_validate_pcie_link_cbp_wlbp(dhd->bus);
-		if (dhd->bus->link_state != DHD_PCIE_ALL_GOOD) {
+		/* need to collect FIS dumps for wlan bp down case,
+		 * so do not bail out if WL BP is down
+		 */
+		if (dhd->bus->link_state != DHD_PCIE_ALL_GOOD &&
+			dhd->bus->link_state != DHD_PCIE_WLAN_BP_DOWN) {
 			DHD_ERROR(("%s: bus->link_state:%d\n",
 				__FUNCTION__, dhd->bus->link_state));
 			ret = -EREMOTEIO;
@@ -12026,7 +12051,9 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 		/* Collect socram dump */
 		if (dhd->memdump_enabled) {
 			/* collect core dump */
-			dhd->memdump_type = DUMP_TYPE_RESUMED_ON_TIMEOUT;
+			if (dhd->bus->link_state != DHD_PCIE_WLAN_BP_DOWN) {
+				dhd->memdump_type = DUMP_TYPE_RESUMED_ON_TIMEOUT;
+			}
 			dhd_bus_mem_dump(dhd);
 		}
 #endif /* DHD_FW_COREDUMP */
@@ -12095,6 +12122,11 @@ dhd_msgbuf_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, u
 	if (dhd->bus->is_linkdown) {
 		DHD_ERROR(("%s : PCIe link is down. we have nothing to do\n",
 			__FUNCTION__));
+		return -EIO;
+	}
+
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+		DHD_ERROR(("%s : wlan backplane is down. return\n", __FUNCTION__));
 		return -EIO;
 	}
 
@@ -12462,6 +12494,13 @@ dhd_prot_ptm_stats_clr(dhd_pub_t *dhd)
 /** Add prot dump output to a buffer */
 void dhd_prot_dump(dhd_pub_t *dhd, struct bcmstrbuf *b)
 {
+#ifdef DHD_SSSR_DUMP
+	if (dhd->bus->sssr_in_progress) {
+		DHD_ERROR_RLMT(("%s: SSSR in progress, skip\n", __FUNCTION__));
+		return;
+	}
+#endif /* DHD_SSSR_DUMP */
+
 #if defined(BCM_ROUTER_DHD)
 	bcm_bprintf(b, "DHD Router: 1GMAC HotBRC forwarding mode\n");
 #endif /* BCM_ROUTER_DHD */
@@ -14658,7 +14697,7 @@ dhd_prot_flow_ring_create(dhd_pub_t *dhd, flow_ring_node_t *flow_ring_node)
 
 
 #ifdef DHD_HP2P
-	/* Create HPP flow ring if HP2P is enabled and TID=7  and AWDL interface */
+	/* Create HPP flow ring if HP2P is enabled and TID=7 and AWDL interface */
 	/* and traffic is not multicast */
 	/* Allow infra interface only if user enabled hp2p_infra_enable thru iovar */
 	if (dhd->hp2p_capable && dhd->hp2p_ring_more &&
@@ -14679,6 +14718,7 @@ dhd_prot_flow_ring_create(dhd_pub_t *dhd, flow_ring_node_t *flow_ring_node)
 				flow_ring_node->flowid));
 	}
 #endif /* DHD_HP2P */
+
 
 	/* definition for ifrm mask : bit0:d11ac core, bit1:d11ad core
 	 * currently it is not used for priority. so uses solely for ifrm mask
@@ -15000,6 +15040,11 @@ void dhd_prot_print_flow_ring(dhd_pub_t *dhd, void *msgbuf_flow_info, bool h2d,
 
 	if (dhd->bus->is_linkdown) {
 		DHD_ERROR(("%s: Skip dumping flowring due to Link down\n", __FUNCTION__));
+		return;
+	}
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+		DHD_ERROR(("%s : Skip dumping flowring due to wlan backplane down\n",
+			__FUNCTION__));
 		return;
 	}
 
@@ -16097,6 +16142,11 @@ dhd_prot_debug_ring_info(dhd_pub_t *dhd)
 	ulong ring_tcm_rd_addr; /* dongle address */
 	ulong ring_tcm_wr_addr; /* dongle address */
 
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+		DHD_ERROR(("%s : wlan backplane is down. skip\n", __FUNCTION__));
+		return;
+	}
+
 	DHD_PRINT(("\n ------- DUMPING IOCTL RING RD WR Pointers ------- \r\n"));
 
 	dhd_prot_ctrl_info_print(dhd);
@@ -16910,11 +16960,12 @@ int dhd_prot_dump_extended_trap(dhd_pub_t *dhdp, struct bcmstrbuf *b, bool raw)
 	uint32 i;
 	uint32 *ext_data;
 	hnd_ext_trap_hdr_t *hdr;
-	const bcm_tlv_t *tlv;
+	bcm_tlv_t *tlv;
 	const trap_t *tr;
 	const uint32 *stack;
 	const hnd_ext_trap_bp_err_t *bpe;
 	uint32 raw_len;
+	uint8 *data_offset;
 
 	ext_data = dhdp->extended_trap_data;
 
@@ -16985,8 +17036,9 @@ int dhd_prot_dump_extended_trap(dhd_pub_t *dhdp, struct bcmstrbuf *b, bool raw)
 		}
 	}
 
-	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_BACKPLANE);
-	if (tlv) {
+	data_offset = hdr->data;
+	while ((tlv = bcm_parse_tlvs(data_offset,
+		hdr->len - (data_offset - hdr->data), TAG_TRAP_BACKPLANE))) {
 		bcm_bprintf(b, "\n%s len: %d\n", etd_trap_name(TAG_TRAP_BACKPLANE), tlv->len);
 		bpe = (const hnd_ext_trap_bp_err_t *)tlv->data;
 		bcm_bprintf(b, " error: %x\n", bpe->error);
@@ -17004,6 +17056,7 @@ int dhd_prot_dump_extended_trap(dhd_pub_t *dhdp, struct bcmstrbuf *b, bool raw)
 		bcm_bprintf(b, " errlogid: %x\n", bpe->errlogid);
 		bcm_bprintf(b, " errloguser: %x\n", bpe->errloguser);
 		bcm_bprintf(b, " errlogflags: %x\n", bpe->errlogflags);
+		data_offset = (uint8*)(tlv) +  tlv->len + TLV_HDR_LEN;
 	}
 
 	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_MEMORY);

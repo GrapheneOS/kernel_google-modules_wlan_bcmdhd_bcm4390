@@ -1071,6 +1071,8 @@ dhd_txcomplete(dhd_pub_t *dhdp, void *txp, bool success)
 #endif /* PROP_TXSTATUS */
 	if (success) {
 		dhd->pub.tot_txcpl++;
+	} else {
+		dhd->pub.tx_errors++;
 	}
 }
 

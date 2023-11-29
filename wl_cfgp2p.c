@@ -2992,7 +2992,6 @@ wl_cfgp2p_if_add(struct bcm_cfg80211 *cfg, wl_iftype_t wl_iftype,
 	u16 chspec;
 	s16 cfg_type;
 	long timeout;
-	s32 err;
 	u16 p2p_iftype;
 	int dhd_mode;
 	struct net_device *new_ndev = NULL;
@@ -3056,11 +3055,11 @@ wl_cfgp2p_if_add(struct bcm_cfg80211 *cfg, wl_iftype_t wl_iftype,
 	p2p_addr = wl_to_p2p_bss_macaddr(cfg, cfg_type);
 	(void)memcpy_s(p2p_addr->octet, ETH_ALEN, mac_addr, ETH_ALEN);
 
-	err = wl_cfgp2p_ifadd(cfg, p2p_addr,
+	*ret_err = wl_cfgp2p_ifadd(cfg, p2p_addr,
 		htod32(p2p_iftype), chspec);
-	if (unlikely(err)) {
+	if (unlikely(*ret_err)) {
 		wl_clr_p2p_status(cfg, IF_ADDING);
-		WL_ERR((" virtual iface add failed (%d) \n", err));
+		WL_ERR((" virtual iface add failed (%d) \n", *ret_err));
 		return NULL;
 	}
 

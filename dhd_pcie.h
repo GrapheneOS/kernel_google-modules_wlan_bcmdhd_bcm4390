@@ -488,6 +488,7 @@ typedef struct dhd_bus {
 	uint8 force_suspend;
 	uint8 is_linkdown;
 	uint8 no_bus_init;
+	bool enumeration_fail;
 #ifdef IDLE_TX_FLOW_MGMT
 	bool enable_idle_flowring_mgmt;
 #endif /* IDLE_TX_FLOW_MGMT */
@@ -515,6 +516,10 @@ typedef struct dhd_bus {
 #endif /* defined(DHD_MMIO_TRACE) */
 	dhd_ds_trace_t   ds_trace[MAX_DS_TRACE_SIZE];
 	uint32	ds_trace_count;
+
+#ifdef DHD_SSSR_DUMP
+	bool sssr_in_progress;	/* flag to indicate sssr ops in progress */
+#endif /* DHD_SSSR_DUMP */
 
 	uint32  hostready_count; /* Number of hostready issued */
 #if defined(PCIE_OOB) || defined (BCMPCIE_OOB_HOST_WAKE)

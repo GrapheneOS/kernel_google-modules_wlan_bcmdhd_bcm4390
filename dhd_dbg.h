@@ -44,8 +44,8 @@
 #define DHD_LOG_DUMP_FWLOG_TS	DHD_LOG_DUMP_WRITE_TS
 #endif
 
-#ifdef CUSTOM_PREFIX
-#define DBG_PRINT_PREFIX "[%s]"CUSTOM_PREFIX, OSL_GET_RTCTIME()
+#ifdef LOG_CUSTOM_PREFIX_AND_RTC
+#define DBG_PRINT_PREFIX "[%s]"LOG_CUSTOM_PREFIX_AND_RTC, OSL_GET_RTCTIME()
 #define DBG_PRINT_SYSTEM_TIME pr_cont(DBG_PRINT_PREFIX)
 #define DHD_CONS_ONLY(args)	\
 do {	\
@@ -55,7 +55,7 @@ do {	\
 #else
 #define DBG_PRINT_SYSTEM_TIME
 #define DHD_CONS_ONLY(args) do { printf args;} while (0)
-#endif /* CUSTOM_PREFIX */
+#endif /* LOG_CUSTOM_PREFIX_AND_RTC */
 
 #if defined(BCMDBG) || defined(DHD_DEBUG)
 

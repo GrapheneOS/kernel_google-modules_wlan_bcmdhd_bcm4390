@@ -47,19 +47,19 @@ bcm_static_pkt_t *bcm_static_skb = 0;
 void* wifi_platform_prealloc(void *adapter, int section, unsigned long size);
 #endif /* CONFIG_DHD_USE_STATIC_BUF */
 
-#ifndef CUSTOM_PREFIX
+#ifndef LOG_CUSTOM_PREFIX_AND_RTC
 #define BCM_PRINT(args)	\
 	do {			\
 		pr_cont args;	\
 	} while (0)
 #else
-#define BCM_PRINT_PREFIX "[%s]"CUSTOM_PREFIX, OSL_GET_RTCTIME()
+#define BCM_PRINT_PREFIX "[%s]"LOG_CUSTOM_PREFIX_AND_RTC, OSL_GET_RTCTIME()
 #define BCM_PRINT(args)			\
 	do {					\
 		pr_cont(OSL_PRINT_PREFIX);	\
 		pr_cont args;			\
 	} while (0)
-#endif /* CUSTOM_PREFIX */
+#endif /* LOG_CUSTOM_PREFIX_AND_RTC */
 
 #ifdef BCM_OBJECT_TRACE
 /* don't clear the first 4 byte that is the pkt sn */

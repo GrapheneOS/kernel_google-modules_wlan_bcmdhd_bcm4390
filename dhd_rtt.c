@@ -49,8 +49,8 @@
 #include <wl_cfgnan.h>
 #endif /* WL_NAN */
 
-#ifdef CUSTOM_PREFIX
-#define RTT_PRINT_PREFIX "[%s]"CUSTOM_PREFIX, OSL_GET_RTCTIME()
+#ifdef LOG_CUSTOM_PREFIX_AND_RTC
+#define RTT_PRINT_PREFIX "[%s]"LOG_CUSTOM_PREFIX_AND_RTC, OSL_GET_RTCTIME()
 #define RTT_PRINT_SYSTEM_TIME pr_cont(RTT_PRINT_PREFIX)
 #define RTT_CONS_ONLY(args)     \
 do {    \
@@ -60,7 +60,7 @@ do {    \
 #else
 #define RTT_PRINT_SYSTEM_TIME
 #define RTT_CONS_ONLY(args) do { printf args;} while (0)
-#endif /* CUSTOM_PREFIX */
+#endif /* LOG_CUSTOM_PREFIX_AND_RTC */
 
 static DEFINE_SPINLOCK(noti_list_lock);
 #define NULL_CHECK(p, s, err)  \

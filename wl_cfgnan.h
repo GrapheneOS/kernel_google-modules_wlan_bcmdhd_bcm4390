@@ -53,6 +53,9 @@
 #define NAN_DEF_SOCIAL_CHAN_5G	149
 #define NAN_DEF_SEC_SOCIAL_CHAN_5G	44
 #define NAN_MAX_SOCIAL_CHANNELS	3
+#define NAN_MAX_COOKIE_LEN		255u
+#define NAN_IDENTITY_KEY_LEN            16u
+
 /* Keeping RSSI threshold value to be -70dBm */
 #define NAN_DEF_RSSI_NOTIF_THRESH -70
 /* Keeping default RSSI mid value to be -70dBm */
@@ -133,6 +136,7 @@
 #define NAN_MAX_PMK_LEN			32u
 #define NAN_ERROR_STR_LEN		255u
 #define NAN_MAX_SCID_BUF_LEN		1024u
+#define NAN_MAX_PASSPHRASE_LEN		64u
 
 /* NAN related Capabilities */
 #define MAX_CONCURRENT_NAN_CLUSTERS		1u
@@ -167,6 +171,16 @@
 #define NAN_NMI_RAND_INTVL_MASK			~(NAN_NMI_RAND_PVT_CMD_VENDOR | \
 						NAN_NMI_RAND_CLUSTER_MERGE_ENAB | \
 						NAN_NMI_RAND_AUTODAM_LWT_MODE_ENAB)
+
+/* Android nan cipher suite support mask bits */
+#define NAN_CIPHER_SUITE_SHARED_KEY_128_MASK		0x01u
+#define NAN_CIPHER_SUITE_SHARED_KEY_256_MASK		0x02u
+#define NAN_CIPHER_SUITE_PUBLIC_KEY_128_MASK		0x04u
+#define NAN_CIPHER_SUITE_PUBLIC_KEY_256_MASK		0x08u
+#define NAN_CIPHER_SUITE_GROUP_KEY_128_MASK		0x10u
+#define NAN_CIPHER_SUITE_GROUP_KEY_256_MASK		0x20u
+#define NAN_CIPHER_SUITE_PK_PASN_128_MASK		0x40u
+#define NAN_CIPHER_SUITE_PK_PASN_256_MASK		0x80u
 
 #ifdef WL_NAN_DEBUG
 #define NAN_MUTEX_LOCK() {WL_DBG(("Mutex Lock: Enter: %s\n", __FUNCTION__)); \
@@ -370,6 +384,35 @@ enum nan_dp_states {
 	NAN_DP_STATE_ENABLED = 1
 };
 
+enum nan_akm {
+	NAN_AKM_SAE = 0,
+	NAN_AKM_PASN = 1
+};
+
+enum nan_pairing_bs_role {
+	NAN_PAIRING_BS_ROLE_REQUESTOR = 0,
+	NAN_PAIRING_BS_ROLE_RESPONDER = 1
+};
+
+#define NAN_MAX_BOOTSTRAPPING_ENTRIES	40u
+
+#define NAN_NIRA_NONCE_LEN		8u
+#define NAN_NIRA_TAG_LEN		8u
+
+#define NAN_NIRA_NONCE_HDR_LEN		1u
+#define NAN_NIRA_TAG_HDR_LEN		1u
+
+/* attr_hdr(3)+dialog_token(1)+type_status(1)+ reason_code(1)+method(2) */
+#define NAN_NPBA_ATTR_MIN_LEN           8u
+
+#define NAN_PAIRING_FUP_TOKEN		190u
+
+enum nan_pairing_states {
+	NAN_STATE_BOOTSTRAPPING_REQ_SENT    = 1,
+	NAN_STATE_BOOTSTRAPPING_RESP_SENT   = 2,
+	NAN_STATE_PAIRING_CONFIRM_FUP_SENT  = 3
+};
+
 enum {
 	SRF_TYPE_BLOOM_FILTER = 0,
 	SRF_TYPE_SEQ_MAC_ADDR = 1
@@ -455,10 +498,17 @@ typedef struct nan_discover_cmd_data {
 	uint32 ranging_intvl_msec; /* ranging interval in msec */
 	uint32 ingress_limit;
 	uint32 egress_limit;
-	bool response;
+	uint8 response;
 	uint8 service_responder_policy;
 	bool svc_update;
 	uint8	svc_suspendable;
+	uint16	  bs_methods_proposed;	/* Bootstrapping method proposed for Bootstrapping */
+	wl_nan_pairing_config_t  pairing_config;
+	nan_str_data_t cookie;		/* Bootstrapping cookie info */
+	nan_str_data_t npba_info;	/* Bootstrapping npba info */
+	nan_str_data_t local_nik;	/* Local NIK of device */
+	uint32	  comeback_delay;	/* Bootstrapping comaback delay */
+	uint32	  bootstrapping_id;
 } nan_discover_cmd_data_t;
 
 typedef struct nan_datapath_cmd_data {
@@ -486,6 +536,22 @@ typedef struct nan_datapath_cmd_data {
 	char ndp_iface[IFNAMSIZ+1];
 	nan_str_data_t scid;        /* security context information */
 } nan_datapath_cmd_data_t;
+
+typedef struct nan_pairing_bs_cmd_data {
+	struct ether_addr mac_addr;     /* mac address */
+	nan_str_data_t key;		/* Security key information */
+	nan_security_key_input_type key_type; /* cipher suite type */
+	wl_nan_instance_id_t req_inst_id;     /* Requestor instance id */
+	wl_nan_instance_id_t inst_id;   /* Pairing instance id */
+	uint16	  is_opportunistic;	/* pairing is opportunistic/password based */
+	uint32	  status;
+	uint16	  request_type;		/* Pairing request type */
+	uint8	  rsp_code;		/* Nan pairing response code ACCEPT/REJECT */
+	uint8	  nan_akm;		/* AKM used for pairing verification */
+	uint8	  enab_pairing_cache;	/* NIK/NPK pairing cache capability */
+	uint8	  nan_identity_key[NAN_IDENTITY_KEY_LEN];	/* NIK */
+	uint8	  csid;			/* cipher suite type */
+} nan_pairing_bs_cmd_data_t;
 
 typedef struct nan_rssi_cmd_data {
 	int8 rssi_middle_2dot4g_val;
@@ -585,12 +651,26 @@ typedef struct nan_event_data {
 	uint8 peer_cipher_suite; /* peer cipher suite type */
 	nan_str_data_t scid;        /* security context information */
 	char nan_reason[NAN_ERROR_STR_LEN]; /* Describe the NAN reason type */
-	uint16 sde_control_flag;
-	uint8 ranging_result_present;
-	uint32 range_measurement_cm;
-	uint32 ranging_ind;
-	uint8 rng_id;
+	uint16	sde_control_flag;
+	uint8	ranging_result_present;
+	uint32	range_measurement_cm;
+	uint32	ranging_ind;
+	uint8	rng_id;
 	nan_ndl_sched_info_t ndl_sched_info;
+	uint8	enable_pairing_cache;
+	uint8	pairing_setup_supported;
+	uint8	nan_akm;		/* Pairing AKM - SAE/PASN */
+	uint16  pairing_id;
+	uint32  bootstrapping_id;
+	uint32  peer_bs_methods;
+	uint32  bs_comeback_delay;
+	nan_str_data_t nira_tag;	/* Tag info of NIRA */
+	nan_str_data_t nira_nonce;	/* Nonce info of NIRA */
+	nan_str_data_t local_nik;
+	nan_str_data_t peer_nik;
+	nan_str_data_t npk;		/* NPK/PMK of the PAIRING SA */
+	nan_str_data_t cookie;		/* Boostrapping cookie info */
+	nan_str_data_t npba_info;	/* NPBA attr information */
 } nan_event_data_t;
 
 /*
@@ -742,6 +822,34 @@ typedef struct wl_ndi_data
 	struct net_device *nan_ndev;
 } wl_ndi_data_t;
 
+typedef struct nan_pairing_event_data
+{
+	uint32		csid;
+	uint16		pairing_id;
+	uint8		type;
+	uint8		status;
+	uint8		pairing_cache;
+	uint8		akm;
+	nan_str_data_t	local_nik;
+	nan_str_data_t	npk;
+	nan_discover_cmd_data_t *cmd_data; /* For preparing FUP and sending NIK in it */
+} nan_pairing_event_data_t;
+
+typedef struct nan_bootstrapping_entry
+{
+	struct ether_addr lcl_nmi;  /* Local NMI */
+	struct ether_addr peer_nmi; /* Peer NMI */
+	uint8	bs_inst_id;	    /* Bootstrapping ID */
+	uint8	role;		    /* Initiator or responder */
+	uint8	peer_inst_id;	    /* Requestor instance ID recvd in matchInd event */
+	uint8	local_inst_id;	    /* Local subscribe/publish instance ID */
+	nan_str_data_t npba_info;   /* NPBA attr information */
+	nan_pairing_event_data_t *pairing; /* Nan pairing event data cached */
+	uint16	txs_token;	    /* Waiting for TXS of Tx-fup sent */
+	uint8	state;		    /* State of Bootstrapping exchange */
+	uint8	status;		    /* Status of Bootstrapping exchange */
+} nan_bootstrapping_entry_t;
+
 /* Google mobile platforms have 2 processors which can request NAN
  * APP - main application processor
  * CHRE - Low power processor
@@ -794,6 +902,10 @@ typedef struct wl_nancfg
 	nan_hal_capabilities_t capabilities;
 	uint8 is_suspension_supported;
 	uint8 is_6g_nan_supported;
+	uint8 cur_bs_instance_id;	  /* Current Bootstrapping entry ID available */
+	nan_bootstrapping_entry_t *nan_bs_entries;
+	uint16 bs_txs_pend_token;	  /* Bootstrapping Tx-fup is waiting for TXS with token */
+	nan_bootstrapping_entry_t *pairing_cfm_pend_bs_entry;
 } wl_nancfg_t;
 
 #define NAN_RTT_ENABLED(cfg) (wl_cfgnan_is_enabled(cfg) && \
@@ -900,6 +1012,13 @@ extern s32 wl_cfgnan_get_ndi_idx(struct bcm_cfg80211 *cfg);
 extern void wl_cfgnan_add_ndi_data(struct bcm_cfg80211 *cfg, s32 idx,
 	char const *name, struct wireless_dev *wdev);
 extern s32 wl_cfgnan_del_ndi_data(struct bcm_cfg80211 *cfg, char *name);
+int wl_cfgnan_bootstrapping_request_n_response(struct bcm_cfg80211 *cfg,
+	nan_discover_cmd_data_t *cmd_data, uint32 cmd);
+int wl_cfgnan_pairing_request_n_response(struct net_device *ndev, struct bcm_cfg80211 *cfg,
+	nan_pairing_bs_cmd_data_t *cmd_data, uint32 cmd);
+int wl_cfgnan_pairing_end_handler(struct net_device *ndev,
+	struct bcm_cfg80211 *cfg, wl_nan_instance_id_t pairing_id, int *status);
+int wl_cfgnan_process_resp_buf(void *iov_resp, uint8 *instance_id, uint16 sub_cmd_id);
 
 typedef enum {
 	NAN_ATTRIBUTE_INVALID				= 0,
@@ -1040,7 +1159,22 @@ typedef enum {
 	NAN_ATTRIBUTE_INSTANT_COMM_CHAN			= 231,
 	NAN_ATTRIBUTE_CHRE_REQUEST			= 232,
 	NAN_ATTRIBUTE_SVC_CFG_SUSPENDABLE		= 233,
-	NAN_ATTRIBUTE_MAX				= 234
+	NAN_ATTRIBUTE_REQUEST_TYPE                      = 234,
+	NAN_ATTRIBUTE_AKM                               = 235,
+	NAN_ATTRIBUTE_PAIRING_CACHE                     = 236,
+	NAN_ATTRIBUTE_OPPURTUNISTIC                     = 237,
+	NAN_ATTRIBUTE_BS_METHODS                        = 238,
+	NAN_ATTRIBUTE_COOKIE_LEN                        = 239,
+	NAN_ATTRIBUTE_COOKIE                            = 240,
+	NAN_ATTRIBUTE_COME_BACK_DELAY                   = 241,
+	NAN_ATTRIBUTE_NIRA_NONCE                        = 242,
+	NAN_ATTRIBUTE_NIRA_TAG                          = 243,
+	NAN_ATTRIBUTE_PEER_NIK                          = 244,
+	NAN_ATTRIBUTE_LOCAL_NIK                         = 245,
+	NAN_ATTRIBUTE_ENAB_PAIRING_SETUP                = 246,
+	NAN_ATTRIBUTE_ENAB_PAIRING_VERIFICATION         = 247,
+	NAN_ATTRIBUTE_KEY_DATA_PASSPHRASE		= 248,
+	NAN_ATTRIBUTE_MAX				= 249
 } NAN_ATTRIBUTE;
 
 enum geofence_suspend_reason {

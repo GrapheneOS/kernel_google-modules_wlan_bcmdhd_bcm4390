@@ -50,11 +50,13 @@ extern size_t strlcat_s(char *dest, const char *src, size_t size);
  * This is only intended as a compile-time test, and should be used by compile-only targets.
  */
 #if defined(BCM_STDLIB_S_BUILTINS_TEST)
-#define memmove_s(dest, destsz, src, n) ((void)(destsz), (int)__builtin_memmove((dest), (src), (n)))
-#define memcpy_s(dest, destsz, src, n)  ((void)(destsz), (int)__builtin_memcpy((dest), (src), (n)))
-#define memset_s(dest, destsz, c, n)    ((void)(destsz), (int)__builtin_memset((dest), (c), (n)))
-#define strlcpy(dest, src, size)        ((void)(size), (size_t)__builtin_strcpy((dest), (src)))
-#define strlcat_s(dest, src, size)      ((void)(size), (size_t)__builtin_strcat((dest), (src)))
+#define memmove_s(dest, destsz, src, n) ((void)(destsz), \
+	(__builtin_memmove((dest), (src), (n)) ? BCME_OK : BCME_BADARG))
+#define memcpy_s(dest, destsz, src, n)  ((void)(destsz), \
+	(__builtin_memcpy((dest), (src), (n)) ? BCME_OK : BCME_BADARG))
+#define memset_s(dest, destsz, c, n)    ((void)(destsz), \
+	(__builtin_memset((dest), (c), (n)) ? BCME_OK : BCME_BADARG))
+#define strlcat_s(dest, src, size)      (__builtin_strcat((dest), (src)) ? size : 0)
 #endif /* BCM_STDLIB_S_BUILTINS_TEST */
 
 #endif /* !BWL_NO_INTERNAL_STDLIB_S_SUPPORT */

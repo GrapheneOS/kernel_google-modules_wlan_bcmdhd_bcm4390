@@ -258,6 +258,7 @@ dhd_log_dump(void *handle, void *event_info, u8 event)
 {
 	dhd_info_t *dhd = handle;
 	log_dump_type_t *type = (log_dump_type_t *)event_info;
+	dhd_pub_t *dhdp = NULL;
 
 	if (!dhd || !type) {
 		DHD_ERROR(("%s: dhd/type is NULL\n", __FUNCTION__));
@@ -269,11 +270,17 @@ dhd_log_dump(void *handle, void *event_info, u8 event)
 		return;
 	}
 
+	dhdp = &dhd->pub;
+
 #ifdef WL_CFG80211
-	/* flush the fw preserve logs */
-	wl_flush_fw_log_buffer(dhd_linux_get_primary_netdev(&dhd->pub),
-		FW_LOGSET_MASK_ALL);
-#endif
+	if (dhdp->memdump_type != DUMP_TYPE_WL_BP_DOWN) {
+		/* flush the fw preserve logs */
+		wl_flush_fw_log_buffer(dhd_linux_get_primary_netdev(dhdp),
+			FW_LOGSET_MASK_ALL);
+	} else {
+		DHD_PRINT(("%s: skip flush fw log buffer due to wl bp down\n", __FUNCTION__));
+	}
+#endif /* WL_CFG80211 */
 
 	/* there are currently 3 possible contexts from which
 	 * log dump can be scheduled -
@@ -286,13 +293,13 @@ dhd_log_dump(void *handle, void *event_info, u8 event)
 	 * before calling do_dhd_log_dump().
 	 */
 	DHD_PRINT(("%s: calling log dump.. \n", __FUNCTION__));
-	dhd_os_logdump_lock(&dhd->pub);
-	DHD_OS_WAKE_LOCK(&dhd->pub);
-	if (do_dhd_log_dump(&dhd->pub, type) != BCME_OK) {
+	dhd_os_logdump_lock(dhdp);
+	DHD_OS_WAKE_LOCK(dhdp);
+	if (do_dhd_log_dump(dhdp, type) != BCME_OK) {
 		DHD_ERROR(("%s: writing debug dump to the file failed\n", __FUNCTION__));
 	}
-	DHD_OS_WAKE_UNLOCK(&dhd->pub);
-	dhd_os_logdump_unlock(&dhd->pub);
+	DHD_OS_WAKE_UNLOCK(dhdp);
+	dhd_os_logdump_unlock(dhdp);
 }
 
 void dhd_schedule_log_dump(dhd_pub_t *dhdp, void *type)
