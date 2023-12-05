@@ -1028,7 +1028,7 @@ int dhd_coredump_fill_section(uint8 **dst_buf, int dst_rlen, char *src_buf, int 
 
 
 /* reconstruct dump memory with socram and sssr dump as TLV format */
-int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
+int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump, bool collect_sssr)
 {
 	uint8 *buf_ptr = dhdp->coredump_mem;
 	int buf_len = dhdp->coredump_len;
@@ -1047,6 +1047,12 @@ int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump)
 	if (!buf_ptr) {
 		DHD_ERROR(("coredump mem is not allocated\n"));
 		return BCME_ERROR;
+	}
+
+	/* check for SSSR dump support */
+	if (!sssr_enab || !collect_sssr) {
+		DHD_ERROR(("SSSR is not enabled or not collected yet.\n"));
+		return BCME_UNSUPPORTED;
 	}
 
 	/* SOCRAM dump start with magic code */
@@ -1422,7 +1428,14 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 	            dhdp->iswl, dhdp->drv_version, MAC2STRDBG(&dhdp->mac));
 	bcm_bprintf(strbuf, "pub.bcmerror %d tickcnt %u\n", dhdp->bcmerror, dhdp->tickcnt);
 
-	dhd_dump_txrx_stats(dhdp, strbuf);
+	/* if init failure, no need to collect interface stats since
+	 * interface would not be available for tx/rx data traffic
+	 */
+	if (dhdp->up && dhdp->memdump_type != DUMP_TYPE_DONGLE_INIT_FAILURE) {
+		dhd_dump_txrx_stats(dhdp, strbuf);
+	} else {
+		DHD_PRINT(("%s: skip tx rx stats\n", __func__));
+	}
 
 #ifdef DMAMAP_STATS
 	/* Add DMA MAP info */

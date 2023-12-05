@@ -20093,7 +20093,7 @@ char map_path[PATH_MAX] = DHD_MAP_NAME;
 #else
 char map_path[PATH_MAX] = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
 #endif /* DHD_LINUX_STD_FW_API */
-extern int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump);
+extern int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump, bool collect_sssr);
 #endif /* DHD_COREDUMP */
 
 #ifdef DHD_SSSR_COREDUMP
@@ -20339,10 +20339,8 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 #ifdef DHD_SSSR_COREDUMP
 	/* Only for dongle trap case, generate coredump header and TLVs */
 	if (dhd_is_coredump_reqd(dhdp->memdump_str,
-		strnlen(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN), dhdp) &&
-		sssr_enab && collect_sssr) {
-
-		ret = dhd_collect_coredump(dhdp, dump);
+		strnlen(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN), dhdp)) {
+		ret = dhd_collect_coredump(dhdp, dump, collect_sssr);
 		if (ret == BCME_ERROR) {
 			DHD_ERROR(("%s: dhd_collect_coredump() failed.\n",
 				__FUNCTION__));
@@ -20350,9 +20348,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		}
 		collect_coredump = TRUE;
 	} else {
-		DHD_PRINT(("%s: coredump header not filled, dhd_is_coredump_reqd returns false "
-			"or sssr is not enabled sssr_enab:%d collect_sssr:%d\n",
-			__FUNCTION__, sssr_enab, collect_sssr));
+		DHD_PRINT(("%s: dhd_is_coredump_reqd returns false\n", __FUNCTION__));
 	}
 #endif /* DHD_SSSR_COREDUMP */
 	if (memdump_type == DUMP_TYPE_BY_SYSDUMP) {
