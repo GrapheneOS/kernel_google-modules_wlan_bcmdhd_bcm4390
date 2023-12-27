@@ -73,6 +73,7 @@
 #define ALL_ADDR_VAL (PC_FOUND_BIT | LR_FOUND_BIT)
 #define READ_NUM_BYTES 1000
 #define DHD_FUNC_STR_LEN 80
+#define DHD_TRAP_CODE_LEN 12u
 
 #define DHD_COREDUMP_MAGIC 0xDDCEDACF
 #define DHD_COREDUMP_MAGIC_LEN	(4u)
@@ -372,6 +373,10 @@ typedef struct dhd_if {
 #endif /* DHD_POST_EAPOL_M1_AFTER_ROAM_EVT */
 	uint64 rx_pkts;		/* per interface total rx pkts, can be cleared with iovar */
 	uint64 tx_pkts;		/* per interface total tx pkts, can be cleared with iovar */
+	bool	llc_enabled;	/* Indicate/configure  Additional llc header enabled */
+	uint8	*llc_hdr;	/* Additional llc header data */
+	uint8	llc_hdr_len;	/* Additional llc header data length */
+	uint8	llc_headroom_added_len;	/* Headroom length added to this net dev for LLC */
 } dhd_if_t;
 
 struct ipv6_work_info_t {

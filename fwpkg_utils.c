@@ -48,6 +48,7 @@ const uint32 FWPKG_HDR_MGCW1 = 0xFEE1DEAD;
 const uint32 FWPKG_MAX_SUPPORTED_VER = 1;
 
 #ifdef BCMDRIVER
+#define FWPKG_PRINT(msg) DHD_PRINT(msg)
 #define FWPKG_ERR(msg)	DHD_ERROR(msg)
 #define fwpkg_open(filename)	\
 	dhd_os_open_image1(NULL, filename)
@@ -62,8 +63,10 @@ const uint32 FWPKG_MAX_SUPPORTED_VER = 1;
 
 #else
 #if defined(_WIN32)
+#define FWPKG_PRINT(fmt, ...)
 #define FWPKG_ERR(fmt, ...)
 #else
+#define FWPKG_PRINT(fmt, args...)
 #define FWPKG_ERR(fmt, args...)
 #endif /* defined _WIN32 */
 #define fwpkg_open(filename)	\
@@ -344,10 +347,12 @@ fwpkg_init(fwpkg_info_t *fwpkg, uint32 fwsize, const uint8 *fwdata)
 	}
 	/* if status already set, no need to initialize */
 	if (fwpkg->status) {
+		FWPKG_PRINT(("fwpkg_init: status set, return\n"));
 		return BCME_OK;
 	}
-	bzero(fwpkg, sizeof(*fwpkg));
+	FWPKG_PRINT(("fwpkg_init: parse the pkg\n"));
 
+	bzero(fwpkg, sizeof(*fwpkg));
 	return fwpkg_parse(fwpkg, fwsize, fwdata);
 }
 
@@ -515,6 +520,13 @@ fwpkg_open_signature_img(fwpkg_info_t *fwpkg, uint32* data_offset)
 	return fwpkg_open_unit(fwpkg, FWPKG_TAG_SIG, data_offset);
 }
 #endif /* DHD_LINUX_STD_FW_API */
+
+void
+fwpkg_deinit(fwpkg_info_t *fwpkg)
+{
+	FWPKG_PRINT(("fwpkg_deinit: clear fwpkg\n"));
+	bzero(fwpkg, sizeof(*fwpkg));
+}
 
 static uint32
 fwpkg_get_unit_size(fwpkg_info_t *fwpkg, uint32 unit_type)

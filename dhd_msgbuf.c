@@ -1423,10 +1423,21 @@ dhd_prot_get_rxbufpost_alloc_sz(dhd_pub_t *dhd)
 uint16
 dhd_prot_get_h2d_rx_post_active(dhd_pub_t *dhd)
 {
-	dhd_prot_t *prot = dhd->prot;
-	msgbuf_ring_t *flow_ring = &prot->h2dring_rxp_subn;
+	dhd_prot_t *prot;
+	msgbuf_ring_t *flow_ring;
 	uint16 rd, wr;
 
+	if (dhd->bus->init_done == FALSE) {
+		return 0;
+	}
+	prot = dhd->prot;
+	if (prot == NULL) {
+		return 0;
+	}
+	flow_ring = &prot->h2dring_rxp_subn;
+	if (flow_ring == NULL) {
+		return 0;
+	}
 	/* Since wr is owned by host in h2d direction, directly read wr */
 	wr = flow_ring->wr;
 
@@ -1441,10 +1452,21 @@ dhd_prot_get_h2d_rx_post_active(dhd_pub_t *dhd)
 uint16
 dhd_prot_get_d2h_rx_cpln_active(dhd_pub_t *dhd)
 {
-	dhd_prot_t *prot = dhd->prot;
-	msgbuf_ring_t *flow_ring = &prot->d2hring_rx_cpln;
+	dhd_prot_t *prot;
+	msgbuf_ring_t *flow_ring;
 	uint16 rd, wr;
 
+	if (dhd->bus->init_done == FALSE) {
+		return 0;
+	}
+	prot = dhd->prot;
+	if (prot == NULL) {
+		return 0;
+	}
+	flow_ring = &prot->d2hring_rx_cpln;
+	if (flow_ring == NULL) {
+		return 0;
+	}
 	if (dhd->dma_d2h_ring_upd_support) {
 		wr = dhd_prot_dma_indx_get(dhd, D2H_DMA_INDX_WR_UPD, flow_ring->idx);
 	} else {
@@ -10353,6 +10375,20 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 #endif /* defined(DHD_MESH) */
 	}
 
+		if (dhd_llc_hdr_insert_enabled(dhd, ifidx)) {
+			if (dhd_ether_to_generic_llc_hdr(dhd, ifidx, (struct ether_header *)pktdata,
+				PKTBUF) == BCME_OK) {
+				llc_inserted = TRUE;
+				/* in work item change ether type to len by
+				 * re-copying the ether header
+				 */
+				(void)memcpy_s(txdesc->txhdr, ETHER_HDR_LEN,
+					PKTDATA(dhd->osh, PKTBUF),
+					ETHER_HDR_LEN);
+			} else {
+				goto err_rollback_idx;
+			}
+		}
 
 #ifdef HOST_SFH_LLC
 	if (host_sfh_llc_reqd) {
@@ -11261,12 +11297,6 @@ int dhd_prot_ioctl(dhd_pub_t *dhd, int ifidx, wl_ioctl_t * ioc, void * buf, int 
 		goto done;
 	}
 
-	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR_RLMT(("%s : wlan backplane is down. we have nothing to do\n",
-			__FUNCTION__));
-		goto done;
-	}
-
 	if (dhd_query_bus_erros(dhd)) {
 		DHD_ERROR_RLMT(("%s : some BUS error. we have nothing to do\n", __FUNCTION__));
 		goto done;
@@ -11811,8 +11841,10 @@ dhd_msgbuf_query_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len,
 		return -EIO;
 	}
 
-	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s : wlan backplane is down. return\n", __FUNCTION__));
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u). return\n",
+			__FUNCTION__, dhd->bus->link_state));
 		return -EIO;
 	}
 
@@ -11927,7 +11959,6 @@ dhd_msgbuf_dump_iovar_name(dhd_pub_t *dhd)
 void
 dhd_msgbuf_iovar_timeout_dump(dhd_pub_t *dhd)
 {
-	uint32 intstatus;
 
 	if (dhd->is_sched_error) {
 		DHD_ERROR(("%s: ROT due to scheduling problem\n", __FUNCTION__));
@@ -11950,16 +11981,18 @@ dhd_msgbuf_iovar_timeout_dump(dhd_pub_t *dhd)
 		}
 #endif /* DHD_KERNEL_SCHED_DEBUG && DHD_FW_COREDUMP */
 
-	/* Check the PCIe link status by reading intstatus register */
-	intstatus = si_corereg(dhd->bus->sih,
-		dhd->bus->sih->buscoreidx, dhd->bus->pcie_mailbox_int, 0, 0);
-	if (intstatus == (uint32)-1) {
-		DHD_ERROR(("%s : PCIe link might be down\n", __FUNCTION__));
-		dhd->bus->is_linkdown = TRUE;
-	}
+	dhd_validate_pcie_link_cbp_wlbp(dhd->bus);
 
-	dhd_bus_dump_console_buffer(dhd->bus);
-	dhd_prot_debug_info_print(dhd);
+	if (dhd->bus->link_state != DHD_PCIE_WLAN_BP_DOWN) {
+		dhd_bus_dump_console_buffer(dhd->bus);
+		dhd_prot_debug_info_print(dhd);
+	}
+#ifdef REPORT_FATAL_TIMEOUTS
+	if (dhd->bus->link_state == DHD_PCIE_ALL_GOOD) {
+		dhd_pcie_nci_wrapper_dump(dhd, TRUE);
+	}
+#endif /* REPORT_FATAL_TIMEOUTS */
+
 }
 
 /**
@@ -12002,7 +12035,7 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 	if ((prot->ioctl_received == 0) && (timeleft == 0)) {
 		DHD_ERROR(("%s: Treating IOVAR timeout as PCIe linkdown !\n", __FUNCTION__));
 		dhd_plat_pcie_skip_config_set(TRUE);
-		dhd->bus->is_linkdown = 1;
+		dhd_bus_set_linkdown(dhd, TRUE);
 		dhd->bus->iovarto_as_linkdwn_cnt++;
 		dhd->hang_reason = HANG_REASON_PCIE_LINK_DOWN_RC_DETECT;
 		dhd_os_send_hang_message(dhd);
@@ -12125,8 +12158,10 @@ dhd_msgbuf_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, u
 		return -EIO;
 	}
 
-	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s : wlan backplane is down. return\n", __FUNCTION__));
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u). return\n",
+			__FUNCTION__, dhd->bus->link_state));
 		return -EIO;
 	}
 
@@ -15042,9 +15077,10 @@ void dhd_prot_print_flow_ring(dhd_pub_t *dhd, void *msgbuf_flow_info, bool h2d,
 		DHD_ERROR(("%s: Skip dumping flowring due to Link down\n", __FUNCTION__));
 		return;
 	}
-	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s : Skip dumping flowring due to wlan backplane down\n",
-			__FUNCTION__));
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u), skip.\n",
+			__FUNCTION__, dhd->bus->link_state));
 		return;
 	}
 
@@ -16142,8 +16178,10 @@ dhd_prot_debug_ring_info(dhd_pub_t *dhd)
 	ulong ring_tcm_rd_addr; /* dongle address */
 	ulong ring_tcm_wr_addr; /* dongle address */
 
-	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s : wlan backplane is down. skip\n", __FUNCTION__));
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u), skip.\n",
+			__FUNCTION__, dhd->bus->link_state));
 		return;
 	}
 
@@ -16369,10 +16407,17 @@ dhd_prot_debug_info_print(dhd_pub_t *dhd)
 		GET_SEC_USEC(prot->ioctl_ack_time),
 		GET_SEC_USEC(prot->ioctl_cmplt_time)));
 
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u), "
+			"skip rest of the dump.\n", __FUNCTION__, dhd->bus->link_state));
+		return BCME_ERROR;
+	}
+
 	/* Check PCIe INT registers */
 	if (!dhd_pcie_dump_int_regs(dhd)) {
 		DHD_PRINT(("%s : PCIe link might be down\n", __FUNCTION__));
-		dhd->bus->is_linkdown = TRUE;
+		dhd_bus_set_linkdown(dhd, TRUE);
 	}
 
 	dhd_prot_debug_ring_info(dhd);

@@ -2103,11 +2103,13 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 	struct sk_buff *skb = NULL;
 	uint32 evt_complete = 0;
 	gfp_t kflags;
-	rtt_result_t *rtt_result;
+	rtt_mc_az_result_t *rtt_result;
 	rtt_results_header_t *rtt_header;
 	struct list_head *rtt_cache_list;
 	struct nlattr *rtt_nl_hdr;
 	int ret = BCME_OK;
+	int32 report_len;
+
 	wiphy = wdev->wiphy;
 
 	WL_DBG(("In\n"));
@@ -2193,73 +2195,103 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 			goto free_mem;
 		}
 		list_for_each_entry(rtt_result, &rtt_header->result_list, list) {
-#ifdef WL_RTT_LCI
-			WL_DBG(("rtt_result report len=%d(%lu)\n",
-				rtt_result->report_len, RTT_REPORT_SIZE));
-			if (rtt_result->report_len > RTT_REPORT_SIZE) {
-				struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
-				int msize = rtt_result->report_len;
-				char *mbuf;
-				int plen;
-				char *pdata;
 
-				mbuf = (char *)MALLOCZ(cfg->osh, msize);
-				if (!mbuf) {
-					WL_ERR(("Failed to malloc buf for LCI/LCR, len(%d)\n",
-						msize));
+			if ((rtt_result->type == RTT_TWO_WAY_MC) ||
+					(rtt_result->type == RTT_ONE_WAY)) {
+				report_len = rtt_result->u.mc_result.report_len;
+				WL_DBG(("rtt_result report len=%d(%lu)\n", report_len,
+					RTT_MC_REPORT_SIZE));
+#ifdef WL_RTT_LCI
+				if ((report_len > RTT_MC_REPORT_SIZE)) {
+					struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+					struct rtt_report *mc_report;
+					int msize = report_len;
+					char *mbuf;
+					int plen;
+					char *pdata;
+
+					mbuf = (char *)MALLOCZ(cfg->osh, msize);
+					if (!mbuf) {
+						WL_ERR(("Failed to malloc buf for LCI/LCR, "
+							"len(%d)\n", msize));
+						goto free_mem;
+					}
+					pdata = mbuf;
+					plen = msize;
+					mc_report = &rtt_result->u.mc_result.report;
+					(void) memcpy_s(pdata, plen, mc_report, RTT_MC_REPORT_SIZE);
+					pdata += RTT_MC_REPORT_SIZE;
+					plen -= RTT_MC_REPORT_SIZE;
+					if (mc_report->LCI) {
+						bcm_tlv_t *tlv = mc_report->LCI;
+						int tlv_size = BCM_TLV_SIZE(tlv);
+						if (tlv_size > plen) {
+							WL_ERR(("LCI IE size error, len %d(%d)\n",
+								tlv_size, plen));
+						} else {
+							(void) memcpy_s(pdata, plen, (char*)tlv,
+								tlv_size);
+							pdata += tlv_size;
+							plen -= tlv_size;
+							WL_INFORM_MEM(("copy LCI, len=%d\n",
+								tlv_size));
+						}
+					}
+					if (mc_report->LCR) {
+						bcm_tlv_t *tlv = mc_report->LCR;
+						int tlv_size = BCM_TLV_SIZE(tlv);
+						if (tlv_size > plen) {
+							WL_ERR(("LCR IE size error, len %d(%d)\n",
+								tlv_size, plen));
+						} else {
+							(void) memcpy_s(pdata, plen, (char*)tlv,
+								tlv_size);
+							pdata += tlv_size;
+							plen -= tlv_size;
+							WL_INFORM_MEM(("copy LCR, len=%d\n",
+								tlv_size));
+						}
+					}
+					ret = nla_put(skb, RTT_ATTRIBUTE_RESULT,
+						msize - plen, mbuf);
+					MFREE(cfg->osh, mbuf, msize);
+				} else
+#endif /* WL_RTT_LCI */
+				{
+					ret = nla_put(skb, RTT_ATTRIBUTE_RESULT,
+						rtt_result->u.mc_result.report_len,
+						&rtt_result->u.mc_result.report);
+				}
+
+				if (ret < 0) {
+					WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT, ret:%d\n",
+						ret));
 					goto free_mem;
 				}
-				pdata = mbuf;
-				plen = msize;
-				(void) memcpy_s(pdata, plen, &rtt_result->report, RTT_REPORT_SIZE);
-				pdata += RTT_REPORT_SIZE;
-				plen -= RTT_REPORT_SIZE;
-				if (rtt_result->report.LCI) {
-					bcm_tlv_t *tlv = rtt_result->report.LCI;
-					int tlv_size = BCM_TLV_SIZE(tlv);
-					if (tlv_size > plen) {
-						WL_ERR(("LCI IE size error, len %d(%d)\n",
-							tlv_size, plen));
-					} else {
-						(void) memcpy_s(pdata, plen, (char*)tlv, tlv_size);
-						pdata += tlv_size;
-						plen -= tlv_size;
-						WL_INFORM_MEM(("copy LCI, len=%d\n", tlv_size));
-					}
+
+				ret = nla_put(skb, RTT_ATTRIBUTE_RESULT_DETAIL,
+					rtt_result->u.mc_result.detail_len,
+					&rtt_result->u.mc_result.rtt_detail);
+				if (ret < 0) {
+					WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT_DETAIL, "
+						"ret:%d\n", ret));
+					goto free_mem;
 				}
-				if (rtt_result->report.LCR) {
-					bcm_tlv_t *tlv = rtt_result->report.LCR;
-					int tlv_size = BCM_TLV_SIZE(tlv);
-					if (tlv_size > plen) {
-						WL_ERR(("LCR IE size error, len %d(%d)\n",
-							tlv_size, plen));
-					} else {
-						(void) memcpy_s(pdata, plen, (char*)tlv, tlv_size);
-						pdata += tlv_size;
-						plen -= tlv_size;
-						WL_INFORM_MEM(("copy LCR, len=%d\n", tlv_size));
-					}
+			}
+			else if (rtt_result->type == RTT_TWO_WAY_NTB) {
+				struct rtt_report *az_report;
+
+				report_len = rtt_result->u.az_result.report_len;
+				az_report = &rtt_result->u.az_result.report;
+
+				ret = nla_put(skb, RTT_ATTRIBUTE_RESULT, report_len, az_report);
+				if (ret < 0) {
+					WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT, ret:%d\n",
+						ret));
+					goto free_mem;
 				}
-				ret = nla_put(skb, RTT_ATTRIBUTE_RESULT, msize - plen, mbuf);
-				MFREE(cfg->osh, mbuf, msize);
-			} else
-#endif /* WL_RTT_LCI */
-			{
-				ret = nla_put(skb, RTT_ATTRIBUTE_RESULT,
-					rtt_result->report_len, &rtt_result->report);
 			}
 
-			if (ret < 0) {
-				WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT, ret:%d\n", ret));
-				goto free_mem;
-			}
-			ret = nla_put(skb, RTT_ATTRIBUTE_RESULT_DETAIL,
-				rtt_result->detail_len, &rtt_result->rtt_detail);
-			if (ret < 0) {
-				WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT_DETAIL, ret:%d\n",
-					ret));
-				goto free_mem;
-			}
 			ret = nla_put_u32(skb, RTT_ATTRIBUTE_RESULT_FREQ,
 				rtt_result->frequency);
 			if (ret < 0) {
@@ -2273,6 +2305,39 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 				WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT_CNT, ret:%d\n", ret));
 				goto free_mem;
 			}
+
+			ret = nla_put_u8(skb, RTT_ATTRIBUTE_RESULT_I2R_LTF_REP_COUNT,
+				rtt_result->u.az_result.rtt_detail.i2r_ltf_rep);
+			if (ret < 0) {
+				WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT_I2R_LTF_REP_COUNT, "
+					"ret:%d\n", ret));
+				goto free_mem;
+			}
+
+			ret = nla_put_u8(skb, RTT_ATTRIBUTE_RESULT_R2I_LTF_REP_COUNT,
+				rtt_result->u.az_result.rtt_detail.r2i_ltf_rep);
+			if (ret < 0) {
+				WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT_R2I_LTF_REP_COUNT, "
+					"ret:%d\n", ret));
+				goto free_mem;
+			}
+
+			ret = nla_put_u32(skb, RTT_ATTRIBUTE_NTB_MIN_DELTA,
+				rtt_result->u.az_result.rtt_detail.min_delta);
+			if (ret < 0) {
+				WL_ERR(("Failed to put RTT_ATTRIBUTE_NTB_MIN_DELTA, ret:%d\n",
+					ret));
+				goto free_mem;
+			}
+
+			ret = nla_put_u32(skb, RTT_ATTRIBUTE_NTB_MAX_DELTA,
+				rtt_result->u.az_result.rtt_detail.max_delta);
+			if (ret < 0) {
+				WL_ERR(("Failed to put RTT_ATTRIBUTE_NTB_MAX_DELTA, ret:%d\n",
+					ret));
+				goto free_mem;
+			}
+
 		}
 		nla_nest_end(skb, rtt_nl_hdr);
 		cfg80211_vendor_event(skb, kflags);
@@ -2292,15 +2357,17 @@ static void
 wl_cfgvendor_rtt_sort_targets(rtt_config_params_t *rtt_param)
 {
 	uint8 target_count = rtt_param->rtt_target_cnt;
-	rtt_target_info_t *rtt_target = rtt_param->target_info;
+	rtt_mc_az_target_info_t *rtt_target = rtt_param->target_info;
+	rtt_mc_az_target_info_t rtt_tmp_target;
 	uint8 i, j;
 	uint8 min_index;
-	rtt_target_info_t rtt_tmp_target;
 
+	bzero(&rtt_tmp_target, sizeof(rtt_tmp_target));
 	for (i = 0; i < (target_count - 1); i++) {
 		min_index = i;
 		for (j = i+1; j < target_count; j++) {
-			if (rtt_target[min_index].chanspec > rtt_target[j].chanspec) {
+			if (rtt_target[min_index].cmn_tgt_info.chanspec >
+				rtt_target[j].cmn_tgt_info.chanspec) {
 				min_index = j;
 			}
 		}
@@ -2313,13 +2380,216 @@ wl_cfgvendor_rtt_sort_targets(rtt_config_params_t *rtt_param)
 	}
 }
 
+/* @brief: Set the security configuaration of the rtt target.
+ * Copy the security config info from iter to rtt_target based on type
+ */
+static int
+wl_cfgvendor_rtt_set_security_config(rtt_mc_az_target_info_t *rtt_target,
+	const struct nlattr *iter, int type, rtt_capabilities_t *capability)
+{
+	rtt_target_security_info_t *rtt_sec_info = NULL;
+	uint32 akm, cipher_type;
+	int err = 0;
+
+	rtt_sec_info = &rtt_target->sec_info;
+
+	switch (type) {
+		case RTT_ATTRIBUTE_TARGET_KEY_IDLE_TIME:
+			rtt_sec_info->key_idle_time = nla_get_u32(iter);
+			break;
+		case RTT_ATTRIBUTE_TARGET_KEY_LIFE_TIME:
+			rtt_sec_info->key_life_time = nla_get_u32(iter);
+			break;
+		case RTT_ATTRIBUTE_TARGET_RTT_AKM:
+			akm = nla_get_u32(iter);
+			/* Map the AKM passed by user to local AKM type */
+			switch (akm) {
+				case RTT_AKM_PASN:
+					/* Populate akm type */
+					rtt_sec_info->akm = RSN_AKM_PASN;
+					break;
+				case RTT_AKM_SAE:
+					/* Populate akm type */
+					rtt_sec_info->akm = RSN_AKM_SAE_PSK;
+					break;
+				case RTT_AKM_FT:
+					/* TODO: Populate akm type */
+					break;
+				case RTT_AKM_FILS:
+					/* TODO: Populate akm type */
+					break;
+				default:
+					/* Populate no akm type */
+					rtt_sec_info->akm = RSN_AKM_NONE;
+			}
+			break;
+		case RTT_ATTRIBUTE_TARGET_SEC_LTF_REQD:
+			rtt_sec_info->sec_ltf_reqd = nla_get_u8(iter);
+			break;
+		case RTT_ATTRIBUTE_TARGET_KEY_PASSPHRASE_LEN:
+			rtt_sec_info->passphrase_len = nla_get_u8(iter);
+			break;
+		case RTT_ATTRIBUTE_TARGET_KEY_PASSPHRASE:
+			/* populate passphrase */
+			if (rtt_sec_info->passphrase_len == 0) {
+				err = -EINVAL;
+				goto exit;
+			}
+			err = memcpy_s(rtt_sec_info->passphrase, MAX_PASSPHRASE_LEN,
+					nla_data(iter), rtt_sec_info->passphrase_len);
+			if (err != BCME_OK) {
+				WL_ERR(("Failed to get the passphrase data\n"));
+				goto exit;
+			}
+			break;
+		case RTT_ATTRIBUTE_TARGET_CIPHER_TYPE:
+			/* Populate cipher type */
+			cipher_type = nla_get_u32(iter);
+			/* Map the cipher type passed by user to local cipher type */
+			switch (cipher_type) {
+				case RTT_CIPHER_TYPE_CCM128_BIT:
+					/* Populate cipher type */
+					rtt_sec_info->cipher_type = CRYPTO_ALGO_AES_CCM;
+					break;
+				case RTT_CIPHER_TYPE_CCM256_BIT:
+					/* Populate cipher type */
+					rtt_sec_info->cipher_type = CRYPTO_ALGO_AES_CCM256;
+					break;
+				case RTT_CIPHER_TYPE_GCM128_BIT:
+					/* Populate cipher type */
+					rtt_sec_info->cipher_type = CRYPTO_ALGO_AES_GCM;
+					break;
+				case RTT_CIPHER_TYPE_GCM256_BIT:
+					/* Populate cipher type */
+					rtt_sec_info->cipher_type = CRYPTO_ALGO_AES_GCM256;
+					break;
+				default:
+					/* Populate cipher type */
+					rtt_sec_info->cipher_type = CRYPTO_ALGO_OFF;
+			}
+			break;
+		default:
+			break;
+	}
+exit:
+	return err;
+}
+
+static int
+wl_cfgvendor_rtt_set_az_config(rtt_mc_az_target_info_t *rtt_target,
+	const struct nlattr *iter, int type, rtt_capabilities_t *capability)
+{
+	rtt_az_target_info_t *rtt_az_target = NULL;
+	int err = 0;
+
+	rtt_az_target = &rtt_target->u.az_tgt_info;
+
+	switch (type) {
+	case RTT_ATTRIBUTE_TARGET_MIN_DELTA:
+		rtt_az_target->min_delta = (uint32)nla_get_u64(iter);
+		/* Min delta is in 100us unit. Convert it into us */
+		rtt_az_target->min_delta = rtt_az_target->min_delta * 100u;
+		break;
+	case RTT_ATTRIBUTE_TARGET_MAX_DELTA:
+		/* Max delta is in 10ms unit. Convert it into us */
+		rtt_az_target->max_delta = (uint32)nla_get_u64(iter);
+		rtt_az_target->max_delta =
+			rtt_az_target->max_delta * 10u * 1000u;
+		break;
+	case RTT_ATTRIBUTE_TARGET_NUM_FTM_BURST:
+		rtt_az_target->num_measurements = nla_get_u8(iter);
+		break;
+	}
+
+	return err;
+}
+
+
+static int
+wl_cfgvendor_rtt_set_mc_config(rtt_mc_az_target_info_t *rtt_target,
+	const struct nlattr *iter, int type, rtt_capabilities_t *capability)
+{
+	rtt_mc_target_info_t *rtt_mc_target = NULL;
+	int err = 0;
+
+	rtt_mc_target = &rtt_target->u.mc_tgt_info;
+
+	switch (type) {
+	case RTT_ATTRIBUTE_TARGET_PERIOD:
+		rtt_mc_target->burst_period = nla_get_u32(iter);
+		if (rtt_mc_target->burst_period < 32) {
+			/* 100ms unit */
+			rtt_mc_target->burst_period *= 100;
+		} else {
+			WL_ERR(("%d value must in (0-31)\n",
+				rtt_mc_target->burst_period));
+			err = -EINVAL;
+			goto exit;
+		}
+		break;
+	case RTT_ATTRIBUTE_TARGET_NUM_BURST:
+		rtt_mc_target->num_burst = nla_get_u32(iter);
+		if (rtt_mc_target->num_burst > 16) {
+			WL_ERR(("%d value must in (0-15)\n",
+				rtt_mc_target->num_burst));
+			err = -EINVAL;
+			goto exit;
+		}
+		rtt_mc_target->num_burst = BIT(rtt_mc_target->num_burst);
+		break;
+	case RTT_ATTRIBUTE_TARGET_NUM_FTM_BURST:
+		rtt_mc_target->num_frames_per_burst = nla_get_u32(iter);
+		break;
+	case RTT_ATTRIBUTE_TARGET_NUM_RETRY_FTM:
+		rtt_mc_target->num_retries_per_ftm = nla_get_u32(iter);
+		break;
+	case RTT_ATTRIBUTE_TARGET_NUM_RETRY_FTMR:
+		rtt_mc_target->num_retries_per_ftmr = nla_get_u32(iter);
+		if (rtt_mc_target->num_retries_per_ftmr > 3) {
+			WL_ERR(("%d value must in (0-3)\n",
+				rtt_mc_target->num_retries_per_ftmr));
+			err = -EINVAL;
+			goto exit;
+		}
+		break;
+	case RTT_ATTRIBUTE_TARGET_LCI:
+		rtt_mc_target->LCI_request = nla_get_u8(iter);
+		break;
+	case RTT_ATTRIBUTE_TARGET_LCR:
+		rtt_mc_target->LCR_request = nla_get_u8(iter);
+		break;
+	case RTT_ATTRIBUTE_TARGET_BURST_DURATION:
+		if ((nla_get_u32(iter) > 1 && nla_get_u32(iter) < 12)) {
+			rtt_mc_target->burst_duration =
+			dhd_rtt_idx_to_burst_duration(
+				nla_get_u32(iter));
+		} else if (nla_get_u32(iter) == 15) {
+			/* use default value */
+			rtt_mc_target->burst_duration = 0;
+		} else {
+			WL_ERR(("%d value must in (2-11) or 15\n",
+				nla_get_u32(iter)));
+			err = -EINVAL;
+			goto exit;
+		}
+		break;
+	case RTT_ATTRIBUTE_TARGET_PREAMBLE:
+		rtt_mc_target->preamble = nla_get_u8(iter);
+		break;
+	}
+
+exit:
+	return err;
+}
+
+
 static int
 wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev *wdev,
 	const void *data, int len) {
 	int err = 0, rem, rem1, rem2, type;
 	int target_cnt = 0;
 	rtt_config_params_t rtt_param;
-	rtt_target_info_t* rtt_target = NULL;
+	rtt_mc_az_target_info_t *rtt_target = NULL;
 	const struct nlattr *iter, *iter1, *iter2;
 	int8 eabuf[ETHER_ADDR_STR_LEN];
 	int8 chanbuf[CHANSPEC_STR_LEN];
@@ -2350,6 +2620,7 @@ wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev *wdev,
 		err = BCME_ERROR;
 		goto exit;
 	}
+
 	nla_for_each_attr(iter, data, len, rem) {
 		type = nla_type(iter);
 		switch (type) {
@@ -2368,7 +2639,7 @@ wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev *wdev,
 			}
 			rtt_param.rtt_target_cnt = target_cnt;
 
-			rtt_param.target_info = (rtt_target_info_t *)MALLOCZ(cfg->osh,
+			rtt_param.target_info = (rtt_mc_az_target_info_t *)MALLOCZ(cfg->osh,
 				TARGET_INFO_SIZE(target_cnt));
 			if (rtt_param.target_info == NULL) {
 				WL_ERR(("failed to allocate target info for (%d)\n", target_cnt));
@@ -2386,6 +2657,7 @@ wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev *wdev,
 				goto exit;
 			}
 			rtt_target = rtt_param.target_info;
+
 			nla_for_each_nested(iter1, iter, rem1) {
 				if ((uint8 *)rtt_target >= ((uint8 *)rtt_param.target_info +
 					TARGET_INFO_SIZE(target_cnt))) {
@@ -2393,119 +2665,85 @@ wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev *wdev,
 					err = -EINVAL;
 					goto exit;
 				}
+
 				nla_for_each_nested(iter2, iter1, rem2) {
 					type = nla_type(iter2);
+					/* Fill target cmn info */
 					switch (type) {
+					case RTT_ATTRIBUTE_TARGET_TYPE:
+						rtt_target->cmn_tgt_info.tgt_type =
+							nla_get_u8(iter2);
+						if (rtt_target->cmn_tgt_info.tgt_type ==
+							RTT_INVALID ||
+							(rtt_target->cmn_tgt_info.tgt_type ==
+							RTT_ONE_WAY &&
+							!capability.rtt_one_sided_supported)) {
+							WL_ERR(("doesn't support RTT type"
+								" : %d\n",
+								rtt_target->cmn_tgt_info.tgt_type));
+							err = -EINVAL;
+							goto exit;
+						}
+						break;
 					case RTT_ATTRIBUTE_TARGET_MAC:
 						if (nla_len(iter2) != ETHER_ADDR_LEN) {
 							WL_ERR(("mac_addr length not match\n"));
 							err = -EINVAL;
 							goto exit;
 						}
-						memcpy(&rtt_target->addr, nla_data(iter2),
-							ETHER_ADDR_LEN);
-						break;
-					case RTT_ATTRIBUTE_TARGET_TYPE:
-						rtt_target->type = nla_get_u8(iter2);
-						if (rtt_target->type == RTT_INVALID ||
-							(rtt_target->type == RTT_ONE_WAY &&
-							!capability.rtt_one_sided_supported)) {
-							WL_ERR(("doesn't support RTT type"
-								" : %d\n",
-								rtt_target->type));
-							err = -EINVAL;
-							goto exit;
-						}
+						memcpy(&rtt_target->cmn_tgt_info.addr,
+							nla_data(iter2), ETHER_ADDR_LEN);
 						break;
 					case RTT_ATTRIBUTE_TARGET_PEER:
-						rtt_target->peer = nla_get_u8(iter2);
+						rtt_target->cmn_tgt_info.peer = nla_get_u8(iter2);
 						break;
 					case RTT_ATTRIBUTE_TARGET_CHAN:
-						memcpy(&rtt_target->channel, nla_data(iter2),
-							sizeof(rtt_target->channel));
-						break;
-					case RTT_ATTRIBUTE_TARGET_PERIOD:
-						rtt_target->burst_period = nla_get_u32(iter2);
-						if (rtt_target->burst_period < 32) {
-							/* 100ms unit */
-							rtt_target->burst_period *= 100;
-						} else {
-							WL_ERR(("%d value must in (0-31)\n",
-								rtt_target->burst_period));
-							err = EINVAL;
-							goto exit;
-						}
-						break;
-					case RTT_ATTRIBUTE_TARGET_NUM_BURST:
-						rtt_target->num_burst = nla_get_u32(iter2);
-						if (rtt_target->num_burst > 16) {
-							WL_ERR(("%d value must in (0-15)\n",
-								rtt_target->num_burst));
-							err = -EINVAL;
-							goto exit;
-						}
-						rtt_target->num_burst = BIT(rtt_target->num_burst);
-						break;
-					case RTT_ATTRIBUTE_TARGET_NUM_FTM_BURST:
-						rtt_target->num_frames_per_burst =
-						nla_get_u32(iter2);
-						break;
-					case RTT_ATTRIBUTE_TARGET_NUM_RETRY_FTM:
-						rtt_target->num_retries_per_ftm =
-						nla_get_u32(iter2);
-						break;
-					case RTT_ATTRIBUTE_TARGET_NUM_RETRY_FTMR:
-						rtt_target->num_retries_per_ftmr =
-						nla_get_u32(iter2);
-						if (rtt_target->num_retries_per_ftmr > 3) {
-							WL_ERR(("%d value must in (0-3)\n",
-								rtt_target->num_retries_per_ftmr));
-							err = -EINVAL;
-							goto exit;
-						}
-						break;
-					case RTT_ATTRIBUTE_TARGET_LCI:
-						rtt_target->LCI_request = nla_get_u8(iter2);
-						break;
-					case RTT_ATTRIBUTE_TARGET_LCR:
-						rtt_target->LCR_request = nla_get_u8(iter2);
-						break;
-					case RTT_ATTRIBUTE_TARGET_BURST_DURATION:
-						if ((nla_get_u32(iter2) > 1 &&
-							nla_get_u32(iter2) < 12)) {
-							rtt_target->burst_duration =
-							dhd_rtt_idx_to_burst_duration(
-								nla_get_u32(iter2));
-						} else if (nla_get_u32(iter2) == 15) {
-							/* use default value */
-							rtt_target->burst_duration = 0;
-						} else {
-							WL_ERR(("%d value must in (2-11) or 15\n",
-								nla_get_u32(iter2)));
-							err = -EINVAL;
-							goto exit;
-						}
+						memcpy(&rtt_target->cmn_tgt_info.channel,
+							nla_data(iter2),
+							sizeof(rtt_target->cmn_tgt_info.channel));
 						break;
 					case RTT_ATTRIBUTE_TARGET_BW:
-						rtt_target->bw = nla_get_u8(iter2);
+						rtt_target->cmn_tgt_info.bw = nla_get_u8(iter);
 						break;
-					case RTT_ATTRIBUTE_TARGET_PREAMBLE:
-						rtt_target->preamble = nla_get_u8(iter2);
-						break;
+					}
+
+					/* Fill MC target info */
+					if ((rtt_target->cmn_tgt_info.tgt_type == RTT_ONE_WAY) ||
+							(rtt_target->cmn_tgt_info.tgt_type ==
+							RTT_TWO_WAY_MC)) {
+						err = wl_cfgvendor_rtt_set_mc_config(rtt_target,
+							iter2, type, &capability);
+						if (err != 0) {
+							goto exit;
+						}
+					} else if (rtt_target->cmn_tgt_info.tgt_type ==
+							RTT_TWO_WAY_NTB) {
+						/* Fill AZ target info */
+						err = wl_cfgvendor_rtt_set_az_config(rtt_target,
+							iter2, type, &capability);
+					}
+
+					/* Populate the security info */
+					err = wl_cfgvendor_rtt_set_security_config(rtt_target,
+							iter2, type, &capability);
+					if (err != 0) {
+						WL_ERR(("sec info is not valid \n"));
+						err = -EINVAL;
+						goto exit;
 					}
 				}
 				/* convert to chanspec value */
-				rtt_target->chanspec =
-					dhd_rtt_convert_to_chspec(rtt_target->channel);
-				if (rtt_target->chanspec == INVCHANSPEC) {
+				rtt_target->cmn_tgt_info.chanspec =
+					dhd_rtt_convert_to_chspec(rtt_target->cmn_tgt_info.channel);
+				if (rtt_target->cmn_tgt_info.chanspec == INVCHANSPEC) {
 					WL_ERR(("Channel is not valid \n"));
 					err = -EINVAL;
 					goto exit;
 				}
 				WL_MEM(("Target addr %s, Channel : %s for RTT \n",
-					bcm_ether_ntoa((const struct ether_addr *)&rtt_target->addr,
-					eabuf),
-					wf_chspec_ntoa(rtt_target->chanspec, chanbuf)));
+					bcm_ether_ntoa(&rtt_target->cmn_tgt_info.addr, eabuf),
+					wf_chspec_ntoa(rtt_target->cmn_tgt_info.chanspec,
+					chanbuf)));
 				rtt_target++;
 			}
 			break;
@@ -4096,6 +4334,7 @@ wl_cfgvendor_brcm_to_nanhal_status(int32 vendor_status)
 		case BCME_USAGE_ERROR:
 		case BCME_BADARG:
 		case BCME_NOTENABLED:
+		case BCME_NOTFOUND:
 		case WL_NAN_E_INVALID_OPTION:
 			hal_status = NAN_STATUS_INVALID_PARAM;
 			break;
@@ -6093,6 +6332,13 @@ wl_cfgvendor_nan_parse_pairing_args(struct wiphy *wiphy, const void *buf,
 			}
 			cmd_data->inst_id = nla_get_u16(iter);
 			break;
+		case NAN_ATTRIBUTE_TRANSAC_ID:
+			if (nla_len(iter) != sizeof(uint16)) {
+				ret = -EINVAL;
+				goto exit;
+			}
+			cmd_data->token = nla_get_u16(iter);
+			break;
 		case NAN_ATTRIBUTE_MAC_ADDR:
 			if (nla_len(iter) != ETHER_ADDR_LEN) {
 				ret = -EINVAL;
@@ -7031,7 +7277,7 @@ wl_cfgvendor_send_as_rtt_legacy_event(struct wiphy *wiphy, struct net_device *de
 		}
 	}
 	report->status = (rtt_reason_t)status;
-	report->type   = RTT_TWO_WAY;
+	report->type   = RTT_TWO_WAY_MC;
 
 #if (defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)) || \
 	LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
@@ -14380,12 +14626,18 @@ const struct nla_policy rtt_attr_policy[RTT_ATTRIBUTE_MAX] = {
 	[RTT_ATTRIBUTE_TARGET_BURST_DURATION] = { .type = NLA_U32 },
 	[RTT_ATTRIBUTE_TARGET_PREAMBLE] = { .type = NLA_U8 },
 	[RTT_ATTRIBUTE_TARGET_BW] = { .type = NLA_U8 },
+	[RTT_ATTRIBUTE_TARGET_MIN_DELTA] = { .type = NLA_U32 },
+	[RTT_ATTRIBUTE_TARGET_MAX_DELTA] = { .type = NLA_U32 },
 	[RTT_ATTRIBUTE_RESULTS_COMPLETE] = { .type = NLA_U32 },
 	[RTT_ATTRIBUTE_RESULTS_PER_TARGET] = { .type = NLA_NESTED },
 	[RTT_ATTRIBUTE_RESULT_CNT] = { .type = NLA_U32 },
-	[RTT_ATTRIBUTE_RESULT] = { .type = NLA_BINARY, .len = sizeof(rtt_result_t) },
+	[RTT_ATTRIBUTE_RESULT] = { .type = NLA_BINARY, .len = sizeof(rtt_report_t) },
 	[RTT_ATTRIBUTE_RESULT_DETAIL] = { .type = NLA_BINARY,
-	.len = sizeof(struct rtt_result_detail) },
+	.len = sizeof(struct rtt_mc_result_detail) },
+	[RTT_ATTRIBUTE_RESULT_I2R_LTF_REP_COUNT] = { .type = NLA_U8 },
+	[RTT_ATTRIBUTE_RESULT_R2I_LTF_REP_COUNT] = { .type = NLA_U8 },
+	[RTT_ATTRIBUTE_NTB_MIN_DELTA] = { .type = NLA_U32 },
+	[RTT_ATTRIBUTE_NTB_MAX_DELTA] = { .type = NLA_U32 },
 };
 #endif /* RTT_SUPPORT */
 

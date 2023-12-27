@@ -601,6 +601,11 @@ wl_cellavoid_mandatory_isset(void *cai, enum nl80211_iftype type)
 				mandatory = TRUE;
 			}
 			break;
+		case NL80211_IFTYPE_NAN:
+			if (cellavoid_info->mandatory_flag & WL_CELL_AVOID_NAN) {
+				mandatory = TRUE;
+			}
+			break;
 
 		default:
 			break;

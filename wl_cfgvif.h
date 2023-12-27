@@ -329,4 +329,8 @@ extern bool wl_cfgvif_is_scc_valid(chanspec_t sta_chanspec,
 		chanspec_t chspec, wl_chan_info_t *wl_chaninfo);
 extern s32 wl_cfgvif_get_ml_scc_channel_array(struct bcm_cfg80211 *cfg,
 	wl_chan_info_t *wl_chaninfo);
+#if defined(KEEP_ALIVE) && defined(OEM_ANDROID)
+extern s32 wl_cfgvif_apply_default_keep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg);
+#endif /* KEEP_ALIVE && OEM_ANDROID */
+extern s32 wl_cfgvif_get_eht_features(struct net_device *dev, u32 *eht_feature_val);
 #endif /* _wl_cfgvif_h_ */

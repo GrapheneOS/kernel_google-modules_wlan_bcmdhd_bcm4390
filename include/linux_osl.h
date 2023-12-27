@@ -381,6 +381,7 @@ extern uint64 osl_sysuptime_ns(void);
 #define OSL_SYSUPTIME()		((uint32)jiffies_to_msecs(jiffies))
 #define OSL_SYSUPTIME_US()	osl_sysuptime_us()
 #define OSL_SYSUPTIME_NS()	osl_sysuptime_ns()
+#define OSL_TIME_NS()		OSL_SYSUPTIME_NS()
 extern uint64 osl_localtime_ns(void);
 extern void osl_get_localtime(uint64 *sec, uint64 *usec);
 extern uint64 osl_systztime_us(void);

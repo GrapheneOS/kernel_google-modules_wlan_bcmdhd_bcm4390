@@ -1413,7 +1413,7 @@ static int dhdpcie_resume_host_dev(dhd_bus_t *bus)
 	if (bcmerror < 0) {
 		DHD_ERROR(("%s: PCIe RC resume failed!!! (%d)\n",
 			__FUNCTION__, bcmerror));
-		bus->is_linkdown = 1;
+		dhd_bus_set_linkdown(bus->dhd, TRUE);
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 #ifdef CONFIG_ARCH_MSM
 		bus->no_cfg_restore = 1;
@@ -2217,7 +2217,7 @@ void dhdpcie_linkdown_cb(struct pci_dev *pdev)
 						DHD_ERROR(("%s: Event HANG send up "
 							"due to PCIe linkdown\n",
 							__FUNCTION__));
-						bus->is_linkdown = 1;
+						dhd_bus_set_linkdown(dhd, TRUE);
 						dhd->hang_reason =
 							HANG_REASON_PCIE_LINK_DOWN_RC_DETECT;
 						dhd_os_send_hang_message(dhd);
@@ -2827,7 +2827,11 @@ dhdpcie_enable_device(dhd_bus_t *bus)
 			bus->no_bus_init = TRUE;
 			/* Check if the PCIe link is down */
 			if (vid == (uint32)-1) {
+				/* set link down and call the api
+				 * just in case bus->dhd is not yet inited
+				 */
 				bus->is_linkdown = 1;
+				dhd_bus_set_linkdown(bus->dhd, TRUE);
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 #ifdef CONFIG_ARCH_MSM
 				bus->no_cfg_restore = TRUE;

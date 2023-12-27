@@ -82,7 +82,7 @@ typedef uint32 bl_counter_t;
 struct bl_verif_status {
 	bl_status_t		status;
 	bl_state_t		state;
-	uint16			alloc_fail_size;	/* Size of the failed alloc request */
+	uint16			alloc_fail_size;	/* Size of the failled alloc request */
 	bl_counter_t		alloc_bytes;		/* currently allocated */
 	bl_counter_t		max_alloc_bytes;	/* max ever  allocated */
 	bl_counter_t		total_alloc_bytes;	/* running count of allocated */

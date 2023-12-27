@@ -296,6 +296,8 @@ extern bool dhd_bus_get_read_shm(dhd_pub_t *dhdp);
 extern void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val);
 extern int dhd_bus_get_linkdown(dhd_pub_t *dhdp);
 bool dhd_bus_is_wl_bp_down(dhd_pub_t *dhdp);
+bool dhd_bus_is_common_bp_down(dhd_pub_t *dhdp);
+void dhd_bus_reset_link_state(dhd_pub_t *dhdp);
 #if defined(CONFIG_ARCH_MSM) && defined(CONFIG_SEC_PCIE_L1SS)
 extern void dhd_bus_inform_ep_loaded_to_rc(dhd_pub_t *dhdp, bool up);
 #endif /* CONFIG_ARCH_MSM  && CONFIG_SEC_PCIE_L1SS */
@@ -314,8 +316,13 @@ static INLINE int dhd_bus_get_cto(dhd_pub_t *dhdp) { return 0; }
 static INLINE bool dhd_bus_get_read_shm(dhd_pub_t *dhdp) { return 0; }
 extern INLINE int dhd_bus_checkdied(struct dhd_bus *bus, char *data, uint size) { return 0; }
 static INLINE bool dhd_bus_is_wl_bp_down(dhd_pub_t *dhdp) { return FALSE; }
+static INLINE bool dhd_bus_is_common_bp_down(dhd_pub_t *dhdp) { return FALSE; }
+static INLINE void dhd_bus_reset_link_state(dhd_pub_t *dhdp) { return; }
 #endif /* BCMPCIE */
 
+#ifdef DHD_COREDUMP
+void dhdpcie_get_etd_trapcode_str(dhd_pub_t *dhd, char *trap_code, char *trap_subcode, int len);
+#endif /* DHD_COREDUMP */
 #if defined(BCMPCIE) && defined(EWP_ETD_PRSRV_LOGS)
 void dhdpcie_get_etd_preserve_logs(dhd_pub_t *dhd, uint8 *ext_trap_data,
 		void *event_decode_data);
@@ -457,6 +464,9 @@ int dhd_bus_get_ewp_etb_config(struct dhd_bus *bus);
 int dhd_bus_get_ewp_etb_dump(struct dhd_bus *bus, uint8 *buf, uint bufsize);
 int dhd_bus_alloc_ewp_etb_config_mem(struct dhd_bus *bus);
 void dhd_bus_dealloc_ewp_etb_config_mem(struct dhd_bus *bus);
+#ifdef DHD_COREDUMP
+extern void dhd_get_ewp_init_state(struct dhd_bus *bus, uint8 *init_state);
+#endif /* DHD_COREDUMP */
 
 void dhd_bus_update_flow_watermark_stats(struct dhd_bus *bus, uint16 flowid, uint16 rd,
 	uint16 wr, uint16 ringsz, bool upd_watermark);

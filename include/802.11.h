@@ -415,6 +415,10 @@ typedef BWL_PRE_PACKED_STRUCT struct dot11_max_ie_cst {
 #define DOT11_TPE_INFO_MAX_TX_PWR_CAT_MASK               0xC0u
 #define DOT11_TPE_INFO_MAX_TX_PWR_CAT_SHIFT              6u
 
+/* Extension Transmit PSD Information subfield format, B4 - B7 Reserved */
+#define DOT11_TPE_INFO_EXT_TX_INFO_EXT_CNT_MASK       0x0Fu
+#define DOT11_TPE_INFO_EXT_TX_INFO_EXT_CNT_SHIFT      0u
+
 /* TPE Transmit Power Information Field Accessor */
 #define DOT11_TPE_INFO_MAX_TX_PWR_CNT(x) \
 	(x & DOT11_TPE_INFO_MAX_TX_PWR_CNT_MASK)
@@ -424,6 +428,10 @@ typedef BWL_PRE_PACKED_STRUCT struct dot11_max_ie_cst {
 #define DOT11_TPE_INFO_MAX_TX_PWR_CAT(x) \
 	(((x) & DOT11_TPE_INFO_MAX_TX_PWR_CAT_MASK) >> \
 	DOT11_TPE_INFO_MAX_TX_PWR_CAT_SHIFT)
+
+#define DOT11_TPE_INFO_EXT_INFO_EXT_CNT(x) \
+	(((x) & DOT11_TPE_INFO_EXT_TX_INFO_EXT_CNT_MASK) >> \
+	DOT11_TPE_INFO_EXT_TX_INFO_EXT_CNT_SHIFT)
 
 /* Maximum Transmit Power Interpretation subfield */
 #define DOT11_TPE_MAX_TX_PWR_INTRPN_LOCAL_EIRP			0u
@@ -467,10 +475,12 @@ typedef BWL_PRE_PACKED_STRUCT struct dot11_max_ie_cst {
 #define DOT11_TPE_MAX_TX_PWR_PSD_NO_LIMIT                 127u
 /** Transmit Power Envelope IE data structure as per 11ax draft */
 BWL_PRE_PACKED_STRUCT struct dot11_transmit_power_envelope {
-	uint8 id;				/* id DOT11_MNG_WIDE_BW_CHANNEL_SWITCH_ID */
+	uint8 id;				/* id DOT11_MNG_VHT_TRANSMIT_POWER_ENVELOPE_ID */
 	uint8 len;				/* length of IE */
 	uint8 transmit_power_info;
-	uint8 max_transmit_power[]; /* Variable length */
+	uint8 max_transmit_power[8u];
+	uint8 ext_tx_pwr_info;
+	uint8 ext_tx_pwr[8u];
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_transmit_power_envelope dot11_transmit_power_envelope_ie_t;
 /* id (1) + len (1) + transmit_power_info(1) + max_transmit_power(1) */
@@ -1294,7 +1304,8 @@ BWL_PRE_PACKED_STRUCT struct dot11_management_notification {
 #define DOT11_SC_INVALID_SNONCE		71	/* Invalid SNonce */
 #define DOT11_SC_INVALID_RSNIE		72	/* Invalid contents of RSNIE */
 
-#define DOT11_SC_ANTICLOG_TOCKEN_REQUIRED 76	/* Anti-clogging tocken required */
+#define DOT11_SC_ANTICLOG_TOCKEN_REQUIRED 76	/* Anti-clogging tocken required - REMOVE! */
+#define DOT11_SC_ANTICLOG_TOKEN_REQUIRED 76	/* Anti-clogging token required */
 #define DOT11_SC_INVALID_FINITE_CYCLIC_GRP 77	/* Invalid contents of RSNIE */
 #define DOT11_SC_TRANSMIT_FAILURE	79      /* transmission failure */
 

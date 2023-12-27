@@ -439,6 +439,7 @@ static int _dhd_apf_delete_filter(struct net_device *ndev, uint32 filter_id);
 static int _dhd_apf_read_filter_data(struct net_device *ndev, uint32 filter_id, u8* buf,
 	uint32 buf_len);
 #endif /* APF */
+void dhd_deinit_ifp_llc(dhd_pub_t *dhdp, dhd_if_t *ifp);
 
 #ifdef DHD_FW_COREDUMP
 static void dhd_mem_dump(void *dhd_info, void *event_info, u8 event);
@@ -5961,7 +5962,7 @@ int dhd_ioctl_process(dhd_pub_t *pub, int ifidx, dhd_ioctl_t *ioc, void *data_bu
 				buflen = MIN(ioc->len, DHD_IOCTL_MAXLEN);
 			}
 		}
-		bcmerror = dhd_ioctl((void *)pub, ioc, data_buf, buflen);
+		bcmerror = dhd_ioctl((void *)pub, ifidx, ioc, data_buf, buflen);
 		if (bcmerror)
 			pub->bcmerror = bcmerror;
 		goto done;
@@ -6876,6 +6877,9 @@ dhd_force_collect_init_fail_dumps(dhd_pub_t *dhdp)
 		dhdp->collect_sdtc = TRUE;
 #endif /* DHD_SDTC_ETB_DUMP */
 		dhdp->memdump_type = DUMP_TYPE_DONGLE_INIT_FAILURE;
+#ifdef DHD_COREDUMP
+		dhd_get_ewp_init_state(dhdp->bus, &dhdp->ewp_init_state);
+#endif /* DHD_COREDUMP */
 		dhd_bus_mem_dump(dhdp);
 	} else {
 		DHD_PRINT(("%s:Not collecting memdump, memdump_enabled=%d, busstate=%d\n",
@@ -7251,7 +7255,7 @@ dhd_open(struct net_device *net)
 		dhd_irq_set_affinity(&dhd->pub, cpumask_of(0));
 #endif /* DHD_CONTROL_PCIE_CPUCORE_WIFI_TURNON */
 #if defined(BCMPCIE) && defined(DHDTCPACK_SUPPRESS)
-		dhd_tcpack_suppress_set(&dhd->pub, TCPACK_SUP_HOLD);
+		dhd_tcpack_suppress_set(&dhd->pub, TCPACK_SUP_OFF);
 #endif /* BCMPCIE && DHDTCPACK_SUPPRESS */
 #if defined(NUM_SCB_MAX_PROBE)
 		dhd_set_scb_probe(&dhd->pub);
@@ -8045,6 +8049,7 @@ dhd_cleanup_ifp(dhd_pub_t *dhdp, dhd_if_t *ifp)
 			dhd_flow_rings_delete(dhdp, ifidx);
 		}
 #endif /* PCIE_FULL_DONGLE */
+		dhd_deinit_ifp_llc(dhdp, ifp);
 	}
 }
 
@@ -9880,7 +9885,6 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	OSL_ATOMIC_SET(dhd->pub.osh, &dhd->dump_status, DUMP_NOT_READY);
 	INIT_WORK(&dhd->dhd_dump_proc_work, dhd_dump_proc);
 #endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
-
 	return &dhd->pub;
 
 fail:
@@ -9894,6 +9898,30 @@ fail:
 
 dhd_null_flag:
 	return NULL;
+}
+
+/* update net device headroom if llc hdr info if allocated and enabled or disabled */
+void dhd_update_ifp_headroom_len(dhd_pub_t *dhdp, dhd_if_t *ifp)
+{
+	if (ifp) {
+		ifp->net->needed_headroom -= ifp->llc_headroom_added_len;
+		ifp->llc_headroom_added_len = 0;
+		if (ifp->llc_enabled && ifp->llc_hdr) {
+			ifp->net->needed_headroom += ifp->llc_hdr_len;
+			ifp->llc_headroom_added_len = ifp->llc_hdr_len;
+		}
+	}
+}
+
+
+/* Deinit llc hdr info if allocated */
+void dhd_deinit_ifp_llc(dhd_pub_t *dhdp, dhd_if_t *ifp)
+{
+	if (ifp->llc_hdr) {
+		MFREE(dhdp->osh, ifp->llc_hdr, ifp->llc_hdr_len);
+		ifp->llc_hdr = NULL;
+		ifp->llc_hdr_len = 0;
+	}
 }
 
 int dhd_get_fw_mode(dhd_info_t *dhdinfo)
@@ -11823,16 +11851,6 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 	}
 #endif /* defined(OEM_ANDROID) && defined(SOFTAP) */
 
-#if defined(KEEP_ALIVE)
-	/* Set Keep Alive : be sure to use FW with -keepalive */
-	if (!(dhd->op_mode &
-		(DHD_FLAG_HOSTAP_MODE | DHD_FLAG_MFG_MODE))) {
-		if ((ret = dhd_keep_alive_onoff(dhd)) < 0)
-			DHD_ERROR(("%s set keeplive failed %d\n",
-			__FUNCTION__, ret));
-	}
-#endif /* defined(KEEP_ALIVE) */
-
 	ret = dhd_iovar(dhd, 0, "event_log_max_sets", NULL, 0, (char *)&event_log_max_sets,
 		sizeof(event_log_max_sets), FALSE);
 	if (ret == BCME_OK) {
@@ -13030,23 +13048,6 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 	}
 #endif /* defined(OEM_ANDROID) && defined(SOFTAP) */
 
-#if defined(KEEP_ALIVE)
-	{
-	/* Set Keep Alive : be sure to use FW with -keepalive */
-	int res;
-
-#if defined(OEM_ANDROID) && defined(SOFTAP)
-	if (ap_fw_loaded == FALSE)
-#endif /* defined(OEM_ANDROID) && defined(SOFTAP) */
-		if (!(dhd->op_mode &
-			(DHD_FLAG_HOSTAP_MODE | DHD_FLAG_MFG_MODE))) {
-			if ((res = dhd_keep_alive_onoff(dhd)) < 0)
-				DHD_ERROR(("%s set keeplive failed %d\n",
-				__FUNCTION__, res));
-		}
-	}
-#endif /* defined(KEEP_ALIVE) */
-
 #ifdef USE_WL_TXBF
 	ret = dhd_iovar(dhd, 0, "txbf", (char *)&txbf, sizeof(txbf), NULL, 0, TRUE);
 	if (ret < 0)
@@ -13069,14 +13070,6 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 		goto done;
 	}
 
-#if defined(KEEP_ALIVE)
-	if (!(dhd->op_mode &
-		(DHD_FLAG_HOSTAP_MODE | DHD_FLAG_MFG_MODE))) {
-		if ((ret = dhd_keep_alive_onoff(dhd)) < 0)
-			DHD_ERROR(("%s set keeplive failed %d\n",
-			__FUNCTION__, ret));
-	}
-#endif
 	/* get capabilities from firmware */
 	ret = dhd_get_fw_capabilities(dhd);
 	if (ret < 0) {
@@ -14628,6 +14621,7 @@ dhd_register_if(dhd_pub_t *dhdp, int ifidx, bool need_rtnl_lock)
 	net->needed_headroom += DOT11_LLC_SNAP_HDR_LEN;
 #endif
 
+	dhd_update_ifp_headroom_len(dhdp, ifp);
 
 	net->ethtool_ops = &dhd_ethtool_ops;
 
@@ -20199,6 +20193,10 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	char lr_fn[DHD_FUNC_STR_LEN] = "\0";
 	trap_t *tr;
 	bool collect_coredump = FALSE;
+	char trap_code[DHD_TRAP_CODE_LEN] = {0};
+	char trap_subcode[DHD_TRAP_CODE_LEN] = {0};
+	int written_len;
+	uint8 ewp_init_state;
 #endif /* DHD_COREDUMP */
 	uint32 memdump_type;
 #ifdef DHD_SSSR_DUMP
@@ -20224,6 +20222,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 #ifdef DHD_SSSR_DUMP
 	collect_sssr = dhdp->collect_sssr;
 #endif /* DHD_SSSR_DUMP */
+#ifdef DHD_COREDUMP
+	ewp_init_state = dhdp->ewp_init_state;
+#endif /* DHD_COREDUMP */
 
 	DHD_GENERAL_LOCK(dhdp, flags);
 	if (DHD_BUS_CHECK_DOWN_OR_DOWN_IN_PROGRESS(dhdp)) {
@@ -20261,6 +20262,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 			dhdp->dongle_fis_enab = FALSE;
 
 			switch (dhdp->sssr_reg_info->rev2.version) {
+				case SSSR_REG_INFO_VER_6 :
+					dhdp->dongle_fis_enab = dhdp->sssr_reg_info->rev6.fis_enab;
+					break;
 				case SSSR_REG_INFO_VER_5 :
 					dhdp->dongle_fis_enab = dhdp->sssr_reg_info->rev5.fis_enab;
 					break;
@@ -20284,6 +20288,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 				}
 
 				if (bcmerror == BCME_OK) {
+					dhdp->fis_triggered = TRUE;
 					dhd_bus_fis_dump(dhdp);
 				} else {
 					DHD_ERROR(("%s: FIS trigger failed: %d\n",
@@ -20294,7 +20299,6 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 						set_linkdwn_cto = TRUE;
 					}
 				}
-				dhdp->fis_triggered = TRUE;
 #ifdef DHD_SDTC_ETB_DUMP
 				dhdp->collect_sdtc = TRUE;
 #endif /* DHD_SDTC_ETB_DUMP */
@@ -20381,13 +20385,27 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	bzero(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN);
 	dhd_convert_memdump_type_to_str(memdump_type, dhdp->memdump_str,
 		DHD_MEMDUMP_LONGSTR_LEN, dhdp->debug_dump_subcmd);
+	written_len = strlen(dhdp->memdump_str);
 	if (memdump_type == DUMP_TYPE_DONGLE_TRAP &&
 		dhdp->dongle_trap_occured == TRUE) {
+
+		if (dhdp->extended_trap_data) {
+			dhdpcie_get_etd_trapcode_str(dhdp, trap_code, trap_subcode,
+				DHD_TRAP_CODE_LEN);
+			snprintf(&dhdp->memdump_str[written_len],
+					DHD_MEMDUMP_LONGSTR_LEN - written_len,
+					"_%s_%s", trap_code, trap_subcode);
+		}
+
 		tr = &dhdp->last_trap_info;
 		dhd_lookup_map(dhdp->osh, map_path,
 			ltoh32(tr->epc), pc_fn, ltoh32(tr->r14), lr_fn);
-		sprintf(&dhdp->memdump_str[strlen(dhdp->memdump_str)], "_%.79s_%.79s",
-				pc_fn, lr_fn);
+		written_len = strlen(dhdp->memdump_str);
+		snprintf(&dhdp->memdump_str[written_len], DHD_MEMDUMP_LONGSTR_LEN - written_len,
+			 "_%.79s_%.79s", pc_fn, lr_fn);
+	} else if (memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) {
+		snprintf(&dhdp->memdump_str[written_len], DHD_MEMDUMP_LONGSTR_LEN - written_len,
+			 "_0x%x", ewp_init_state);
 	}
 	DHD_PRINT(("%s: dump reason: %s\n", __FUNCTION__, dhdp->memdump_str));
 
@@ -24540,9 +24558,22 @@ dhd_dev_set_accel_force_reg_on(struct net_device *dev)
 {
 	dhd_info_t *dhd_info = *(dhd_info_t **)netdev_priv(dev);
 
-	if (dhd_info && !dhd_info->wl_accel_force_reg_on) {
+	if (dhd_info) {
 		DHD_PRINT(("%s: set force reg on\n", __FUNCTION__));
 		dhd_info->wl_accel_force_reg_on = TRUE;
+	}
+
+	return BCME_OK;
+}
+
+int
+dhd_dev_clear_accel_force_reg_on(struct net_device *dev)
+{
+	dhd_info_t *dhd_info = *(dhd_info_t **)netdev_priv(dev);
+
+	if (dhd_info) {
+		DHD_PRINT(("%s: clear force reg on\n", __FUNCTION__));
+		dhd_info->wl_accel_force_reg_on = FALSE;
 	}
 
 	return BCME_OK;

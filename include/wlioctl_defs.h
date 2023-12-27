@@ -2824,6 +2824,7 @@ enum wl_cnt_xtlv_id {
 #define WL_CLM_VLP_P2P_DISABLE     0x7000000u /**< Flag VLP_P2P_DISABLE */
 #define WL_CLM_DFS_FCC             WL_CLM_DFS_TPC /**< Flag for DFS FCC */
 #define WL_CLM_DFS_EU              (WL_CLM_DFS_TPC | WL_CLM_RADAR_TYPE_EU) /**< Flag for DFS EU */
+#define WL_CLM_PP                  0x8000000u /**< Flag for Punctured bandwidth allowed */
 
 typedef enum sup_auth_status {
 	/* Basic supplicant authentication states */
@@ -3151,6 +3152,8 @@ enum wlc_capext_coex_subfeature_bitpos {
 	WLC_CAPEXT_COEX_BITPOS_BTC_WIFI_PROT	= 2,
 	WLC_CAPEXT_COEX_BITPOS_RC1		= 3,
 	WLC_CAPEXT_COEX_BITPOS_SIB		= 5,
+	WLC_CAPEXT_COEX_BITPOS_BT2G		= 7,
+	WLC_CAPEXT_COEX_BITPOS_BT5G		= 8,
 	WLC_CAPEXT_COEX_BITPOS_MAX
 };
 
@@ -3356,8 +3359,10 @@ enum wlc_capext_feature_bitpos {
 	WLC_CAPEXT_FEATURE_BITPOS_EDS			= 134,
 	WLC_CAPEXT_FEATURE_BITPOS_PLATCFG		= 135,
 	WLC_CAPEXT_FEATURE_BITPOS_ANTGAIN6G		= 136,
+	WLC_CAPEXT_FEATURE_BITPOS_MONITOR_MULTI		= 137,
 
 	WLC_CAPEXT_FEATURE_BITPOS_MAX
 };
 
+#define WL_STA_ANT_MAX		4	/**< max possible rx antennas */
 #endif /* wlioctl_defs_h */

@@ -429,6 +429,14 @@ typedef struct dhd_tx_profile_protocol {
 
 #endif /* defined(DHD_TX_PROFILE) */
 
+/* Pkt LLC get return structure */
+struct dhd_pkt_llc_st {
+	unsigned int len;
+	char buf[0];
+};
+
+#define DHD_MAX_PKT_LLC_PAYLOAD_LEN	32u /* Max configurable LLC header len */
+
 typedef struct dhd_loglevel_data {
 	uint32 type;
 	uint32 component;

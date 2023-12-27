@@ -484,6 +484,11 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 			RX_PKTFREE(dhdp->osh, eh->ether_type, pktbuf, FALSE);
 			continue;
 		}
+		if (ifp->llc_enabled && ifp->llc_hdr) {
+			if (ntoh16(eh->ether_type) < ETHER_TYPE_MIN) {
+				dhd_generic_llc_to_eth_hdr(dhdp, ifidx, eh, pktbuf);
+			}
+		}
 
 		/* Dropping only data packets before registering net device to avoid kernel panic */
 #ifndef PROP_TXSTATUS_VSDB

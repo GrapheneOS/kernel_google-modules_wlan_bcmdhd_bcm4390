@@ -150,6 +150,7 @@ dhdpcie_get_sssr_dig_dump(dhd_pub_t *dhd, uint *buf, uint fifo_size,
 	dig_mem_check = FALSE;
 	/* SSSR register information structure v0 and v1 shares most except dig_mem */
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
 		case SSSR_REG_INFO_VER_5 :
 			if ((dhd->sssr_reg_info->rev5.length > OFFSETOF(sssr_reg_info_v5_t,
 			dig_mem_info)) && dhd->sssr_reg_info->rev5.dig_mem_info.dig_sssr_size) {
@@ -352,6 +353,7 @@ dhdpcie_resume_chipcommon_powerctrl(dhd_pub_t *dhd, uint32 reg_val)
 
 	/* SSSR register information structure v0 and v1 shares most except dig_mem */
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
 		case SSSR_REG_INFO_VER_5 :
 			/* Handled using MaxRsrcMask for rev5 and above */
 			goto exit;
@@ -586,6 +588,7 @@ dhdpcie_saqm_clear_clk_req(dhd_pub_t *dhdp)
 
 	DHD_PRINT(("%s\n", __FUNCTION__));
 	switch (dhdp->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
 		case SSSR_REG_INFO_VER_5 :
 			saqm_extrsrcreq = dhdp->sssr_reg_info->rev5.saqm_sssr_info.
 				oobr_regs.extrsrcreq;
@@ -734,6 +737,7 @@ dhdpcie_saqm_clear_force_sr_all(dhd_pub_t *dhdp)
 
 	DHD_PRINT(("%s\n", __FUNCTION__));
 	switch (dhdp->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6:
 		case SSSR_REG_INFO_VER_5:
 			/* clear DIG force_sr_all bit */
 			digsr_srcontrol2_addr =
@@ -845,6 +849,7 @@ dhdpcie_arm_clear_clk_req(dhd_pub_t *dhd)
 
 	/* SSSR register information structure v0 and v1 shares most except dig_mem */
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
 		case SSSR_REG_INFO_VER_5 :
 			clockrequeststatus = dhd->sssr_reg_info->rev5.
 				arm_regs.oobr_regs.extrsrcreq;
@@ -1014,6 +1019,7 @@ dhdpcie_pcie_send_ltrsleep(dhd_pub_t *dhd)
 
 	/* SSSR register information structure v0 and v1 shares most except dig_mem */
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
 		case SSSR_REG_INFO_VER_5 :
 			addr = dhd->sssr_reg_info->rev5.pcie_regs.base_regs.ltrstate;
 			break;
@@ -1138,12 +1144,12 @@ dhdpcie_sssr_common_header(dhd_pub_t *dhd, sssr_header_t *sssr_header)
 }
 
 static int
-dhdpcie_sssr_d11_header(dhd_pub_t *dhd, uint *buf, uint32 data_len, uint16 coreunit)
+dhdpcie_sssr_d11_header(dhd_pub_t *dhd, uint *buf, uint32 data_len, uint16 coreunit, uint32 *len)
 {
-	int len = 0;
 	int ret = 0;
 
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
 		case SSSR_REG_INFO_VER_5 :
 			{
 				sssr_header_t sssr_header;
@@ -1157,24 +1163,31 @@ dhdpcie_sssr_d11_header(dhd_pub_t *dhd, uint *buf, uint32 data_len, uint16 coreu
 				if (ret == BCME_OK) {
 					sssr_header.war_reg = war_reg;
 				}
-				(void)memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
-				len = sizeof(sssr_header_t);
+
+				ret = memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
+				if (ret) {
+					DHD_ERROR(("%s: D11 sssr_header memcpy_s failed: %d\n",
+							__FUNCTION__, ret));
+						return ret;
+				}
+
+				*len = sizeof(sssr_header_t);
 			}
 			break;
 		default :
-			len = 0;
+			*len = 0;
 	}
 
-	return len;
+	return BCME_OK;
 }
 
 static int
-dhdpcie_sssr_dig_header(dhd_pub_t *dhd, uint *buf, uint32 data_len)
+dhdpcie_sssr_dig_header(dhd_pub_t *dhd, uint *buf, uint32 data_len, uint32 *len)
 {
-	int len = 0;
 	int ret = 0;
 
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
 		case SSSR_REG_INFO_VER_5 :
 			{
 				sssr_header_t sssr_header;
@@ -1187,24 +1200,31 @@ dhdpcie_sssr_dig_header(dhd_pub_t *dhd, uint *buf, uint32 data_len)
 				if (ret == BCME_OK) {
 					sssr_header.war_reg = war_reg;
 				}
-				(void)memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
-				len = sizeof(sssr_header_t);
+
+				ret = memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
+				if (ret) {
+					DHD_ERROR(("%s: DIG sssr header memcpy_s failed: %d\n",
+							__FUNCTION__, ret));
+						return ret;
+				}
+
+				*len = sizeof(sssr_header_t);
 			}
 			break;
 		default :
-			len = 0;
+			*len = 0;
 	}
 
-	return len;
+	return BCME_OK;
 }
 
 static int
-dhdpcie_sssr_saqm_header(dhd_pub_t *dhd, uint *buf, uint32 data_len)
+dhdpcie_sssr_saqm_header(dhd_pub_t *dhd, uint *buf, uint32 data_len, uint32 * len)
 {
-	int len = 0;
 	int ret = 0;
 
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6:
 		case SSSR_REG_INFO_VER_5:
 			{
 				sssr_header_t sssr_header;
@@ -1217,25 +1237,31 @@ dhdpcie_sssr_saqm_header(dhd_pub_t *dhd, uint *buf, uint32 data_len)
 				if (ret == BCME_OK) {
 					sssr_header.war_reg = war_reg;
 				}
-				(void)memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
-				len = sizeof(sssr_header_t);
+
+				ret = memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
+				if (ret) {
+					DHD_ERROR(("%s: SAQM sssr header memcpy_s failed: %d\n",
+							__FUNCTION__, ret));
+						return ret;
+				}
+
+				*len = sizeof(sssr_header_t);
 			}
 			break;
 		default:
-			len = 0;
+			*len = 0;
 	}
 
-	return len;
+	return BCME_OK;
 }
 
 static int
-dhdpcie_sssr_srcb_header(dhd_pub_t *dhd, uint *buf, uint32 data_len)
+dhdpcie_sssr_srcb_header(dhd_pub_t *dhd, uint *buf, uint32 data_len, uint32 *len)
 {
-	int len = 0;
 	int ret = 0;
 
 	switch (dhd->sssr_reg_info->rev2.version) {
-		case SSSR_REG_INFO_VER_5:
+		case SSSR_REG_INFO_VER_6:
 			{
 				sssr_header_t sssr_header;
 				uint32 war_reg = 0;
@@ -1247,38 +1273,52 @@ dhdpcie_sssr_srcb_header(dhd_pub_t *dhd, uint *buf, uint32 data_len)
 				if (ret == BCME_OK) {
 					sssr_header.war_reg = war_reg;
 				}
-				(void)memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
-				len = sizeof(sssr_header_t);
+
+				ret = memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
+				if (ret) {
+					DHD_ERROR(("%s: SRCB sssr header memcpy_s failed: %d\n",
+							__FUNCTION__, ret));
+						return ret;
+				}
+
+				*len = sizeof(sssr_header_t);
 			}
 			break;
 		default:
-			len = 0;
+			*len = 0;
 	}
 
-	return len;
+	return BCME_OK;
 }
 
 static int
-dhdpcie_sssr_cmn_header(dhd_pub_t *dhd, uint *buf, uint32 data_len)
+dhdpcie_sssr_cmn_header(dhd_pub_t *dhd, uint *buf, uint32 data_len, uint32 *len)
 {
-	int len = 0;
+	int ret = 0;
 
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6:
 		case SSSR_REG_INFO_VER_5:
 			{
 				sssr_header_t sssr_header = {0};
 				dhdpcie_sssr_common_header(dhd, &sssr_header);
 				sssr_header.data_len = data_len;
 				sssr_header.coreid = CC_CORE_ID;
-				(void)memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
-				len = sizeof(sssr_header_t);
+				ret = memcpy_s(buf, data_len, &sssr_header, sizeof(sssr_header_t));
+				if (ret) {
+					DHD_ERROR(("%s: CMN sssr header memcpy_s failed: %d\n",
+							__FUNCTION__, ret));
+						return ret;
+				}
+
+				*len = sizeof(sssr_header_t);
 			}
 			break;
 		default:
-			len = 0;
+			*len = 0;
 	}
 
-	return len;
+	return BCME_OK;
 }
 
 static bool
@@ -1318,6 +1358,7 @@ dhdpcie_sssr_dump_get_before_sr(dhd_pub_t *dhd)
 	uint *d11_buffer;
 	uint *dig_buffer;
 	uint *saqm_buffer;
+	int sssr_header_populate_state = 0;
 
 	DHD_PRINT(("%s\n", __FUNCTION__));
 
@@ -1329,10 +1370,21 @@ dhdpcie_sssr_dump_get_before_sr(dhd_pub_t *dhd)
 			xmtaddress = dhd_sssr_mac_xmtaddress(dhd, i);
 			xmtdata = dhd_sssr_mac_xmtdata(dhd, i);
 			d11_buffer = dhd->sssr_d11_before[i];
-			d11_header_len = dhdpcie_sssr_d11_header(dhd, d11_buffer, sr_size, i);
+			sssr_header_populate_state = dhdpcie_sssr_d11_header(dhd, d11_buffer,
+					sr_size, i, &d11_header_len);
+			if (sssr_header_populate_state != BCME_OK) {
+				DHD_ERROR(("%s: dhdpcie_sssr_d11_header failed\n", __FUNCTION__));
+				return BCME_ERROR;
+			}
+
 			/* D11 buffer starts right after sssr d11 header */
 			d11_buffer = (uint *)((char *)d11_buffer + d11_header_len);
-			dhdpcie_get_sssr_fifo_dump(dhd, d11_buffer, sr_size, xmtaddress, xmtdata);
+			if (dhdpcie_get_sssr_fifo_dump(dhd, d11_buffer, sr_size, xmtaddress,
+					xmtdata) != BCME_OK) {
+				DHD_ERROR(("%s: dhdpcie_get_sssr_fifo_dump failed\n",
+						__FUNCTION__));
+				return BCME_ERROR;
+			}
 		}
 	}
 
@@ -1340,10 +1392,19 @@ dhdpcie_sssr_dump_get_before_sr(dhd_pub_t *dhd)
 	dig_buf_addr = dhd_sssr_dig_buf_addr(dhd);
 	if (dig_buf_size) {
 		dig_buffer = dhd->sssr_dig_buf_before;
-		dig_header_len = dhdpcie_sssr_dig_header(dhd, dig_buffer, dig_buf_size);
+		sssr_header_populate_state = dhdpcie_sssr_dig_header(dhd, dig_buffer,
+				dig_buf_size, &dig_header_len);
+		if (sssr_header_populate_state != BCME_OK) {
+			DHD_ERROR(("%s: dhdpcie_sssr_dig_header failed\n", __FUNCTION__));
+			return BCME_ERROR;
+		}
 		/* Dig buffer starts right after sssr dig  header */
 		dig_buffer = (uint *)((char *)dig_buffer + dig_header_len);
-		dhdpcie_get_sssr_dig_dump(dhd, dig_buffer, dig_buf_size, dig_buf_addr);
+		if (dhdpcie_get_sssr_dig_dump(dhd, dig_buffer, dig_buf_size, dig_buf_addr) !=
+				BCME_OK) {
+			DHD_ERROR(("%s: Failed to get sssr dig dump!\n", __FUNCTION__));
+			return BCME_ERROR;
+		}
 	}
 
 	saqm_buf_size = dhd_sssr_saqm_buf_size(dhd);
@@ -1351,14 +1412,21 @@ dhdpcie_sssr_dump_get_before_sr(dhd_pub_t *dhd)
 	if (saqm_buf_size) {
 		int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 		supported_vers[0] = SSSR_REG_INFO_VER_5;
-		supported_vers[1] = -1;
+		supported_vers[1] = SSSR_REG_INFO_VER_6;
+		supported_vers[2] = -1;
 		saqm_buffer = dhd->sssr_saqm_buf_before;
-		saqm_header_len = dhdpcie_sssr_saqm_header(dhd, saqm_buffer, saqm_buf_size);
+		sssr_header_populate_state = dhdpcie_sssr_saqm_header(dhd, saqm_buffer,
+				saqm_buf_size, &saqm_header_len);
+		if (sssr_header_populate_state != BCME_OK) {
+			DHD_ERROR(("%s: dhdpcie_sssr_saqm_header failed\n", __FUNCTION__));
+			return BCME_ERROR;
+		}
 		/* saqm buffer starts right after saqm header */
 		saqm_buffer = (uint *)((char *)saqm_buffer + saqm_header_len);
 		if (dhdpcie_get_sssr_subtype_dump(dhd, saqm_buffer, saqm_buf_size,
-			saqm_buf_addr, SSSR_SAQM_DUMP, supported_vers) != BCME_OK) {
+				saqm_buf_addr, SSSR_SAQM_DUMP, supported_vers) != BCME_OK) {
 			DHD_ERROR(("%s: Failed to get sssr saqm dump!\n", __FUNCTION__));
+			return BCME_ERROR;
 		}
 	}
 
@@ -1386,6 +1454,7 @@ dhdpcie_sssr_dump_get_after_sr(dhd_pub_t *dhd)
 	uint *srcb_buffer = NULL;
 	uint *cmn_buffer = NULL;
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
+	int sssr_header_populate_state = 0;
 
 	DHD_PRINT(("%s\n", __FUNCTION__));
 
@@ -1397,10 +1466,22 @@ dhdpcie_sssr_dump_get_after_sr(dhd_pub_t *dhd)
 			xmtaddress = dhd_sssr_mac_xmtaddress(dhd, i);
 			xmtdata = dhd_sssr_mac_xmtdata(dhd, i);
 			d11_buffer = dhd->sssr_d11_after[i];
-			d11_header_len = dhdpcie_sssr_d11_header(dhd, d11_buffer, sr_size, i);
+
+			sssr_header_populate_state = dhdpcie_sssr_d11_header(dhd, d11_buffer,
+					sr_size, i, &d11_header_len);
+			if (sssr_header_populate_state != BCME_OK) {
+				DHD_ERROR(("%s: dhdpcie_sssr_d11_header failed\n", __FUNCTION__));
+				return BCME_ERROR;
+			}
+
 			/* D11 buffer starts right after sssr d11 header */
 			d11_buffer = (uint *)((char *)d11_buffer + d11_header_len);
-			dhdpcie_get_sssr_fifo_dump(dhd, d11_buffer, sr_size, xmtaddress, xmtdata);
+			if (dhdpcie_get_sssr_fifo_dump(dhd, d11_buffer, sr_size,
+					xmtaddress, xmtdata) != BCME_OK) {
+				DHD_ERROR(("%s: dhdpcie_get_sssr_fifo_dump failed\n",
+						__FUNCTION__));
+				return BCME_ERROR;
+			}
 		}
 	}
 
@@ -1408,51 +1489,86 @@ dhdpcie_sssr_dump_get_after_sr(dhd_pub_t *dhd)
 	dig_buf_addr = dhd_sssr_dig_buf_addr(dhd);
 	if (dig_buf_size) {
 		dig_buffer = dhd->sssr_dig_buf_after;
-		dig_header_len = dhdpcie_sssr_dig_header(dhd, dig_buffer, dig_buf_size);
+		sssr_header_populate_state = dhdpcie_sssr_dig_header(dhd, dig_buffer,
+				dig_buf_size, &dig_header_len);
+		if (sssr_header_populate_state != BCME_OK) {
+			DHD_ERROR(("%s: dhdpcie_sssr_dig_header failed\n", __FUNCTION__));
+			return BCME_ERROR;
+		}
+
 		/* Dig buffer starts right after sssr dig  header */
 		dig_buffer = (uint *)((char *)dig_buffer + dig_header_len);
-		dhdpcie_get_sssr_dig_dump(dhd, dig_buffer, dig_buf_size, dig_buf_addr);
+		if (dhdpcie_get_sssr_dig_dump(dhd, dig_buffer, dig_buf_size, dig_buf_addr) !=
+				BCME_OK)
+		{
+			DHD_ERROR(("%s: dhdpcie_get_sssr_dig_dump failed\n", __FUNCTION__));
+			return BCME_ERROR;
+		}
 	}
 
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	saqm_buf_size = dhd_sssr_saqm_buf_size(dhd);
 	saqm_buf_addr = dhd_sssr_saqm_buf_addr(dhd);
 	if (saqm_buf_size) {
 		saqm_buffer = dhd->sssr_saqm_buf_after;
-		saqm_header_len = dhdpcie_sssr_saqm_header(dhd, saqm_buffer, saqm_buf_size);
+		sssr_header_populate_state = dhdpcie_sssr_saqm_header(dhd, saqm_buffer,
+				saqm_buf_size, &saqm_header_len);
+		if (sssr_header_populate_state != BCME_OK) {
+			DHD_ERROR(("%s: dhdpcie_sssr_saqm_header failed\n", __FUNCTION__));
+			return BCME_ERROR;
+		}
 		/* saqm buffer starts right after saqm header */
 		saqm_buffer = (uint *)((char *)saqm_buffer + saqm_header_len);
 		if (dhdpcie_get_sssr_subtype_dump(dhd, saqm_buffer, saqm_buf_size,
-			saqm_buf_addr, SSSR_SAQM_DUMP, supported_vers) != BCME_OK) {
+				saqm_buf_addr, SSSR_SAQM_DUMP, supported_vers) != BCME_OK) {
 			DHD_ERROR(("%s: Failed to get sssr saqm dump!\n", __FUNCTION__));
+			return BCME_ERROR;
 		}
 	}
 
 	if (dhd->sssr_dump_mode == SSSR_DUMP_MODE_FIS) {
+		supported_vers[0] = SSSR_REG_INFO_VER_6;
+		supported_vers[1] = -1;
 		srcb_buf_size = dhd_sssr_srcb_buf_size(dhd);
 		srcb_buf_addr = dhd_sssr_srcb_buf_addr(dhd);
-		if ((dhd->sssr_dump_mode == SSSR_DUMP_MODE_FIS) && (srcb_buf_size > 0)) {
+		if (srcb_buf_size > 0) {
 			srcb_buffer = dhd->sssr_srcb_buf_after;
-			srcb_header_len = dhdpcie_sssr_srcb_header(dhd, srcb_buffer, srcb_buf_size);
+			sssr_header_populate_state = dhdpcie_sssr_srcb_header(dhd, srcb_buffer,
+					srcb_buf_size, &srcb_header_len);
+			if (sssr_header_populate_state != BCME_OK) {
+				DHD_ERROR(("%s: dhdpcie_sssr_srcb_header failed\n", __FUNCTION__));
+				return BCME_ERROR;
+			}
 			/* srcb buffer starts right after srcb header */
 			srcb_buffer = (uint *)((char *)srcb_buffer + srcb_header_len);
 			if (dhdpcie_get_sssr_subtype_dump(dhd, srcb_buffer, srcb_buf_size,
 				srcb_buf_addr, SSSR_SRCB_DUMP, supported_vers) != BCME_OK) {
 				DHD_ERROR(("%s: Failed to get sssr srcb dump!\n", __FUNCTION__));
+				return BCME_ERROR;
 			}
 		}
 
+		supported_vers[0] = SSSR_REG_INFO_VER_5;
+		supported_vers[1] = SSSR_REG_INFO_VER_6;
+		supported_vers[2] = -1;
 		cmn_buf_size = dhd_sssr_cmn_buf_size(dhd);
 		cmn_buf_addr = dhd_sssr_cmn_buf_addr(dhd);
 		if (cmn_buf_size && cmn_buf_addr > 0) {
 			cmn_buffer = dhd->sssr_cmn_buf_after;
 			/* populate header */
-			cmn_header_len = dhdpcie_sssr_cmn_header(dhd, cmn_buffer, cmn_buf_size);
+			sssr_header_populate_state = dhdpcie_sssr_cmn_header(dhd, cmn_buffer,
+					cmn_buf_size, &cmn_header_len);
+			if (sssr_header_populate_state != BCME_OK) {
+				DHD_ERROR(("%s: dhdpcie_sssr_cmn_header failed\n", __FUNCTION__));
+				return BCME_ERROR;
+			}
 			cmn_buffer = (uint *)((char *)cmn_buffer + cmn_header_len);
 			if (dhdpcie_get_sssr_subtype_dump(dhd, cmn_buffer, cmn_buf_size,
-				cmn_buf_addr, SSSR_CMN_DUMP, supported_vers) != BCME_OK) {
+					cmn_buf_addr, SSSR_CMN_DUMP, supported_vers) != BCME_OK) {
 				DHD_ERROR(("%s: Failed to get sssr cmn dump!\n", __FUNCTION__));
+				return BCME_ERROR;
 			}
 		}
 	}
@@ -1535,8 +1651,10 @@ dhdpcie_dump_oobr(dhd_pub_t *dhd, uint core_bmap, uint coreunit_bmap)
 		DHD_ERROR(("%s: PCIe link is down\n", __FUNCTION__));
 		return BCME_NOTUP;
 	}
-	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s : wlan backplane is down. skip\n", __FUNCTION__));
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u), skip.\n",
+			__FUNCTION__, dhd->bus->link_state));
 		return BCME_NOTUP;
 	}
 
@@ -1549,7 +1667,7 @@ dhdpcie_dump_oobr(dhd_pub_t *dhd, uint core_bmap, uint coreunit_bmap)
 		if (corecap2 == (uint)-1) {
 			DHD_ERROR(("%s:corecap2=0x%x ! Bad value, set linkdown\n",
 				__FUNCTION__, corecap2));
-			dhd->bus->is_linkdown = TRUE;
+			dhd_bus_set_linkdown(dhd, TRUE);
 			return BCME_NOTUP;
 		}
 		/*
@@ -1724,7 +1842,7 @@ dhdpcie_sssr_dump(dhd_pub_t *dhd)
 		DHD_ERROR(("%s: PCIe Link after WL down is not good! pwrctrl=%x, Abort\n",
 			__FUNCTION__, pwrctrl));
 		bus->link_state = DHD_PCIE_COMMON_BP_DOWN;
-		bus->is_linkdown = TRUE;
+		dhd_bus_set_linkdown(dhd, TRUE);
 		ret = BCME_ERROR;
 		goto exit;
 	}
@@ -1801,7 +1919,7 @@ dhdpcie_sssr_dump(dhd_pub_t *dhd)
 
 	if (dhd->sssr_reg_info->rev2.version == SSSR_REG_INFO_VER_4) {
 		dhdpcie_bring_saqm_updown(dhd, TRUE);
-	} else if (dhd->sssr_reg_info->rev2.version == SSSR_REG_INFO_VER_5) {
+	} else if (dhd->sssr_reg_info->rev2.version >= SSSR_REG_INFO_VER_5) {
 		dhdpcie_bring_saqm_updown(dhd, FALSE);
 	}
 
@@ -1848,6 +1966,40 @@ exit:
 	return ret;
 }
 
+static void
+dhdpcie_clear_pmu_debug_mode(dhd_pub_t *dhd)
+{
+	uint32 vreg_ctrl_addr, vreg_ctrl_data_addr, vreg_num, vreg_offset;
+	sssr_reg_info_cmn_t *sssr_reg_info_cmn = dhd->sssr_reg_info;
+	sssr_reg_info_v6_t *sssr_reg_info = (sssr_reg_info_v6_t *)&sssr_reg_info_cmn->rev3;
+	uint32 val = 0;
+
+	if (sssr_reg_info->version < SSSR_REG_INFO_VER_6) {
+		DHD_ERROR(("%s: not supported for version:%d\n",
+			__FUNCTION__, sssr_reg_info->version));
+		return;
+	}
+
+	vreg_ctrl_addr = sssr_reg_info->pmu_dbug_rst_regs.vreg_addr;
+	vreg_ctrl_data_addr = sssr_reg_info->pmu_dbug_rst_regs.vreg_data_addr;
+	vreg_num = sssr_reg_info->pmu_dbug_rst_regs.vreg_num;
+	vreg_offset = sssr_reg_info->pmu_dbug_rst_regs.vreg_offset;
+
+	if (IS_HWADDR_INVALID(vreg_ctrl_addr) || IS_HWADDR_INVALID(vreg_ctrl_data_addr)) {
+		DHD_ERROR(("%s: Bad values ! vreg_ctrl_addr=0x%x; vreg_ctrl_data_addr=0x%x;\n",
+			__FUNCTION__, vreg_ctrl_addr, vreg_ctrl_data_addr));
+		return;
+	}
+
+	dhd_sbreg_op(dhd, vreg_ctrl_addr, &vreg_num, FALSE);
+	dhd_sbreg_op(dhd, vreg_ctrl_data_addr, &val, TRUE);
+	val |= 1 << vreg_offset;
+	dhd_sbreg_op(dhd, vreg_ctrl_data_addr, &val, FALSE);
+	OSL_DELAY(100);
+	val &= ~(1 << vreg_offset);
+	dhd_sbreg_op(dhd, vreg_ctrl_data_addr, &val, FALSE);
+}
+
 #define PCIE_CFG_DSTATE_MASK		0x11u
 #define CHIPCOMMON_WAR_SIGNATURE	0xabcdu
 #define FIS_DONE_DELAY			(100 * 1000) /* 100ms */
@@ -1855,7 +2007,7 @@ exit:
 static int
 dhdpcie_fis_trigger(dhd_pub_t *dhd)
 {
-	uint32 FISCtrlStatus, FISMinRsrcMask, FISTrigRsrcState, RsrcState, MinResourceMask;
+	uint32 FISCtrlStatus, FISTrigRsrcState, RsrcState, MinResourceMask;
 	uint32 cfg_status_cmd;
 	uint32 cfg_pmcsr;
 
@@ -1881,14 +2033,6 @@ dhdpcie_fis_trigger(dhd_pub_t *dhd)
 
 	/* Set fis_triggered flag to ignore link down callback from RC */
 	dhd->fis_triggered = TRUE;
-
-	FISCtrlStatus = PMU_REG(dhd->bus->sih, FISCtrlStatus, 0, 0);
-	FISMinRsrcMask = PMU_REG(dhd->bus->sih, FISMinRsrcMask, 0, 0);
-	RsrcState = PMU_REG(dhd->bus->sih, RsrcState, 0, 0);
-
-	DHD_PRINT(("%s: before trigger, PMU FISCtrlStatus=0x%x FISMinRsrcMask=0x%x, "
-		"RsrcState=0x%x\n", __FUNCTION__, FISCtrlStatus,
-		FISMinRsrcMask, RsrcState));
 
 #ifdef OEM_ANDROID
 	/* for android platforms, since they support WL_REG_ON toggle,
@@ -2007,6 +2151,8 @@ dhdpcie_fis_trigger(dhd_pub_t *dhd)
 		return BCME_ERROR;
 	}
 
+	dhdpcie_clear_pmu_debug_mode(dhd);
+
 	/* Clear fis_triggered as REG OFF/ON recovered link */
 	dhd->fis_triggered = FALSE;
 
@@ -2081,7 +2227,19 @@ dhdpcie_fis_fw_triggered_check(struct dhd_bus *bus)
 {
 	uint32 FISCtrlStatus;
 
+	if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u).\n",
+			__FUNCTION__, bus->link_state));
+		return FALSE;
+	}
+
 	FISCtrlStatus = PMU_REG(bus->sih, FISCtrlStatus, 0, 0);
+	if (FISCtrlStatus == (uint32)-1) {
+		DHD_ERROR(("%s: WARNING! invalid value of FISCtrlStatus(0x%x)\n", __FUNCTION__,
+			FISCtrlStatus));
+		return FALSE;
+	}
 	if ((FISCtrlStatus & PMU_CLEAR_FIS_DONE_MASK) == 0) {
 		DHD_PRINT(("%s: FIS trigger done bit not set. FIS control status=0x%x\n",
 		 __FUNCTION__, FISCtrlStatus));
@@ -2528,6 +2686,120 @@ dhd_dump_sssr_reg_info_v3(dhd_pub_t *dhd)
 }
 
 static void
+dhd_dump_sssr_reg_info_v6(dhd_pub_t *dhd)
+{
+	sssr_reg_info_cmn_t *sssr_reg_info_cmn = dhd->sssr_reg_info;
+	sssr_reg_info_v6_t *sssr_reg_info = (sssr_reg_info_v6_t *)&sssr_reg_info_cmn->rev6;
+	int i;
+	uint8 num_d11cores = dhd_d11_slices_num_get(dhd);
+
+	DHD_PRINT(("pmu_regs\n"));
+	DHD_PRINT(("pmuintmask0=0x%x pmuintmask1=0x%x resreqtimer=0x%x "
+		"macresreqtimer=0x%x macresreqtimer1=0x%x macresreqtimer2=0x%x"
+		"pmu_min_res_mask=0x%x pmu_max_res_mask=0x%x sssr_max_res_mask=0x%x\n",
+		sssr_reg_info->pmu_regs.base_regs.pmuintmask0,
+		sssr_reg_info->pmu_regs.base_regs.pmuintmask1,
+		sssr_reg_info->pmu_regs.base_regs.resreqtimer,
+		sssr_reg_info->pmu_regs.base_regs.macresreqtimer,
+		sssr_reg_info->pmu_regs.base_regs.macresreqtimer1,
+		sssr_reg_info->pmu_regs.base_regs.macresreqtimer2,
+		sssr_reg_info->pmu_regs.base_regs.pmu_min_res_mask,
+		sssr_reg_info->pmu_regs.base_regs.pmu_max_res_mask,
+		sssr_reg_info->pmu_regs.base_regs.sssr_max_res_mask));
+
+	DHD_PRINT(("chipcommon_regs\n"));
+	DHD_PRINT(("intmask=0x%x powerctrl=0x%x clockcontrolstatus=0x%x powerctrl_mask=0x%x\n",
+		sssr_reg_info->chipcommon_regs.base_regs.intmask,
+		sssr_reg_info->chipcommon_regs.base_regs.powerctrl,
+		sssr_reg_info->chipcommon_regs.base_regs.clockcontrolstatus,
+		sssr_reg_info->chipcommon_regs.base_regs.powerctrl_mask));
+
+	DHD_PRINT(("arm_regs\n"));
+	DHD_PRINT(("clockcontrolstatus=0x%x clockcontrolstatus_val=0x%x"
+		" extrsrcreq=0x%x war_reg=0x%x\n",
+		sssr_reg_info->arm_regs.base_regs.clockcontrolstatus,
+		sssr_reg_info->arm_regs.base_regs.clockcontrolstatus_val,
+		sssr_reg_info->arm_regs.oobr_regs.extrsrcreq,
+		sssr_reg_info->arm_regs.war_reg));
+
+	DHD_PRINT(("pcie_regs\n"));
+	DHD_PRINT(("ltrstate=0x%x clockcontrolstatus=0x%x "
+		"clockcontrolstatus_val=0x%x extrsrcreq=0x%x\n",
+		sssr_reg_info->pcie_regs.base_regs.ltrstate,
+		sssr_reg_info->pcie_regs.base_regs.clockcontrolstatus,
+		sssr_reg_info->pcie_regs.base_regs.clockcontrolstatus_val,
+		sssr_reg_info->pcie_regs.oobr_regs.extrsrcreq));
+
+	for (i = 0; i < num_d11cores; i++) {
+		DHD_PRINT(("mac_regs core[%d]\n", i));
+		DHD_PRINT(("xmtaddress=0x%x xmtdata=0x%x clockcontrolstatus=0x%x "
+			"clockcontrolstatus_val=0x%x extrsrcreq=0x%x war_reg=0x%x\n",
+			sssr_reg_info->mac_regs[i].base_regs.xmtaddress,
+			sssr_reg_info->mac_regs[i].base_regs.xmtdata,
+			sssr_reg_info->mac_regs[i].base_regs.clockcontrolstatus,
+			sssr_reg_info->mac_regs[i].base_regs.clockcontrolstatus_val,
+			sssr_reg_info->mac_regs[i].oobr_regs.extrsrcreq,
+			sssr_reg_info->mac_regs[i].war_reg));
+		DHD_PRINT(("sr_size=0x%x\n", sssr_reg_info->mac_regs[i].sr_size));
+	}
+
+	DHD_PRINT(("saqm_sssr_info base_regs\n"));
+	DHD_PRINT(("clockcontrolstatus=0x%x clockcontrolstatus_val=0x%x "
+		"extrsrcreq=0x%x war_reg=0x%x\n",
+		sssr_reg_info->saqm_sssr_info.base_regs.clockcontrolstatus,
+		sssr_reg_info->saqm_sssr_info.base_regs.clockcontrolstatus_val,
+		sssr_reg_info->saqm_sssr_info.oobr_regs.extrsrcreq,
+		sssr_reg_info->saqm_sssr_info.war_reg));
+	DHD_PRINT(("saqm_sssr_info saqm_sssr_addr=0x%x saqm_sssr_size=0x%x\n",
+		sssr_reg_info->saqm_sssr_info.saqm_sssr_addr,
+		sssr_reg_info->saqm_sssr_info.saqm_sssr_size));
+	DHD_PRINT(("saqm_sssr_info config_regs\n"));
+	DHD_PRINT(("digsr_srcontrol1_addr=0x%x digsr_srcontrol1_clrbit_val=0x%x"
+		" digsr_srcontrol2_addr=0x%x digsr_srcontrol2_setbit_val=0x%x"
+		" pmuchip_ctl_addr_reg=0x%x, pmuchip_ctl_val=0x%x"
+		" pmuchip_ctl_data_reg=0x%x pmuchip_ctl_setbit_val=0x%x\n",
+		sssr_reg_info->saqm_sssr_info.sssr_config_regs.digsr_srcontrol1_addr,
+		sssr_reg_info->saqm_sssr_info.sssr_config_regs.digsr_srcontrol1_clrbit_val,
+		sssr_reg_info->saqm_sssr_info.sssr_config_regs.digsr_srcontrol2_addr,
+		sssr_reg_info->saqm_sssr_info.sssr_config_regs.digsr_srcontrol2_setbit_val,
+		sssr_reg_info->saqm_sssr_info.sssr_config_regs.pmuchip_ctl_addr_reg,
+		sssr_reg_info->saqm_sssr_info.sssr_config_regs.pmuchip_ctl_val,
+		sssr_reg_info->saqm_sssr_info.sssr_config_regs.pmuchip_ctl_data_reg,
+		sssr_reg_info->saqm_sssr_info.sssr_config_regs.pmuchip_ctl_setbit_val));
+
+	DHD_PRINT(("dig_mem_info\n"));
+	DHD_PRINT(("dig_sssr_addr=0x%x dig_sssr_size=0x%x\n",
+		sssr_reg_info->dig_mem_info.dig_sssr_addr,
+		sssr_reg_info->dig_mem_info.dig_sssr_size));
+
+	DHD_PRINT(("fis_mem_info\n"));
+	DHD_PRINT(("fis_addr=0x%x fis_size=0x%x fis_enab=0x%x\n",
+		sssr_reg_info->fis_mem_info.fis_addr,
+		sssr_reg_info->fis_mem_info.fis_size,
+		sssr_reg_info->fis_enab));
+
+	DHD_PRINT(("sssr_all_mem_info\n"));
+	DHD_PRINT(("sysmem_sssr_addr=0x%x sysmem_sssr_size=0x%x\n",
+		sssr_reg_info->sssr_all_mem_info.sysmem_sssr_addr,
+		sssr_reg_info->sssr_all_mem_info.sysmem_sssr_size));
+
+	DHD_PRINT(("sr_asm_version=0x%xn", sssr_reg_info->sr_asm_version));
+
+	DHD_PRINT(("srcb_mem_info\n"));
+	DHD_PRINT(("war_reg=0x%x srcb_sssr_addr=0x%x srcb_sssr_size=0x%x\n",
+		sssr_reg_info->srcb_mem_info.war_reg,
+		sssr_reg_info->srcb_mem_info.srcb_sssr_addr,
+		sssr_reg_info->srcb_mem_info.srcb_sssr_size));
+
+	DHD_PRINT(("pmu debug rst regs\n"));
+	DHD_PRINT(("vreg_addr=0x%x vreg_data_addr=0x%x vreg_num=0x%x vreg_offset=0x%x\n",
+		sssr_reg_info->pmu_dbug_rst_regs.vreg_addr,
+		sssr_reg_info->pmu_dbug_rst_regs.vreg_data_addr,
+		sssr_reg_info->pmu_dbug_rst_regs.vreg_num,
+		sssr_reg_info->pmu_dbug_rst_regs.vreg_offset));
+}
+
+static void
 dhd_dump_sssr_reg_info_v5(dhd_pub_t *dhd)
 {
 	sssr_reg_info_cmn_t *sssr_reg_info_cmn = dhd->sssr_reg_info;
@@ -2791,6 +3063,9 @@ dhd_dump_sssr_reg_info(dhd_pub_t *dhd)
 	DHD_PRINT(("************** SSSR REG INFO start version:%d ****************\n",
 		sssr_reg_info->version));
 	switch (sssr_reg_info->version) {
+		case SSSR_REG_INFO_VER_6 :
+			dhd_dump_sssr_reg_info_v6(dhd);
+			break;
 		case SSSR_REG_INFO_VER_5 :
 			dhd_dump_sssr_reg_info_v5(dhd);
 			break;
@@ -2836,6 +3111,11 @@ dhd_get_sssr_reg_info(dhd_pub_t *dhd)
 
 	/* Write sssr reg info to output file */
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
+			ret = dhd_write_file_and_check(filepath_sssr,
+				(char*)(&dhd->sssr_reg_info->rev6),
+				sizeof(sssr_reg_info_v6_t));
+			break;
 		case SSSR_REG_INFO_VER_5 :
 			ret = dhd_write_file_and_check(filepath_sssr,
 				(char*)(&dhd->sssr_reg_info->rev5),
@@ -2888,6 +3168,7 @@ dhd_get_sssr_bufsize(dhd_pub_t *dhd)
 	num_d11cores = dhd_d11_slices_num_get(dhd);
 
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
 		case SSSR_REG_INFO_VER_5 :
 			sssr_bufsize += dhd->sssr_reg_info->rev5.sssr_all_mem_info.sysmem_sssr_size;
 			break;
@@ -2987,6 +3268,11 @@ dhd_sssr_dump_init(dhd_pub_t *dhd, bool fis_dump)
 			err = dhd_read_file(filepath_sssr, (char*)(&dhd->sssr_reg_info->rev0),
 				sizeof(sssr_reg_info_v0_t));
 			switch (dhd->sssr_reg_info->rev2.version) {
+				case SSSR_REG_INFO_VER_6 :
+					err = dhd_read_file(filepath_sssr,
+						(char*)(&dhd->sssr_reg_info->rev6),
+						sizeof(sssr_reg_info_v6_t));
+					break;
 				case SSSR_REG_INFO_VER_5 :
 					err = dhd_read_file(filepath_sssr,
 						(char*)(&dhd->sssr_reg_info->rev5),
@@ -3032,10 +3318,19 @@ dhd_sssr_dump_init(dhd_pub_t *dhd, bool fis_dump)
 	num_d11cores = dhd_d11_slices_num_get(dhd);
 	/* Validate structure version and length */
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
+			if (dhd->sssr_reg_info->rev6.length != sizeof(sssr_reg_info_v6_t)) {
+				DHD_ERROR(("%s: dhd->sssr_reg_info->rev6.length (%d : %d)"
+					 "mismatch on rev6\n", __FUNCTION__,
+					 (int)dhd->sssr_reg_info->rev6.length,
+					 (int)sizeof(sssr_reg_info_v6_t)));
+				return BCME_ERROR;
+			}
+			break;
 		case SSSR_REG_INFO_VER_5 :
 			if ((dhd->sssr_reg_info->rev5.length != sizeof(sssr_reg_info_v5_t)) &&
 			(dhd->sssr_reg_info->rev5.length <
-			 OFFSETOF(sssr_reg_info_v5_t, srcb_mem_info))) {
+			OFFSETOF(sssr_reg_info_v5_t, srcb_mem_info))) {
 				DHD_ERROR(("%s: dhd->sssr_reg_info->rev5.length (%d : %d)"
 					 "mismatch on rev5\n", __FUNCTION__,
 					 (int)dhd->sssr_reg_info->rev5.length,
@@ -3127,6 +3422,8 @@ dhd_sssr_dump_init(dhd_pub_t *dhd, bool fis_dump)
 		sr_size = 0;
 
 		switch (dhd->sssr_reg_info->rev2.version) {
+			case SSSR_REG_INFO_VER_6 :
+				/* intentional fall through */
 			case SSSR_REG_INFO_VER_5 :
 				if (dhd->sssr_reg_info->rev5.mac_regs[i].sr_size) {
 					alloc_sssr = TRUE;
@@ -3180,6 +3477,16 @@ dhd_sssr_dump_init(dhd_pub_t *dhd, bool fis_dump)
 	alloc_sssr = FALSE;
 	sr_size = 0;
 	switch (dhd->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
+			if ((dhd->sssr_reg_info->rev6.length >
+			 OFFSETOF(sssr_reg_info_v6_t, sssr_all_mem_info)) &&
+			 dhd->sssr_reg_info->rev6.sssr_all_mem_info.sysmem_sssr_addr) {
+				alloc_sssr = TRUE;
+				sr_size =
+					dhd->sssr_reg_info->rev6.sssr_all_mem_info.sysmem_sssr_size;
+				sr_size += sizeof(sssr_header_t);
+			}
+			break;
 		case SSSR_REG_INFO_VER_5 :
 			if ((dhd->sssr_reg_info->rev5.length >
 			 OFFSETOF(sssr_reg_info_v5_t, sssr_all_mem_info)) &&
@@ -3246,7 +3553,8 @@ dhd_sssr_dump_init(dhd_pub_t *dhd, bool fis_dump)
 	/* Allocate dump memory for SAQM */
 	sr_size = 0;
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	ret = dhd_sssr_chk_version_support(dhd->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
 		DHD_ERROR(("%s:invalid sssr_reg_ver (%d), during saqm mem init\n", __FUNCTION__,
@@ -3269,18 +3577,18 @@ dhd_sssr_dump_init(dhd_pub_t *dhd, bool fis_dump)
 
 	/* Allocate dump memory for SRCB */
 	sr_size = 0;
-	supported_vers[0] = SSSR_REG_INFO_VER_5;
+	supported_vers[0] = SSSR_REG_INFO_VER_6;
 	supported_vers[1] = -1;
 	ret = dhd_sssr_chk_version_support(dhd->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
-		DHD_ERROR(("%s:invalid sssr_reg_ver (%d), during srcb mem init\n", __FUNCTION__,
-			dhd->sssr_reg_info->rev2.version));
-		return BCME_UNSUPPORTED;
+		DHD_ERROR(("%s: sssr_reg_ver (%d) does not suppport SRCB FIS dump,"
+				" during srcb mem init\n", __FUNCTION__,
+				dhd->sssr_reg_info->rev2.version));
 	} else if (ret == BCME_OK &&
-			dhd->sssr_reg_info->rev5.srcb_mem_info.srcb_sssr_size > 0) {
+			dhd->sssr_reg_info->rev6.srcb_mem_info.srcb_sssr_size > 0) {
 		dhd->sssr_srcb_buf_after = (uint32 *)(dhd->sssr_mempool + mempool_used);
 		sr_size =
-			dhd->sssr_reg_info->rev5.srcb_mem_info.srcb_sssr_size;
+			dhd->sssr_reg_info->rev6.srcb_mem_info.srcb_sssr_size;
 		mempool_used += sr_size;
 		DHD_PRINT(("%s: srcb mem init size=%u\n", __func__, sr_size));
 	}
@@ -3288,12 +3596,13 @@ dhd_sssr_dump_init(dhd_pub_t *dhd, bool fis_dump)
 	/* Allocate dump memory for CMN */
 	sr_size = 0;
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	ret = dhd_sssr_chk_version_support(dhd->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
-		DHD_ERROR(("%s:invalid sssr_reg_ver (%d), during cmn mem init\n", __FUNCTION__,
-			dhd->sssr_reg_info->rev2.version));
-		return BCME_UNSUPPORTED;
+		DHD_ERROR(("%s: sssr_reg_ver (%d) does not support cmn FIS dump,"
+				" during cmn mem init\n", __FUNCTION__,
+				dhd->sssr_reg_info->rev2.version));
 	} else if (ret == BCME_OK &&
 			dhd->sssr_reg_info->rev5.fis_mem_info.fis_size > 0) {
 		dhd->sssr_cmn_buf_after = (uint32 *)(dhd->sssr_mempool + mempool_used);
@@ -3435,6 +3744,14 @@ dhd_sssr_dig_buf_size(dhd_pub_t *dhdp)
 
 	/* SSSR register information structure v0 and v1 shares most except dig_mem */
 	switch (dhdp->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6:
+			if ((dhdp->sssr_reg_info->rev6.length >
+			 OFFSETOF(sssr_reg_info_v6_t, sssr_all_mem_info)) &&
+			 dhdp->sssr_reg_info->rev6.sssr_all_mem_info.sysmem_sssr_size) {
+				dig_buf_size =
+				dhdp->sssr_reg_info->rev6.sssr_all_mem_info.sysmem_sssr_size;
+			}
+			break;
 		case SSSR_REG_INFO_VER_5:
 			if ((dhdp->sssr_reg_info->rev5.length >
 			 OFFSETOF(sssr_reg_info_v5_t, sssr_all_mem_info)) &&
@@ -3490,6 +3807,14 @@ dhd_sssr_dig_buf_addr(dhd_pub_t *dhdp)
 
 	/* SSSR register information structure v0 and v1 shares most except dig_mem */
 	switch (dhdp->sssr_reg_info->rev2.version) {
+		case SSSR_REG_INFO_VER_6 :
+			if ((dhdp->sssr_reg_info->rev6.length >
+			 OFFSETOF(sssr_reg_info_v6_t, sssr_all_mem_info)) &&
+			 dhdp->sssr_reg_info->rev6.sssr_all_mem_info.sysmem_sssr_size) {
+				dig_buf_addr =
+				dhdp->sssr_reg_info->rev6.sssr_all_mem_info.sysmem_sssr_addr;
+			}
+			break;
 		case SSSR_REG_INFO_VER_5 :
 			if ((dhdp->sssr_reg_info->rev5.length >
 			 OFFSETOF(sssr_reg_info_v5_t, sssr_all_mem_info)) &&
@@ -3549,6 +3874,7 @@ dhd_sssr_mac_buf_size(dhd_pub_t *dhdp, uint8 core_idx)
 	/* SSSR register information structure v0 and v1 shares most except dig_mem */
 	if (core_idx < num_d11cores) {
 		switch (dhdp->sssr_reg_info->rev2.version) {
+			case SSSR_REG_INFO_VER_6 :
 			case SSSR_REG_INFO_VER_5 :
 				mac_buf_size = dhdp->sssr_reg_info->rev5.mac_regs[core_idx].sr_size;
 				break;
@@ -3586,6 +3912,7 @@ dhd_sssr_mac_xmtaddress(dhd_pub_t *dhdp, uint8 core_idx)
 	/* SSSR register information structure v0 and v1 shares most except dig_mem */
 	if (core_idx < num_d11cores) {
 		switch (dhdp->sssr_reg_info->rev2.version) {
+			case SSSR_REG_INFO_VER_6 :
 			case SSSR_REG_INFO_VER_5 :
 				xmtaddress = dhdp->sssr_reg_info->rev5.
 					mac_regs[core_idx].base_regs.xmtaddress;
@@ -3628,6 +3955,7 @@ dhd_sssr_mac_xmtdata(dhd_pub_t *dhdp, uint8 core_idx)
 	/* SSSR register information structure v0 and v1 shares most except dig_mem */
 	if (core_idx < num_d11cores) {
 		switch (dhdp->sssr_reg_info->rev2.version) {
+			case SSSR_REG_INFO_VER_6 :
 			case SSSR_REG_INFO_VER_5 :
 				xmtdata = dhdp->sssr_reg_info->rev5.
 					mac_regs[core_idx].base_regs.xmtdata;
@@ -3665,7 +3993,8 @@ dhd_sssr_sr_asm_version(dhd_pub_t *dhdp, uint16 *sr_asm_version)
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
 		DHD_ERROR(("%s:invalid sssr_reg_ver (%d)\n", __FUNCTION__,
@@ -3685,7 +4014,8 @@ dhd_sssr_mac_war_reg(dhd_pub_t *dhdp, uint8 core_idx, uint32 *war_reg)
 	int ret = 0;
 	num_d11cores = dhd_d11_slices_num_get(dhdp);
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 
 	if (core_idx < num_d11cores) {
 		ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version,
@@ -3708,7 +4038,8 @@ dhd_sssr_arm_war_reg(dhd_pub_t *dhdp, uint32 *war_reg)
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
 		DHD_ERROR(("%s:invalid sssr_reg_ver (%d)\n", __FUNCTION__,
@@ -3726,7 +4057,8 @@ dhd_sssr_saqm_war_reg(dhd_pub_t *dhdp, uint32 *war_reg)
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
 		DHD_ERROR(("%s:invalid sssr_reg_ver (%d)\n", __FUNCTION__,
@@ -3743,7 +4075,7 @@ dhd_sssr_srcb_war_reg(dhd_pub_t *dhdp, uint32 *war_reg)
 {
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
-	supported_vers[0] = SSSR_REG_INFO_VER_5;
+	supported_vers[0] = SSSR_REG_INFO_VER_6;
 	supported_vers[1] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
@@ -3751,10 +4083,8 @@ dhd_sssr_srcb_war_reg(dhd_pub_t *dhdp, uint32 *war_reg)
 			dhdp->sssr_reg_info->rev2.version));
 		return BCME_UNSUPPORTED;
 	} else if (ret == BCME_OK) {
-		if ((dhdp->sssr_reg_info->rev5.length > OFFSETOF(sssr_reg_info_v5_t,
-			srcb_mem_info)) && dhdp->sssr_reg_info->rev5.srcb_mem_info.
-			srcb_sssr_size) {
-			*war_reg = dhdp->sssr_reg_info->rev5.srcb_mem_info.war_reg;
+		if (dhdp->sssr_reg_info->rev6.srcb_mem_info.srcb_sssr_size > 0) {
+			*war_reg = dhdp->sssr_reg_info->rev6.srcb_mem_info.war_reg;
 		}
 	}
 	return BCME_OK;
@@ -3767,7 +4097,8 @@ dhd_sssr_saqm_buf_size(dhd_pub_t *dhdp)
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
 		DHD_ERROR(("%s:invalid sssr_reg_ver (%d)\n", __FUNCTION__,
@@ -3789,7 +4120,8 @@ dhd_sssr_saqm_buf_addr(dhd_pub_t *dhdp)
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
 		DHD_ERROR(("%s:invalid sssr_reg_ver (%d)\n", __FUNCTION__,
@@ -3811,19 +4143,17 @@ dhd_sssr_srcb_buf_size(dhd_pub_t *dhdp)
 	uint srcb_buf_size = 0;
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
-	supported_vers[0] = SSSR_REG_INFO_VER_5;
+	supported_vers[0] = SSSR_REG_INFO_VER_6;
 	supported_vers[1] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
-		DHD_ERROR(("%s:invalid sssr_reg_ver (%d)\n", __FUNCTION__,
+		DHD_ERROR(("%s:sssr_reg_ver (%d) does not support SRCB FIS dump\n", __FUNCTION__,
 			dhdp->sssr_reg_info->rev2.version));
 		return 0;
 	} else if (ret == BCME_OK) {
-		if ((dhdp->sssr_reg_info->rev5.length > OFFSETOF(sssr_reg_info_v5_t,
-				srcb_mem_info)) && (dhdp->sssr_reg_info->rev5.srcb_mem_info.
-				srcb_sssr_size > 0)) {
+		if (dhdp->sssr_reg_info->rev6.srcb_mem_info.srcb_sssr_size > 0) {
 			srcb_buf_size =
-				dhdp->sssr_reg_info->rev5.srcb_mem_info.srcb_sssr_size;
+				dhdp->sssr_reg_info->rev6.srcb_mem_info.srcb_sssr_size;
 		}
 	}
 	return srcb_buf_size;
@@ -3835,19 +4165,17 @@ dhd_sssr_srcb_buf_addr(dhd_pub_t *dhdp)
 	uint srcb_buf_addr = 0;
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
-	supported_vers[0] = SSSR_REG_INFO_VER_5;
+	supported_vers[0] = SSSR_REG_INFO_VER_6;
 	supported_vers[1] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
-		DHD_ERROR(("%s:invalid sssr_reg_ver (%d)\n", __FUNCTION__,
+		DHD_ERROR(("%s: sssr_reg_ver (%d) does not support SRCB FIS \n", __FUNCTION__,
 			dhdp->sssr_reg_info->rev2.version));
 		return 0;
 	} else if (ret == BCME_OK) {
-		if ((dhdp->sssr_reg_info->rev5.length > OFFSETOF(sssr_reg_info_v5_t,
-				srcb_mem_info)) && (dhdp->sssr_reg_info->rev5.srcb_mem_info.
-				srcb_sssr_size > 0)) {
+		if (dhdp->sssr_reg_info->rev6.srcb_mem_info.srcb_sssr_size > 0) {
 			srcb_buf_addr =
-				dhdp->sssr_reg_info->rev5.srcb_mem_info.srcb_sssr_addr;
+				dhdp->sssr_reg_info->rev6.srcb_mem_info.srcb_sssr_addr;
 		}
 	}
 
@@ -3861,7 +4189,8 @@ dhd_sssr_cmn_buf_size(dhd_pub_t *dhdp)
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
 		DHD_ERROR(("%s:invalid sssr_reg_ver (%d)\n", __FUNCTION__,
@@ -3887,7 +4216,8 @@ dhd_sssr_cmn_buf_addr(dhd_pub_t *dhdp)
 	int supported_vers[SSSR_REG_INFO_VER_MAX] = {0};
 	int ret = 0;
 	supported_vers[0] = SSSR_REG_INFO_VER_5;
-	supported_vers[1] = -1;
+	supported_vers[1] = SSSR_REG_INFO_VER_6;
+	supported_vers[2] = -1;
 	ret = dhd_sssr_chk_version_support(dhdp->sssr_reg_info->rev2.version, supported_vers);
 	if (ret == BCME_ERROR) {
 		DHD_ERROR(("%s:invalid sssr_reg_ver (%d)\n", __FUNCTION__,
@@ -4031,18 +4361,18 @@ dhd_sssr_dump_to_file(dhd_pub_t *dhdp)
 		if (dhdp->sssr_d11_before[i] && dhdp->sssr_d11_outofreset[i] &&
 			(dhdp->sssr_dump_mode == SSSR_DUMP_MODE_SSSR)) {
 			if (write_dump_to_file(dhdp, (uint8 *)dhdp->sssr_d11_before[i],
-				d11_buf_size, before_sr_dump)) {
+					d11_buf_size, before_sr_dump)) {
 				DHD_ERROR(("%s: writing SSSR MAIN dump before to the file failed\n",
-					__FUNCTION__));
+						__FUNCTION__));
 			}
 		}
 #endif /* DHD_SSSR_DUMP_BEFORE_SR */
 
 		if (dhdp->sssr_d11_after[i] && dhdp->sssr_d11_outofreset[i]) {
 			if (write_dump_to_file(dhdp, (uint8 *)dhdp->sssr_d11_after[i],
-				d11_buf_size, after_sr_dump)) {
+					d11_buf_size, after_sr_dump)) {
 				DHD_ERROR(("%s: writing SSSR AUX dump after to the file failed\n",
-					__FUNCTION__));
+						__FUNCTION__));
 			}
 		}
 	}
@@ -4052,9 +4382,9 @@ dhd_sssr_dump_to_file(dhd_pub_t *dhdp)
 #ifdef DHD_SSSR_DUMP_BEFORE_SR
 	if (dhdp->sssr_dig_buf_before && (dhdp->sssr_dump_mode == SSSR_DUMP_MODE_SSSR)) {
 		if (write_dump_to_file(dhdp, (uint8 *)dhdp->sssr_dig_buf_before,
-			dig_buf_size, "sssr_dump_dig_before_SR")) {
+				dig_buf_size, "sssr_dump_dig_before_SR")) {
 			DHD_ERROR(("%s: writing SSSR Dig dump before to the file failed\n",
-				__FUNCTION__));
+					__FUNCTION__));
 		}
 	}
 #endif /* DHD_SSSR_DUMP_BEFORE_SR */
@@ -4070,9 +4400,9 @@ dhd_sssr_dump_to_file(dhd_pub_t *dhdp)
 
 	if (dhdp->sssr_dig_buf_after) {
 		if (write_dump_to_file(dhdp, (uint8 *)dhdp->sssr_dig_buf_after,
-			dig_buf_size, after_sr_dump)) {
+				dig_buf_size, after_sr_dump)) {
 			DHD_ERROR(("%s: writing SSSR Dig VASIP dump after to the file failed\n",
-			 __FUNCTION__));
+					__FUNCTION__));
 		}
 	}
 
@@ -4082,9 +4412,9 @@ dhd_sssr_dump_to_file(dhd_pub_t *dhdp)
 	if ((saqm_buf_size > 0) && dhdp->sssr_saqm_buf_before &&
 	 (dhdp->sssr_dump_mode == SSSR_DUMP_MODE_SSSR)) {
 		if (write_dump_to_file(dhdp, (uint8 *)dhdp->sssr_saqm_buf_before,
-			saqm_buf_size, "sssr_dump_saqm_before_SR")) {
+				saqm_buf_size, "sssr_dump_saqm_before_SR")) {
 			DHD_ERROR(("%s: writing SSSR SAQM dump before to the file failed\n",
-				__FUNCTION__));
+					__FUNCTION__));
 		}
 	}
 #endif /* DHD_SSSR_DUMP_BEFORE_SR */
@@ -4100,38 +4430,38 @@ dhd_sssr_dump_to_file(dhd_pub_t *dhdp)
 
 	if ((saqm_buf_size > 0) && dhdp->sssr_saqm_buf_after) {
 		if (write_dump_to_file(dhdp, (uint8 *)dhdp->sssr_saqm_buf_after,
-			saqm_buf_size, after_sr_dump)) {
+				saqm_buf_size, after_sr_dump)) {
 			DHD_ERROR(("%s: writing SSSR SAQM dump after to the file failed\n",
-			 __FUNCTION__));
+					__FUNCTION__));
 		}
 	}
 
-	srcb_buf_size = dhd_sssr_srcb_buf_size(dhdp);
 	if (dhdp->sssr_dump_mode == SSSR_DUMP_MODE_FIS) {
-		bzero(after_sr_dump, sizeof(after_sr_dump));
-		snprintf(after_sr_dump, sizeof(after_sr_dump), "%s_%s",
-			"sssr_dump_fis_srcb", "after_SR");
+		srcb_buf_size = dhd_sssr_srcb_buf_size(dhdp);
 
 		if ((srcb_buf_size > 0) && dhdp->sssr_srcb_buf_after) {
+			bzero(after_sr_dump, sizeof(after_sr_dump));
+			snprintf(after_sr_dump, sizeof(after_sr_dump), "%s_%s",
+					"sssr_dump_fis_srcb", "after_SR");
+
 			if (write_dump_to_file(dhdp, (uint8 *)dhdp->sssr_srcb_buf_after,
-				srcb_buf_size, after_sr_dump)) {
+					srcb_buf_size, after_sr_dump)) {
 				DHD_ERROR(("%s: writing FIS SRCB dump after to the file failed\n",
-				__FUNCTION__));
+						__FUNCTION__));
 			}
 		}
-	}
 
-	cmn_buf_size = dhd_sssr_cmn_buf_size(dhdp);
-	if (dhdp->sssr_dump_mode == SSSR_DUMP_MODE_FIS) {
-		bzero(after_sr_dump, sizeof(after_sr_dump));
-		snprintf(after_sr_dump, sizeof(after_sr_dump), "%s_%s",
-			"sssr_dump_fis_cmn", "after_SR");
+		cmn_buf_size = dhd_sssr_cmn_buf_size(dhdp);
 
 		if ((cmn_buf_size > 0) && dhdp->sssr_cmn_buf_after) {
+			bzero(after_sr_dump, sizeof(after_sr_dump));
+			snprintf(after_sr_dump, sizeof(after_sr_dump), "%s_%s",
+					"sssr_dump_fis_cmn", "after_SR");
+
 			if (write_dump_to_file(dhdp, (uint8 *)dhdp->sssr_cmn_buf_after,
-				cmn_buf_size, after_sr_dump)) {
+					cmn_buf_size, after_sr_dump)) {
 				DHD_ERROR(("%s: writing FIS CMN dump after to the file failed\n",
-				__FUNCTION__));
+						__FUNCTION__));
 			}
 		}
 	}

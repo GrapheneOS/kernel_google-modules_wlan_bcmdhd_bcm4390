@@ -287,8 +287,10 @@ dhd_bus_dump_console_buffer(dhd_bus_t *bus)
 		return;
 	}
 
-	if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s : wlan backplane is down. skip\n", __FUNCTION__));
+	if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u), skip.\n",
+			__FUNCTION__, bus->link_state));
 		return;
 	}
 
@@ -1167,6 +1169,7 @@ dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	}
 #endif /* DHD_SSSR_DUMP */
 
+	bcm_bprintf(strbuf, "pcie_hwhdr_rev = %u\n", dhdp->bus->ewp_hw_info.pcie_hwhdr_rev);
 #ifdef DHD_WAKE_STATUS
 	bcm_bprintf(strbuf, "wake %u rxwake %u readctrlwake %u\n",
 		bcmpcie_get_total_wake(dhdp->bus), dhdp->bus->wake_counts.rxwake,
@@ -1826,7 +1829,7 @@ dhd_pcie_get_wrapper_regs(dhd_pub_t *dhd)
 #endif /* DHD_PCIE_WRAPPER_DUMP */
 
 int
-dhd_pcie_nci_wrapper_dump(dhd_pub_t *dhd)
+dhd_pcie_nci_wrapper_dump(dhd_pub_t *dhd, bool dump_to_dmesg)
 {
 	uint size = 0;
 	uint32 pwrval = 0;
@@ -1877,11 +1880,19 @@ dhd_pcie_nci_wrapper_dump(dhd_pub_t *dhd)
 	si_srpwr_request(sih, pwrval, pwrval);
 
 	if (ret == BCME_OK) {
-		DHD_LOG_MEM(("NCI Wrapper Reg Dump:\n=========================== \n"));
+		if (dump_to_dmesg) {
+			DHD_PRINT(("NCI Wrapper Reg Dump:\n=========================== \n"));
+		} else {
+			DHD_LOG_MEM(("NCI Wrapper Reg Dump:\n=========================== \n"));
+		}
 		for (i = 0; i < nreg_pairs; i += 2) {
 			reg = (uint32 *)dhd->dbg->wrapper_buf.buf + i;
 			val = reg + 1;
-			DHD_LOG_MEM(("reg:0x%x = 0x%x\n", *reg, *val));
+			if (dump_to_dmesg) {
+				DHD_PRINT(("reg:0x%x = 0x%x\n", *reg, *val));
+			} else {
+				DHD_LOG_MEM(("reg:0x%x = 0x%x\n", *reg, *val));
+			}
 		}
 	}
 
@@ -1993,7 +2004,7 @@ dhd_pcie_dump_wrapper_regs(dhd_pub_t *dhd)
 #endif /* NOT_YET */
 	} else if (CHIPTYPE(sih->socitype) == SOCI_NCI &&
 		(bus->pcie_sh->flags & (PCIE_SHARED_ASSERT | PCIE_SHARED_TRAP))) {
-			dhd_pcie_nci_wrapper_dump(dhd);
+			dhd_pcie_nci_wrapper_dump(dhd, FALSE);
 	}
 
 	DHD_ERROR(("%s: OOBR Reg\n", __FUNCTION__));
@@ -2074,8 +2085,10 @@ dhd_pcie_dma_info_dump(dhd_pub_t *dhd)
 		return 0;
 	}
 
-	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s : wlan backplane is down. skip\n", __FUNCTION__));
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u), skip.\n",
+			__FUNCTION__, dhd->bus->link_state));
 		return 0;
 	}
 
@@ -2318,9 +2331,11 @@ dhd_pcie_debug_info_dump(dhd_pub_t *dhd)
 		DHD_ERROR(("Skip dumping the PCIe Core registers. link may be DOWN\n"));
 		return 0;
 	}
-	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s : wlan backplane is down. skip dumping pcie core regs\n",
-			__FUNCTION__));
+	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u), "
+			"skip dumping pcie core regs.\n", __FUNCTION__,
+			dhd->bus->link_state));
 		return 0;
 	}
 
@@ -2709,6 +2724,8 @@ dhdpcie_ewphw_get_initdumps(dhd_bus_t *bus)
 		return BCME_VERSION;
 	}
 
+	DHD_PRINT(("%s: pcie_hwhdr_rev = %u\n", __FUNCTION__,
+		ewp_hw_info.pcie_hwhdr_rev));
 	/* Initial validations for EWP_DACS are done */
 	dhdp->ewp_dacs_fw_enable = TRUE;
 	/* endianness */

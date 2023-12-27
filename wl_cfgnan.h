@@ -283,6 +283,7 @@ typedef struct nan_svc_info {
 	bool valid;
 	nan_data_path_id ndp_id[NAN_MAX_SVC_INST];
 	uint8 svc_hash[WL_NAN_SVC_HASH_LEN];        /* service hash */
+	wl_nan_pairing_config_t  pairing_config;    /* service specific pairing config */
 	uint8 svc_id;
 	uint8 ranging_required;
 	uint8 ranging_ind;
@@ -542,10 +543,11 @@ typedef struct nan_pairing_bs_cmd_data {
 	nan_str_data_t key;		/* Security key information */
 	nan_security_key_input_type key_type; /* cipher suite type */
 	wl_nan_instance_id_t req_inst_id;     /* Requestor instance id */
-	wl_nan_instance_id_t inst_id;   /* Pairing instance id */
+	uint16	  inst_id;		/* Pairing instance id */
 	uint16	  is_opportunistic;	/* pairing is opportunistic/password based */
 	uint32	  status;
 	uint16	  request_type;		/* Pairing request type */
+	uint16	  token;		/* transmit fup token id */
 	uint8	  rsp_code;		/* Nan pairing response code ACCEPT/REJECT */
 	uint8	  nan_akm;		/* AKM used for pairing verification */
 	uint8	  enab_pairing_cache;	/* NIK/NPK pairing cache capability */
@@ -905,7 +907,7 @@ typedef struct wl_nancfg
 	uint8 cur_bs_instance_id;	  /* Current Bootstrapping entry ID available */
 	nan_bootstrapping_entry_t *nan_bs_entries;
 	uint16 bs_txs_pend_token;	  /* Bootstrapping Tx-fup is waiting for TXS with token */
-	nan_bootstrapping_entry_t *pairing_cfm_pend_bs_entry;
+	uint8 pairing_cfm_pend_cnt;	  /* Pending cnt for pairing confirm */
 } wl_nancfg_t;
 
 #define NAN_RTT_ENABLED(cfg) (wl_cfgnan_is_enabled(cfg) && \

@@ -417,7 +417,16 @@ typedef enum {
 	WL_FTM_TLV_ID_CSI_RANGING_PARAMS	= 1038,	/* wl_ftm_csi_ranging_params_t */
 	WL_FTM_TLV_ID_CSI_PROC_RESULT		= 1039,	/* wl_ftm_csi_proc_result_t */
 	WL_FTM_TLV_ID_CSI_PROC_RTT		= 1040,	/* wl_ftm_csi_proc_rtt_t */
-	WL_FTM_TLV_ID_TIMESTAMP_DUMP_V1		= 1041	/* wl_ftm_timestamp_dump_t */
+	WL_FTM_TLV_ID_TIMESTAMP_DUMP_V1		= 1041,	/* wl_ftm_timestamp_dump_t */
+
+	/* security */
+	WL_FTM_TLV_ID_SECURITY_KEY_IDLE_TIME	= 1042, /* ftm security key_idle time */
+	WL_FTM_TLV_ID_SECURITY_KEY_LIFE_TIME	= 1043, /* ftm security key life time */
+	WL_FTM_TLV_ID_SECURITY_AKM		= 1044, /* ftm security AKM */
+	WL_FTM_TLV_ID_SECURITY_PASSPHRASE	= 1045, /* ftm security passphrase */
+	WL_FTM_TLV_ID_SECURITY_PASSPHRASE_LEN	= 1046, /* ftm security passphrase len */
+	WL_FTM_TLV_ID_SECURITY_CIPHER_TYPE	= 1047, /* ftm security cipher type */
+	WL_FTM_TLV_ID_SECURITY_LTF_REQD		= 1048	/* ftm security, secure ltf needed */
 } wl_ftm_tlv_types_t;
 
 enum wl_ftm_wait_reason {

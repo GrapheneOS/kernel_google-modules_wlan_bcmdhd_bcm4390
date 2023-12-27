@@ -621,9 +621,11 @@ typedef struct dhd_bus {
 	bool    cto_enable;     /* enable PCIE CTO Prevention and recovery */
 	uint32  cto_threshold;  /* PCIE CTO timeout threshold */
 	bool	cto_triggered;	/* CTO is triggered */
-	bool	init_done; 	/* ready to receive interrupts from dongle */
+	/* enable PCIE CTO recovery when PCIE CTO Prevention is enabled */
+	bool    cto_recovery_enable;
+	bool	init_done;		/* ready to receive interrupts from dongle */
 	int	pwr_req_ref;
-	bool flr_force_fail; /* user intends to simulate flr force fail */
+	bool flr_force_fail;	/* user intends to simulate flr force fail */
 
 	/* Information used to compose the memory map and to write the memory map,
 	 * FW, and FW signature to dongle RAM.
@@ -1153,7 +1155,7 @@ void dhd_assoc_check_sr(dhd_pub_t *dhd, bool state);
 
 void dhdpcie_setbar2win(dhd_bus_t *bus, uint32 addr);
 void dhd_init_bar1_switch_lock(dhd_bus_t *bus);
-int dhd_pcie_nci_wrapper_dump(dhd_pub_t *dhd);
+int dhd_pcie_nci_wrapper_dump(dhd_pub_t *dhd, bool dump_to_dmesg);
 int dhd_bus_get_armca7_pc(struct dhd_bus *bus, bool loop_print);
 void dhd_bt_dwnld_pwr_req(dhd_bus_t *bus);
 void dhd_bt_dwnld_pwr_req_clear(dhd_bus_t *bus);

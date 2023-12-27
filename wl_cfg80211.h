@@ -1404,20 +1404,6 @@ typedef struct wl_mlo_link_info {
 	wl_mlo_link_t links[MAX_MLO_LINK];
 } wl_mlo_link_info_t;
 
-typedef struct wl_ml_ap_link {
-	chanspec_t chspec;
-	struct net_device *link_dev;
-} wl_ml_ap_link_t;
-
-typedef struct wl_mlo_ap_cfg {
-	bool config_in_progress;
-	u8 num_links;
-	u8 num_links_configured;
-	u8 num_links_up;
-	struct net_device *mld_dev;
-	wl_ml_ap_link_t link[MAX_MLO_LINK];
-} wl_mlo_ap_cfg_t;
-
 typedef struct wl_mlo_config {
 	bool supported;
 	bool link_active;
@@ -1425,7 +1411,7 @@ typedef struct wl_mlo_config {
 	u8 emlsr_links;
 	u8 max_mlo_links;
 	u8 default_multilink_val;
-	wl_mlo_ap_cfg_t ap;
+	bool eht_softap;
 } wl_mlo_config_t;
 #endif /* WL_MLO */
 
@@ -1474,6 +1460,8 @@ struct net_info {
 	u8 *qos_up_table;
 	bool reg_update_reqd;
 	bool td_policy_set;
+	u32 min_connect_idx;
+	chanspec_t ap_chanspec;
 };
 
 #ifdef WL_BCNRECV
@@ -2056,7 +2044,6 @@ typedef struct wl_event_idx {
 	u32 enqd;
 	u32 in_progress;
 	u32 event_type;
-	u32 min_connect_idx;
 } wl_event_idx_t;
 
 typedef struct {
@@ -4024,4 +4011,8 @@ extern void wl_cfg80211_get_bss_sta_info(struct bcm_cfg80211 *cfg, struct net_de
 extern int wl_set_sae_pwe(struct net_device *dev, enum nl80211_sae_pwe_mechanism sae_pwe_value);
 #endif /* WL_SAE_STD_API */
 extern s32 wl_cfg80211_flush_pmksa(struct wiphy *wiphy, struct net_device *dev);
+#ifdef WL_GCMP
+extern s32 wl_cfg80211_set_wsec_info_algos(struct net_device *dev, uint32 algos, uint32 mask);
+#endif /* WL_GCMP */
+extern u32 wl_rsn_cipher_wsec_key_algo_lookup(uint32 cipher);
 #endif /* _wl_cfg80211_h_ */

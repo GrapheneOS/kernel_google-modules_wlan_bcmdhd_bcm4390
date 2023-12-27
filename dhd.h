@@ -691,7 +691,8 @@ enum dhd_dongledump_type {
 	DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF	= 36,
 	DUMP_TYPE_ESCAN_SYNCID_MISMATCH		= 37,
 	DUMP_TYPE_COREDUMP_BY_USER		= 38,
-	DUMP_TYPE_WL_BP_DOWN			= 39
+	DUMP_TYPE_WL_BP_DOWN			= 39,
+	DUMP_TYPE_COMMON_BP_DOWN		= 40
 };
 
 enum dhd_hang_reason {
@@ -1008,7 +1009,7 @@ enum {
 #endif /* CUSTOMER_HW4 */
 #endif /* !DHD_COMMON_DUMP_PATH */
 
-#define DHD_MEMDUMP_LONGSTR_LEN 180
+#define DHD_MEMDUMP_LONGSTR_LEN 192u
 
 struct cntry_locales_custom {
 	char iso_abbrev[WLC_CNTRY_BUF_SZ];      /* ISO 3166-1 country abbreviation */
@@ -1658,6 +1659,7 @@ typedef struct dhd_pub {
 #ifdef DHD_COREDUMP
 	uint8 *coredump_mem;
 	uint32 coredump_len;
+	uint8 ewp_init_state;
 	char memdump_str[DHD_MEMDUMP_LONGSTR_LEN];
 #endif /* DHD_COREDUMP */
 #ifdef COEX_CPU
@@ -2865,9 +2867,6 @@ extern void dhd_set_cpucore(dhd_pub_t *dhd, int set);
 #define MAX_CONSECUTIVE_MFG_HANG_COUNT 2
 #endif /* DHD_DETECT_CONSECUTIVE_MFG_HANG */
 
-#if defined(KEEP_ALIVE)
-extern int dhd_keep_alive_onoff(dhd_pub_t *dhd);
-#endif /* KEEP_ALIVE */
 
 #if defined(DHD_FW_COREDUMP)
 #if defined(linux) || defined(LINUX)
@@ -3165,10 +3164,6 @@ int dhd_bus_get_fw_mode(dhd_pub_t *dhdp);
 #else
 static INLINE int dhd_bus_get_fw_mode(dhd_pub_t *dhdp) { return 0; }
 #endif /* __linux__ */
-
-#if defined(KEEP_ALIVE)
-extern int dhd_keep_alive_onoff(dhd_pub_t *dhd);
-#endif /* KEEP_ALIVE */
 
 /* linux is defined for DHD EFI builds also,
 * since its cross-compiled for EFI from linux.
@@ -4835,6 +4830,7 @@ static INLINE void dhd_handle_pktdata(dhd_pub_t *dhdp, int ifidx, void *pkt, uin
 #endif /* __linux */
 #if defined(WLAN_ACCEL_BOOT)
 extern int dhd_dev_set_accel_force_reg_on(struct net_device *dev);
+extern int dhd_dev_clear_accel_force_reg_on(struct net_device *dev);
 #endif /* WLAN_ACCEL_BOOT */
 
 #if defined(BCMPCIE) && defined(__linux__)
@@ -4849,6 +4845,12 @@ int dhd_ether_to_8023_hdr(osl_t *osh, struct ether_header *eh, void *p);
 int dhd_8023_llc_to_ether_hdr(osl_t *osh, struct ether_header *eh8023, void *p);
 #endif
 
+
+int dhd_ether_to_generic_llc_hdr(struct dhd_pub *dhd, uint8 ifidx,
+	struct ether_header *eh, void *p);
+int dhd_generic_llc_to_eth_hdr(struct dhd_pub *dhd, uint8 ifidx, struct ether_header *eh, void *p);
+bool dhd_llc_hdr_insert_enabled(struct dhd_pub *dhd, uint8 ifidx);
+void dhd_update_ifp_headroom_len(struct dhd_pub *dhdp, struct dhd_if *ifp);
 
 #ifdef CUSTOMER_HW4_DEBUG
 bool dhd_validate_chipid(dhd_pub_t *dhdp);

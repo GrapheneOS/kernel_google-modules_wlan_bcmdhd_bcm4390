@@ -170,6 +170,7 @@ typedef struct event_log_block {
 
 /* Block specific data */
 #define EVENT_LOG_PRESERVE_BLOCK	(1u)
+#define EVENT_LOG_COEX_LOG		(2u)	/* Logging from coex firmware */
 #define EVENT_LOG_BLOCK_FLAG_MASK	0xFFu	/* MSB 8 bits of extra_hdr_info for block flags */
 #define EVENT_LOG_BLOCK_FLAG_SHIFT	(24u)
 #define EVENT_LOG_SETID_MASK		(0x3Fu) /* set id: LSB 6 bits of extra_hdr_info */

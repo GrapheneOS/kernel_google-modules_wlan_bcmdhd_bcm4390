@@ -683,6 +683,11 @@ dhd_log_enhanced_timestamp(dhd_pub_t *dhdp, event_log_hdr_t *ts_hdr, uint32 *dat
 {
 	ets_msg_t *ets_msg_ptr = (ets_msg_t *)ts_hdr - ts_hdr->count;
 
+	if ((char *)ets_msg_ptr < (char *)data) {
+		DHD_ERROR(("invalid ets_msg_ptr:%p data:%p\n", ets_msg_ptr, data));
+		return;
+	}
+
 	if (!dhdp->dbg->event_log_ts_ver) {
 		dhdp->dbg->event_log_ts_ver = ets_msg_ptr->version;
 	}
@@ -1201,6 +1206,7 @@ dhd_dbg_logtrace_process_payload(dhd_pub_t *dhdp, char *data, uint datalen, dll_
 {
 	const uint32 log_hdr_len = sizeof(event_log_hdr_t);
 	uint32 log_pyld_len;
+	uint datalen_orig = datalen;
 	event_log_hdr_t *log_hdr;
 	prcd_event_log_hdr_t prcd_log_hdr;
 	loglist_item_t *log_item;
@@ -1277,6 +1283,13 @@ dhd_dbg_logtrace_process_payload(dhd_pub_t *dhdp, char *data, uint datalen, dll_
 			datalen -= (log_pyld_len + log_hdr_len);
 			continue;
 		}
+		/* boundary check */
+		if (((char *)prcd_log_hdr.log_ptr < data) ||
+			((char *)prcd_log_hdr.log_ptr > (data + datalen_orig))) {
+			ret = BCME_ERROR;
+			break;
+		}
+
 		if (!(log_item = MALLOC(dhdp->osh, sizeof(*log_item)))) {
 			DHD_ERROR(("%s allocating log list item failed\n",
 				__FUNCTION__));

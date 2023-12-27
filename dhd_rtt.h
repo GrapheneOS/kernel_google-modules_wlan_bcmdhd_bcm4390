@@ -35,7 +35,7 @@
 #define DEFAULT_FTM_CNTR_FREQ0 5210
 #define RTT_MAX_GEOFENCE_TARGET_CNT 8
 
-#define TARGET_INFO_SIZE(count) (sizeof(rtt_target_info_t) * count)
+#define TARGET_INFO_SIZE(count) (sizeof(rtt_mc_az_target_info_t) * count)
 
 #define TARGET_TYPE(target) (target->type)
 
@@ -89,7 +89,8 @@ typedef int32 wifi_rssi_rtt;
 typedef enum {
 	RTT_INVALID,
 	RTT_ONE_WAY,
-	RTT_TWO_WAY,
+	RTT_TWO_WAY_MC,
+	RTT_TWO_WAY_NTB,
 	RTT_AUTO
 } rtt_type_t;
 
@@ -192,20 +193,25 @@ typedef enum ranging_target_list_mode {
 #define HAS_ONEWAY_CAP(cap) (cap & RTT_CAP_ONE_WAY)
 #define HAS_RTT_CAP(cap) (HAS_ONEWAY_CAP(cap) || HAS_11MC_CAP(cap))
 
-typedef struct rtt_target_info {
-	struct ether_addr addr;
-	struct ether_addr local_addr;
-	rtt_type_t type; /* rtt_type */
-	rtt_peer_type_t peer; /* peer type */
-	wifi_channel_info channel; /* channel information */
-	chanspec_t chanspec; /* chanspec for channel */
-	bool	disable; /* disable for RTT measurement */
+typedef struct rtt_cmn_target_info {
+	uint8			tgt_type;
+	struct ether_addr		addr;
+	struct ether_addr		local_addr;
+	rtt_peer_type_t			peer;		/* peer type */
+	wifi_channel_info		channel;	/* channel information */
+	chanspec_t			chanspec;	/* chanspec for channel */
+	bool				disable;	/* disable for RTT measurement */
+	uint16				sid;		/* session ID for the target */
+	wifi_rtt_bw_t			bw;		/* 5, 10, 20, 40, 80, 160 */
+} rtt_cmn_target_info_t;
+
+typedef struct rtt_mc_target_info {
 	/*
 	* Time interval between bursts (units: 100 ms).
 	* Applies to 1-sided and 2-sided RTT multi-burst requests.
 	* Range: 0-31, 0: no preference by initiator (2-sided RTT)
 	*/
-	uint32	burst_period;
+	uint32				burst_period;
 	/*
 	* Total number of RTT bursts to be executed. It will be
 	* specified in the same way as the parameter "Number of
@@ -218,7 +224,7 @@ typedef struct rtt_target_info {
 	* for 1-sided RTT: max num of RTT results = (2^num_burst)*(num_frames_per_burst)
 	* for 2-sided RTT: max num of RTT results = (2^num_burst)*(num_frames_per_burst - 1)
 	*/
-	uint16 num_burst;
+	uint16				num_burst;
 	/*
 	* num of frames per burst.
 	* Minimum value = 1, Maximum value = 31
@@ -228,20 +234,21 @@ typedef struct rtt_target_info {
 	* initiator will request that the responder send
 	* in a single frame
 	*/
-	uint32 num_frames_per_burst;
+	uint32				num_frames_per_burst;
 	/*
 	 * num of frames in each RTT burst
 	 * for single side, measurement result num = frame number
 	 * for 2 side RTT, measurement result num  = frame number - 1
 	 */
-	uint32 num_retries_per_ftm; /* retry time for RTT measurment frame */
+	/* retry time for RTT measurment frame */
+	uint32				num_retries_per_ftm;
 	/* following fields are only valid for 2 side RTT */
-	uint32 num_retries_per_ftmr;
-	uint8  LCI_request;
-	uint8  LCR_request;
+	uint32				num_retries_per_ftmr;
+	uint8				LCI_request;
+	uint8				LCR_request;
 #ifdef WL_RTT_LCI
-	bcm_xtlv_t *LCI; /* LCI Report */
-	bcm_xtlv_t *LCR; /* Location Civic Report */
+	bcm_xtlv_t			*LCI; /* LCI Report */
+	bcm_xtlv_t			*LCR; /* Location Civic Report */
 #endif /* WL_RTT_LCI */
 	/*
 	* Applies to 1-sided and 2-sided RTT. Valid values will
@@ -253,12 +260,44 @@ typedef struct rtt_target_info {
 	* the initiator will sent TMR_STOP to terminate RTT
 	* at the end of the burst_duration it requested.
 	*/
-	uint32 burst_duration;
-	uint32 burst_timeout;
-	uint8  preamble;	/* 1 - Legacy, 2 - HT, 4 - VHT */
-	uint8  bw;		/* 5, 10, 20, 40, 80, 160 */
-	uint16 sid;		/* session ID for the target */
-} rtt_target_info_t;
+	uint32				burst_duration;
+	uint32				burst_timeout;
+	uint8				preamble;	/* 1 - Legacy, 2 - HT, 4 - VHT */
+} rtt_mc_target_info_t;
+
+typedef struct rtt_az_target_info {
+	/* Minimum measuremen time in us */
+	uint32		min_delta;
+	/* Maximum measuremen time in us */
+	uint32		max_delta;
+	uint8		format_bw;
+	uint16		num_measurements;
+} rtt_az_target_info_t;
+
+#define MAX_PASSPHRASE_LEN	63u	/* Max length of passphrase */
+
+/* Security params */
+typedef struct rtt_target_security_info {
+	uint32		akm;				/* AKM to use i.e, SAE/FT/FILS/PASN */
+	uint8		passphrase[MAX_PASSPHRASE_LEN];	/* passphrase */
+	uint8		passphrase_len;			/* length of key */
+	uint32		cipher_type;			/* Type of cipher used ie., CCM/GCM */
+	uint32		key_idle_time;			/* key idle time */
+	uint32		key_life_time;			/* key life time */
+	bool		sec_ltf_reqd;			/* Is secure lft required */
+	uint8		pad[3];
+} rtt_target_security_info_t;
+
+typedef struct {
+	rtt_cmn_target_info_t		cmn_tgt_info;
+	rtt_target_security_info_t	sec_info;	/* secure ranging params */
+	union {
+		/* mc target info */
+		rtt_mc_target_info_t	mc_tgt_info;
+		/* AZ target info */
+		rtt_az_target_info_t	az_tgt_info;
+	} u;
+} rtt_mc_az_target_info_t;
 
 typedef struct rtt_goefence_target_info {
 	bool valid;
@@ -268,7 +307,7 @@ typedef struct rtt_goefence_target_info {
 typedef struct rtt_config_params {
 	int8 rtt_target_cnt;
 	uint8 target_list_mode;
-	rtt_target_info_t *target_info;
+	rtt_mc_az_target_info_t *target_info;
 } rtt_config_params_t;
 
 typedef struct rtt_geofence_setup_status {
@@ -298,6 +337,21 @@ typedef struct rtt_directed_cfg {
 	int directed_sessions_cnt; /* No. of Geofence/Resp Sessions running currently */
 	rtt_directed_setup_status_t directed_setup_status;
 } rtt_directed_cfg_t;
+
+/* RTT AKM type */
+typedef enum rtt_akm {
+	RTT_AKM_PASN    = 0x1u,
+	RTT_AKM_SAE     = 0x2u,
+	RTT_AKM_FT      = 0x3u,
+	RTT_AKM_FILS    = 0x4u
+} rtt_akm;
+
+typedef enum rtt_cipher_type {
+	RTT_CIPHER_TYPE_CCM128_BIT	= 1u,
+	RTT_CIPHER_TYPE_CCM256_BIT	= 2u,
+	RTT_CIPHER_TYPE_GCM128_BIT	= 3u,
+	RTT_CIPHER_TYPE_GCM256_BIT	= 4u
+} rtt_cipher_type_t;
 
 /*
  * Keep Adding more reasons
@@ -396,7 +450,9 @@ typedef struct rtt_report {
 	bcm_tlv_t *LCI; /* LCI Report */
 	bcm_tlv_t *LCR; /* Location Civic Report */
 } rtt_report_t;
-#define RTT_REPORT_SIZE (sizeof(rtt_report_t))
+
+#define RTT_MC_REPORT_SIZE (sizeof(rtt_report_t))
+#define RTT_AZ_REPORT_SIZE (sizeof(rtt_report_t))
 
 /* rtt_results_header to maintain rtt result list per mac address */
 typedef struct rtt_results_header {
@@ -407,22 +463,45 @@ typedef struct rtt_results_header {
 	struct list_head result_list;
 } rtt_results_header_t;
 
-struct rtt_result_detail {
+struct rtt_mc_result_detail {
 	uint8 num_ota_meas;
 	uint32 result_flags;
 };
-/* rtt_result to link all of rtt_report */
-typedef struct rtt_result {
-	struct list_head list;
+
+typedef struct rtt_mc_result {
 	struct rtt_report report;
 	int32 report_len; /* total length of rtt_report */
-	struct rtt_result_detail rtt_detail;
+	struct rtt_mc_result_detail rtt_detail;
 	int32 detail_len;
+} rtt_mc_result_t;
+
+struct rtt_az_result_detail {
+	uint32			min_delta; /* in 100 us unit */
+	uint32			max_delta; /* in 10 ms unit */
+	uint8			i2r_ltf_rep;
+	uint8			r2i_ltf_rep;
+};
+
+typedef struct rtt_az_result {
+	struct rtt_report		report;
+	int32				report_len; /* total length of rtt_report */
+	struct rtt_az_result_detail	rtt_detail;
+	int32				detail_len;
+} rtt_az_result_t;
+
+/* rtt_result to link all of rtt_report */
+typedef struct rtt_mc_az_result {
+	struct list_head	list;
+	rtt_type_t		type; /* rtt type */
 	/* primary channel frequency (MHz) used for ranging measurements */
-	wifi_channel frequency;
+	wifi_channel		frequency;
 	/* RTT packet bandwidth is an average BW of the BWs of RTT frames. */
-	uint8 packet_bw;
-} rtt_result_t;
+	uint8			packet_bw;
+	union {
+		rtt_mc_result_t		mc_result;
+		rtt_az_result_t		az_result;
+	} u;
+} rtt_mc_az_result_t;
 
 /* RTT Capabilities */
 typedef struct rtt_capabilities {

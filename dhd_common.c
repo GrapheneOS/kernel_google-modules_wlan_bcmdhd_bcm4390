@@ -384,6 +384,11 @@ static int dhd_process_dscp_policy_get_cmds(dhd_pub_t *dhd, char *msg, uint msgl
 static int dhd_process_dscp_policy_set_cmds(dhd_pub_t *dhd, char *msg, uint msglen);
 #endif /* defined(DHD_DSCP_POLICY) */
 
+/* Set and Get handlers for packet llc config */
+static int dhd_process_llc_header_get_set_cmds(dhd_pub_t *dhd, int ifidx, char *msg, uint msglen,
+	char *obuf, uint o_len, bool is_set);
+int pattern_atoh_len(char *src, char *dst, int len);
+
 #ifdef DHD_LOGLEVEL
 void dhd_loglevel_set(dhd_loglevel_data_t *);
 void dhd_loglevel_get(dhd_loglevel_data_t *);
@@ -563,6 +568,8 @@ enum {
 #ifdef DHD_PKT_LOGGING
 	IOV_CLEAR_PKTLOG,
 #endif /* DHD_PKT_LOGGING */
+	IOV_PKT_LLC_ENABLE,
+	IOV_PKT_LLC_PAYLOAD,
 	IOV_LAST
 };
 
@@ -758,6 +765,9 @@ const bcm_iovar_t dhd_iovars[] = {
 #ifdef DHD_PKT_LOGGING
 	{"clear_pktlog", IOV_CLEAR_PKTLOG, 0, 0, IOVT_UINT32, 0},
 #endif /* DHD_PKT_LOGGING */
+	{"pkt_llc_enable", IOV_PKT_LLC_ENABLE, 0, 0, IOVT_BOOL, 0},
+	{"pkt_llc_payload", IOV_PKT_LLC_PAYLOAD, 0, 0, IOVT_BUFFER, 0},
+
 	/* --- add new iovars *ABOVE* this line --- */
 	{NULL, 0, 0, 0, 0, 0 }
 };
@@ -868,7 +878,7 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 	}
 
 	if (dhd_bus_get_cto(dhdp)) {
-		DHD_ERROR_RLMT(("%s : CTO Recovery reported, cannot proceed\n",
+		DHD_ERROR_RLMT(("%s : CTO reported, cannot proceed\n",
 			__FUNCTION__));
 		ret = TRUE;
 	}
@@ -881,6 +891,12 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 
 	if (dhd_bus_is_wl_bp_down(dhdp)) {
 		DHD_ERROR_RLMT(("%s : wlan backplane down, cannot proceed\n",
+			__FUNCTION__));
+		ret = TRUE;
+	}
+
+	if (dhd_bus_is_common_bp_down(dhdp)) {
+		DHD_ERROR_RLMT(("%s : common backplane down, cannot proceed\n",
 			__FUNCTION__));
 		ret = TRUE;
 	}
@@ -2455,6 +2471,61 @@ dhd_extract_mac_addr(char *msg, struct ether_addr *mac_addr, char **end_ptr)
 
 #endif /* defined(DHD_MESH) */
 
+/*
+ * Handler for the dhd -i <interface> pkt_llc_payload 0x......
+ * for add llc header on interface.
+ */
+static int
+dhd_process_llc_header_get_set_cmds(dhd_pub_t *dhd, int ifidx, char *msg, uint msglen,
+	char *obuf, uint o_len, bool is_set)
+{
+	int ret_val = BCME_OK;
+	struct dhd_if * ifp;
+	uint8 llc_hdr[32] = {0};
+	int len = 0;
+
+	ifp = dhd_get_ifp(dhd, ifidx);
+
+	if (!ifp) {
+		ret_val = BCME_ERROR;
+		goto done;
+	}
+	msg[msglen - 1] = '\0';
+	DHD_PRINT(("Handle LLC Hdr msg len  = %d\n", msglen));
+	if (is_set) {
+		len = pattern_atoh_len(msg, llc_hdr, DHD_MAX_PKT_LLC_PAYLOAD_LEN);
+
+		if (len == -1) {
+			DHD_ERROR(("Rejecting: LLC HDR len = %d\n", len));
+			ret_val = BCME_ERROR;
+			goto done;
+		}
+		if (ifp->llc_hdr) {
+			MFREE(dhd->osh, ifp->llc_hdr, ifp->llc_hdr_len);
+			ifp->llc_hdr_len = 0;
+		}
+		ifp->llc_hdr = MALLOCZ(dhd->osh, len);
+		if (ifp->llc_hdr) {
+			ret_val = memcpy_s((char *)ifp->llc_hdr, len, llc_hdr, len);
+			ifp->llc_hdr_len = len;
+			prhex("LLC HDR: ", (char*) ifp->llc_hdr, len);
+		} else {
+			ret_val = BCME_NOMEM;
+		}
+	} else {
+		if (ifp->llc_hdr) {
+			unsigned int *plen = (unsigned int *)obuf;
+			*plen = ifp->llc_hdr_len;
+			ret_val = memcpy_s(((char *)obuf + sizeof(unsigned int)), o_len,
+				(char *)ifp->llc_hdr, ifp->llc_hdr_len);
+		} else {
+			ret_val = BCME_ERROR;
+		}
+	}
+done:
+	return ret_val;
+}
+
 #if defined(DHD_DSCP_POLICY)
 
 /*
@@ -2602,7 +2673,7 @@ done:
 #endif /* DHD_DSCP_POLICY */
 
 static int
-dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const char *name,
+dhd_doiovar(dhd_pub_t *dhd_pub, int ifidx, const bcm_iovar_t *vi, uint32 actionid, const char *name,
             void *params, int plen, void *arg, uint len, int val_size)
 {
 	int bcmerror = 0;
@@ -3910,6 +3981,56 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		break;
 	}
 
+	case IOV_SVAL(IOV_PKT_LLC_ENABLE): {
+		bool bval = *(bool *)arg;
+		struct dhd_if * ifp;
+		if (bval != 0 && bval != 1)
+			bcmerror = BCME_ERROR;
+		else {
+			ifp = dhd_get_ifp(dhd_pub, ifidx);
+
+			if (!ifp) {
+				bcmerror = BCME_ERROR;
+				break;
+			}
+			ifp->llc_enabled = bval;
+		}
+		if (bcmerror == BCME_OK) {
+			dhd_update_ifp_headroom_len(dhd_pub, ifp);
+		}
+		break;
+	}
+
+	case IOV_GVAL(IOV_PKT_LLC_ENABLE): {
+		struct dhd_if * ifp;
+
+		ifp = dhd_get_ifp(dhd_pub, ifidx);
+
+		if (!ifp) {
+			bcmerror = BCME_ERROR;
+			break;
+		}
+		int_val = ifp->llc_enabled;
+		(void)memcpy_s(arg, val_size, &int_val, sizeof(int_val));
+		break;
+	}
+
+	case IOV_SVAL(IOV_PKT_LLC_PAYLOAD): {
+		bcmerror = dhd_process_llc_header_get_set_cmds(dhd_pub, ifidx,
+			params, plen, arg, len, TRUE);
+		if (bcmerror == BCME_OK) {
+			struct dhd_if * ifp;
+			ifp = dhd_get_ifp(dhd_pub, ifidx);
+			dhd_update_ifp_headroom_len(dhd_pub, ifp);
+		}
+		break;
+	}
+
+	case IOV_GVAL(IOV_PKT_LLC_PAYLOAD): {
+		bcmerror = dhd_process_llc_header_get_set_cmds(dhd_pub, ifidx,
+			params, plen, arg, len, FALSE);
+		break;
+	}
 
 #if defined(DHD_MESH)
 	case IOV_SVAL(IOV_MESH):
@@ -4152,7 +4273,7 @@ dhd_prec_drop_pkts(dhd_pub_t *dhdp, struct pktq *pq, int prec, f_droppkt_t fn)
 }
 
 static int
-dhd_iovar_op(dhd_pub_t *dhd_pub, const char *name,
+dhd_iovar_op(dhd_pub_t *dhd_pub, int ifidx, const char *name,
 	void *params, int plen, void *arg, uint len, bool set)
 {
 	int bcmerror = 0;
@@ -4196,14 +4317,15 @@ dhd_iovar_op(dhd_pub_t *dhd_pub, const char *name,
 
 	actionid = set ? IOV_SVAL(vi->varid) : IOV_GVAL(vi->varid);
 
-	bcmerror = dhd_doiovar(dhd_pub, vi, actionid, name, params, plen, arg, len, val_size);
+	bcmerror = dhd_doiovar(dhd_pub, ifidx, vi, actionid, name, params, plen,
+		arg, len, val_size);
 
 exit:
 	return bcmerror;
 }
 
 int
-dhd_ioctl(dhd_pub_t * dhd_pub, dhd_ioctl_t *ioc, void *buf, uint buflen)
+dhd_ioctl(dhd_pub_t * dhd_pub, int ifidx, dhd_ioctl_t *ioc, void *buf, uint buflen)
 {
 	int bcmerror = 0;
 	unsigned long flags;
@@ -4326,10 +4448,10 @@ dhd_ioctl(dhd_pub_t * dhd_pub, dhd_ioctl_t *ioc, void *buf, uint buflen)
 				arg++, arglen--;
 				/* call with the appropriate arguments */
 				if (ioc->cmd == DHD_GET_VAR) {
-					bcmerror = dhd_iovar_op(dhd_pub, buf, arg, arglen,
+					bcmerror = dhd_iovar_op(dhd_pub, ifidx, buf, arg, arglen,
 							buf, buflen, IOV_GET);
 				} else {
-					bcmerror = dhd_iovar_op(dhd_pub, buf, NULL, 0,
+					bcmerror = dhd_iovar_op(dhd_pub, ifidx, buf, NULL, 0,
 							arg, arglen, IOV_SET);
 				}
 				if (bcmerror != BCME_UNSUPPORTED) {
@@ -6390,6 +6512,8 @@ wl_pattern_atoh(char *src, char *dst)
 	return i;
 }
 
+#endif /* PKT_FILTER_SUPPORT || DHD_PKT_LOGGING */
+
 int
 pattern_atoh_len(char *src, char *dst, int len)
 {
@@ -6418,7 +6542,6 @@ pattern_atoh_len(char *src, char *dst, int len)
 	}
 	return i;
 }
-#endif /* PKT_FILTER_SUPPORT || DHD_PKT_LOGGING */
 
 #ifdef PKT_FILTER_SUPPORT
 void
@@ -7663,47 +7786,6 @@ bool dhd_support_sta_mode(dhd_pub_t *dhd)
 		return TRUE;
 }
 
-#if defined(KEEP_ALIVE)
-int dhd_keep_alive_onoff(dhd_pub_t *dhd)
-{
-	char				buf[32] = {0};
-	const char			*str;
-	wl_mkeep_alive_pkt_v1_t	mkeep_alive_pkt = {0, 0, 0, 0, 0, {0}};
-	wl_mkeep_alive_pkt_v1_t	*mkeep_alive_pktp;
-	int					buf_len;
-	int					str_len;
-	int res					= -1;
-
-	if (!dhd_support_sta_mode(dhd))
-		return res;
-
-	DHD_TRACE(("%s execution\n", __FUNCTION__));
-
-	str = "mkeep_alive";
-	str_len = strlen(str);
-	strlcpy(buf, str, sizeof(buf));
-	mkeep_alive_pktp = (wl_mkeep_alive_pkt_v1_t *) (buf + str_len + 1);
-	mkeep_alive_pkt.period_msec = CUSTOM_KEEP_ALIVE_SETTING;
-	buf_len = str_len + 1;
-	mkeep_alive_pkt.version = htod16(WL_MKEEP_ALIVE_VERSION_1);
-	mkeep_alive_pkt.length = htod16(WL_MKEEP_ALIVE_FIXED_LEN);
-	/* Setup keep alive zero for null packet generation */
-	mkeep_alive_pkt.keep_alive_id = 0;
-	mkeep_alive_pkt.len_bytes = 0;
-	buf_len += WL_MKEEP_ALIVE_FIXED_LEN;
-	bzero(mkeep_alive_pkt.data, sizeof(mkeep_alive_pkt.data));
-	/* Keep-alive attributes are set in local	variable (mkeep_alive_pkt), and
-	 * then memcpy'ed into buffer (mkeep_alive_pktp) since there is no
-	 * guarantee that the buffer is properly aligned.
-	 */
-	memcpy((char *)mkeep_alive_pktp, &mkeep_alive_pkt, WL_MKEEP_ALIVE_FIXED_LEN);
-
-	res = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, buf_len, TRUE, 0);
-
-	return res;
-}
-#endif /* defined(KEEP_ALIVE) */
-
 #if defined(OEM_ANDROID)
 #define	CSCAN_TLV_TYPE_SSID_IE	'S'
 /*
@@ -8888,8 +8970,12 @@ dhd_cmd_timeout(void *ctx)
 			DHD_ERROR(("%s: dhd_stop_cmd_timer() failed\n", __FUNCTION__));
 			ASSERT(0);
 		}
-		if (!dhd_query_bus_erros(pub))
+#ifdef BCMPCIE
+		dhd_msgbuf_iovar_timeout_dump(pub);
+#endif /* BCMPCIE */
+		if (!dhd_query_bus_erros(pub)) {
 			dhd_send_trap_to_fw_for_timeout(pub, DHD_REASON_COMMAND_TO);
+		}
 	} else {
 		DHD_TIMER_UNLOCK(pub->timeout_info->cmd_timer_lock, flags);
 	}
@@ -9278,12 +9364,12 @@ dhd_bus_timeout(void *ctx)
 			DHD_ERROR(("%s: dhd_stop_bus_timer() failed\n", __FUNCTION__));
 			ASSERT(0);
 		}
-		if (!dhd_query_bus_erros(pub)) {
-			dhd_send_trap_to_fw_for_timeout(pub, DHD_REASON_OQS_TO);
-		}
 #ifdef BCMPCIE
 		dhd_msgbuf_iovar_timeout_dump(pub);
 #endif /* BCMPCIE */
+		if (!dhd_query_bus_erros(pub)) {
+			dhd_send_trap_to_fw_for_timeout(pub, DHD_REASON_OQS_TO);
+		}
 	} else {
 		DHD_TIMER_UNLOCK(pub->timeout_info->bus_timer_lock, flags);
 	}
@@ -11463,6 +11549,112 @@ BCMFASTPATH(dhd_8023_llc_to_ether_hdr)(osl_t *osh, struct ether_header *eh8023, 
 #endif /* HOST_SFH_LLC */
 
 
+/* API to get if LLC hdr fro */
+bool
+dhd_llc_hdr_insert_enabled(struct dhd_pub *dhd, uint8 ifidx)
+{
+	dhd_if_t *ifp;
+
+	if (((ifp = dhd_get_ifp(dhd, ifidx)) == NULL) || (ifp->llc_hdr == NULL)) {
+		return FALSE;
+	}
+	return TRUE;
+}
+
+/** Convert Ethernet to 802.3 + Configured LLC SNAP header
+ * Note:- This function will overwrite the ethernet header in the pkt 'p'
+ * with a 802.3 ethernet + LLC/SNAP header by utilising the headroom
+ * in the packet. The pkt data pointer should be pointing to the
+ * start of the packet (at the ethernet header) when the function is called.
+ * The pkt data pointer will be pointing to the
+ * start of the new 802.3 header if the function returns successfully
+ */
+int
+BCMFASTPATH(dhd_ether_to_generic_llc_hdr)(struct dhd_pub *dhd, uint8 ifidx,
+	struct ether_header *eh, void *p)
+{
+	osl_t *osh = dhd->osh;
+	struct ether_header *neh;
+	uint16 *type = NULL, ether_type, plen;
+	struct dot11_llc_snap_header *lsh;
+	int ret = BCME_OK;
+	dhd_if_t *ifp;
+
+	if (((ifp = dhd_get_ifp(dhd, ifidx)) == NULL) || (ifp->llc_hdr == NULL)) {
+		return BCME_NOTFOUND;
+	}
+
+	if (PKTHEADROOM(osh, p) < ((ifp->llc_hdr_len) + 2)) {
+		DHD_ERROR(("%s: FATAL! not enough pkt headroom !\n", __FUNCTION__));
+		ASSERT(0);
+		return BCME_BUFTOOSHORT;
+	}
+	ether_type = ntoh16(eh->ether_type);
+	neh = (struct ether_header *)PKTPUSH(osh, p, ifp->llc_hdr_len + 2);
+
+	/* 802.3 MAC header */
+	eacopy((char*)eh->ether_dhost, (char*)neh->ether_dhost);
+	eacopy((char*)eh->ether_shost, (char*)neh->ether_shost);
+	plen = (uint16)PKTLEN(osh, p) - ETHER_HDR_LEN;
+	neh->ether_type = hton16(plen);
+
+	/* 802.2 LLC header + more from configured HDR */
+	lsh = (struct dot11_llc_snap_header *)&neh[1];
+	ret = memcpy_s(lsh, PKTLEN(dhd->osh, p), ifp->llc_hdr, ifp->llc_hdr_len);
+
+	type = (uint16 *)(((uint8 *)lsh) +  ifp->llc_hdr_len);
+	*type = hton16(ether_type);
+
+	return ret;
+}
+
+/** Convert 802.3 + LLC SNAP header to ethernet header
+ * Note:- This function will overwrite the existing
+ * 802.3 ethernet + LLC/SNAP header in the packet 'p'
+ * with a 14 byte ethernet header
+ * The pkt data pointer should be pointing to the
+ * start of the packet (at the 802.3 header) when the function is called.
+ * The pkt data pointer will be pointing to the
+ * start of the new ethernet header if the function returns successfully
+ */
+int
+dhd_generic_llc_to_eth_hdr(struct dhd_pub *dhd, uint8 ifidx, struct ether_header *eh, void *p)
+{
+	uint16 *ethertype = NULL;
+	uint8 *ptr = NULL;
+	int ret = BCME_OK;
+	dhd_if_t *ifp;
+	struct ether_header temp_eh;
+
+	if (!eh || !p || !dhd)
+		return BCME_BADARG;
+
+	if (((ifp = dhd_get_ifp(dhd, ifidx)) == NULL) || (ifp->llc_hdr == NULL)) {
+		return BCME_NOTFOUND;
+	}
+
+	ptr = PKTDATA(dhd->osh, p);
+
+	/* copy ether type instead of length from the
+	 * end of the llc header to the ethernet header
+	 */
+	ptr += sizeof(*eh) + ifp->llc_hdr_len;
+	ethertype = (uint16 *)ptr;
+	eh->ether_type = *ethertype;
+	(void)memcpy_s(&temp_eh, sizeof(temp_eh), eh, sizeof(*eh));
+
+	/* overwrite interface llc header with ethernet header */
+	PKTPULL(dhd->osh, p, ifp->llc_hdr_len + 2);
+	ptr = PKTDATA(dhd->osh, p);
+	ret = memcpy_s(ptr, PKTLEN(dhd->osh, p), &temp_eh, sizeof(temp_eh));
+	if (ret != BCME_OK) {
+		DHD_ERROR_RLMT(("%s: memcpy_s fails !\n", __FUNCTION__));
+		ret = BCME_ERROR;
+	}
+
+	return ret;
+}
+
 int
 dhd_iovar(dhd_pub_t *pub, int ifidx, char *name, char *param_buf, uint param_len, char *res_buf,
 		uint res_len, bool set)
@@ -11691,6 +11883,9 @@ dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int subs
 			break;
 		case DUMP_TYPE_WL_BP_DOWN:
 			type_str = "WL_BP_DOWN";
+			break;
+		case DUMP_TYPE_COMMON_BP_DOWN:
+			type_str = "COMMON_BP_DOWN";
 			break;
 		default:
 			type_str = "Unknown_type";

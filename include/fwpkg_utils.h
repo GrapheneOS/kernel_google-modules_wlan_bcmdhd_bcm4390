@@ -82,6 +82,7 @@ int fwpkg_init(fwpkg_info_t *fwpkg, uint32 fwsize, const uint8 *fwdata);
 int fwpkg_open_firmware_img(fwpkg_info_t *fwpkg, uint32* data_offset);
 int fwpkg_open_signature_img(fwpkg_info_t *fwpkg, uint32* data_offset);
 #endif /* DHD_LINUX_STD_FW_API */
+void fwpkg_deinit(fwpkg_info_t *fwpkg);
 
 /* common util function which do not need access to FW data buffer or file ops */
 uint32 fwpkg_get_firmware_img_size(fwpkg_info_t *fwpkg);

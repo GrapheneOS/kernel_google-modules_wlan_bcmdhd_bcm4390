@@ -1638,23 +1638,26 @@ typedef BWL_PRE_PACKED_STRUCT struct wifi_nan_svc_desc_ext_attr_s {
  * 10: GTKSA, IGTKSA, and BIGTKSA are supported;
  * 11: Reserved;
  */
-#define NAN_SEC_CIPHER_SUITE_CAP_DIS_GTK_IGTK_BIGTK     (0 << 1)
-#define NAN_SEC_CIPHER_SUITE_CAP_DIS_BIGTK		(1 << 1)
-#define NAN_SEC_CIPHER_SUITE_CAP_ENAB_GTK_IGTK_BIGTK	(1 << 2)
+#define NAN_SEC_CIPHER_SUITE_CAP_DIS_GTK_IGTK_BIGTK     (0u)
+#define NAN_SEC_CIPHER_SUITE_CAP_DIS_BIGTK		(1u << 1u)
+#define NAN_SEC_CIPHER_SUITE_CAP_ENAB_GTK_IGTK_BIGTK	(1u << 2u)
 
 /*
  * Bit 3 is 0 for 4 GTKSA replay counters, if GTKSA is supported
  * Bit 3 is 1 for 16 GTKSA replay counters, if GTKSA is supported
  */
-#define NAN_SEC_CIPHER_SUITE_CAP_GTK_REPLAY_4		(0 << 4)
-#define NAN_SEC_CIPHER_SUITE_CAP_GTK_REPLAY_16		(1 << 4)
+#define NAN_SEC_CIPHER_SUITE_CAP_GTK_REPLAY_4		(0u)
+#define NAN_SEC_CIPHER_SUITE_CAP_GTK_REPLAY_16		(1u << 3u)
 
 /*
  * Bit 4 is 0: BIP-CMAC-128 is selected for transmit, if IGTKSA or BIGTKSA is supported
  * Bit 4 is 1: BIP-GMAC-256 is selected for transmit, if IGTKSA or BIGTKSA is supported
  */
-#define NAN_SEC_CIPHER_SUITE_CAP_BIP_CMAC_128		(0)
-#define NAN_SEC_CIPHER_SUITE_CAP_BIP_GMAC_256		(1 << 5)
+#define NAN_SEC_CIPHER_SUITE_CAP_BIP_CMAC_128		(0u)
+#define NAN_SEC_CIPHER_SUITE_CAP_BIP_GMAC_256		(1u << 4u)
+
+/* Bits 1-4 */
+#define NAN_SEC_CIPHER_SUITE_CAP_GROUP_SEC_MASK		(0x1Eu)
 
 #define NAN_SEC_BIP_ENABLED(cap)	((cap) & \
 	(NAN_SEC_CIPHER_SUITE_CAP_ENAB_GTK_IGTK_BIGTK | \

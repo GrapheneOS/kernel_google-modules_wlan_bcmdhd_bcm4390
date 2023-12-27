@@ -63,7 +63,8 @@ typedef struct ewp_hw_blk {
 #define EWP_HW_INFO_VER 0x1u
 typedef struct ewp_hw_info {
 	uint8 version;
-	uint8 pad[3];
+	uint8 pad[2];
+	uint8 pcie_hwhdr_rev;
 	ewp_hw_blk_t init_log_buf;			// Info about buffer to save init logs
 	ewp_hw_blk_t mod_dump_buf;			// Info about buffer to save module dumps
 	ewp_hw_blk_t reg_dump_buf;			// Info about uffer to save reg dumps

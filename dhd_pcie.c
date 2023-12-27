@@ -179,7 +179,6 @@ int cc_wd_reset = FALSE;
 	(bus)->ring_sh[ringid].ring_mem_addr + OFFSETOF(ring_mem_t, member)
 
 /* Mpu conntrol */
-#define MPU_REG(regs, reg)	(&((sysmemregs_t *)regs)->reg)
 #define BUS_MPU_ENABLE_MASK	0x1u
 #define BUS_MPU_ROM_PR_MASK	0x2u
 #define BUS_MPU_VEC_PR_MASK	0x4u
@@ -524,6 +523,7 @@ enum {
 	IOV_PCIE_DMAXFER_PTRN,
 	IOV_HOST_INIT_HW_EXIT_LATENCY,
 	IOV_PTM_VALIDATE_TS,
+	IOV_CTO_RECOVERY,
 
 	IOV_PCIE_LAST /**< unused IOVAR */
 };
@@ -703,6 +703,9 @@ const bcm_iovar_t dhdpcie_iovars[] = {
 	{"ptm_validate_ts", IOV_PTM_VALIDATE_TS,	0,	0, IOVT_UINT32,	0 },
 	{"host_init_hw_exit_latency", IOV_HOST_INIT_HW_EXIT_LATENCY, 0, 0,
 	IOVT_UINT32, 0 },
+
+	{"cto_recovery",	IOV_CTO_RECOVERY,	0, 0,	IOVT_UINT32,	0 },
+
 	{NULL, 0, 0, 0, 0, 0 }
 };
 
@@ -1638,15 +1641,17 @@ dhdpcie_bus_intstatus(dhd_bus_t *bus)
 	return intstatus;
 }
 
-void
+bool
 dhdpcie_set_collect_fis(dhd_bus_t *bus)
 {
 #if defined(BOARD_HIKEY) || defined(CONFIG_X86)
 	if (CHIPTYPE(bus->sih->socitype) == SOCI_NCI) {
 		DHD_PRINT(("%s : Collect FIS dumps\n", __FUNCTION__));
 		bus->dhd->collect_fis = TRUE;
+		return TRUE;
 	}
 #endif /* BOARD_HIKEY || CONFIG_X86 */
+	return FALSE;
 }
 
 void
@@ -1681,12 +1686,35 @@ dhdpcie_cto_recovery_handler(dhd_pub_t *dhd)
 	 */
 	OSL_SLEEP(1000);
 
+#if defined(DHD_FW_COREDUMP) && defined(DHD_SSSR_DUMP)
+	/* if FIS is supported, directly collect FIS dumps
+	 * without going for CTO recovery step
+	 */
+	if (!bus->is_linkdown && bus->dhd->memdump_enabled &&
+		dhdpcie_set_collect_fis(bus)) {
+		DHD_PRINT(("%s: FIS is supported, skip CTO recovery and collect FIS directly\n",
+			__FUNCTION__));
+		DHD_PRINT(("%s : Set collect_sssr as TRUE\n", __FUNCTION__));
+		bus->dhd->collect_sssr = TRUE;
+#ifdef DHD_SDTC_ETB_DUMP
+		if (bus->dhd->etb_dap_flush_supported) {
+			DHD_PRINT(("%s : Set collect_sdtc as TRUE\n", __FUNCTION__));
+			bus->dhd->collect_sdtc = TRUE;
+		}
+#endif /* DHD_SDTC_ETB_DUMP */
+		bus->dhd->memdump_type = DUMP_TYPE_CTO_RECOVERY;
+		dhdpcie_mem_dump(bus);
+		goto exit;
+	}
+#endif /* DHD_FW_COREDUMP && DHD_SSSR_DUMP */
+
 	/* reset backplane and cto,
 	 * then access through pcie is recovered.
 	 */
 	ret = dhdpcie_cto_error_recovery(bus);
 	if (!ret) {
 		int save_idx = si_coreidx(bus->sih);
+
 		/* Waiting for backplane reset */
 		OSL_SLEEP(10);
 
@@ -1725,6 +1753,7 @@ dhdpcie_cto_recovery_handler(dhd_pub_t *dhd)
 #endif /* DHD_FW_COREDUMP */
 	}
 
+exit:
 #ifdef OEM_ANDROID
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 #ifdef CONFIG_ARCH_MSM
@@ -1736,7 +1765,7 @@ dhdpcie_cto_recovery_handler(dhd_pub_t *dhd)
 	 * is to be done for CTO
 	 */
 	if (!bus->dhd->collect_fis) {
-		bus->is_linkdown = TRUE;
+		dhd_bus_set_linkdown(dhd, TRUE);
 	}
 	bus->dhd->hang_reason = HANG_REASON_PCIE_CTO_DETECT;
 	/* Send HANG event */
@@ -1824,7 +1853,7 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 				DHD_ERROR(("%s: Invalid cfg intstatus(0x%x):0x%x, pcie link down,"
 					"induce %u\n", __FUNCTION__, PCI_INT_STATUS, intstatus,
 					bus->dhd->dhd_induce_error));
-				bus->is_linkdown = 1;
+				dhd_bus_set_linkdown(bus->dhd, TRUE);
 				dhdpcie_disable_irq_nosync(bus);
 				dhd_pcie_debug_info_dump(bus->dhd);
 #ifdef OEM_ANDROID
@@ -1841,7 +1870,7 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 			}
 
 			if (intstatus & PCI_CTO_INT_MASK) {
-				DHD_ERROR(("%s: ##### CTO RECOVERY REPORTED BY DONGLE "
+				DHD_ERROR(("%s: ##### CTO REPORTED BY DONGLE "
 					"intstat=0x%x enab=%d\n", __FUNCTION__,
 					intstatus, bus->cto_enable));
 				bus->cto_triggered = 1;
@@ -1860,7 +1889,9 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 				dhd_bus_stop_queue(bus);
 
 				/* Schedule CTO recovery */
-				dhd_schedule_cto_recovery(bus->dhd);
+				if (bus->cto_recovery_enable) {
+					dhd_schedule_cto_recovery(bus->dhd);
+				}
 
 				return TRUE;
 			}
@@ -1888,7 +1919,7 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 		if (intstatus == (uint32)-1) {
 			DHD_LOG_MEM(("%s : wrong interrupt status val : 0x%x\n",
 				__FUNCTION__, intstatus));
-			bus->is_linkdown = 1;
+			dhd_bus_set_linkdown(bus->dhd, TRUE);
 			dhdpcie_disable_irq_nosync(bus);
 			break;
 		}
@@ -2535,6 +2566,7 @@ dhdpcie_chip_specific_init(dhd_bus_t *bus, uint chipid)
 #if defined(BCMFPGA_HW) || defined(BCMQT_HW)
 	DHD_PRINT(("Disable CTO\n"));
 	bus->cto_enable = FALSE;
+	bus->cto_recovery_enable = FALSE;
 	/* CTO init routine invoked below for silicon clears the default
 	 * value of PCI_INT_MASK register in config space and enables only
 	 * the CTO relevant bits. To maintain a similar behavior, clear
@@ -2546,13 +2578,16 @@ dhdpcie_chip_specific_init(dhd_bus_t *bus, uint chipid)
 	if (BCM4349_CHIP(chipid) || BCM4350_CHIP(chipid) || BCM4345_CHIP(chipid)) {
 		DHD_PRINT(("Disable CTO\n"));
 		bus->cto_enable = FALSE;
+		bus->cto_recovery_enable = FALSE;
 	} else {
 		DHD_PRINT(("Enable CTO\n"));
 		bus->cto_enable = TRUE;
+		bus->cto_recovery_enable = TRUE;
 	}
 #else
 	DHD_PRINT(("Disable CTO\n"));
 	bus->cto_enable = FALSE;
+	bus->cto_recovery_enable = FALSE;
 #endif /* BCMPCIE_CTO_PREVENTION */
 #endif /* BCMFPGA_HW || BCMQT_HW */
 
@@ -4720,6 +4755,11 @@ _dhdpcie_download_firmware(struct dhd_bus *bus)
 		goto err;
 	}
 
+#ifdef FW_SIGNATURE
+	/* Clear the fwpkag content for fresh load */
+	fwpkg_deinit(&bus->fwpkg);
+#endif /* FW_SIGNATURE */
+
 	/* External image takes precedence if specified */
 	if ((bus->fw_path != NULL) && (bus->fw_path[0] != '\0')) {
 		if ((bcmerror = dhdpcie_download_code_file(bus, bus->fw_path))) {
@@ -4907,6 +4947,9 @@ dhdpcie_chk_cmnbp_status_indirect(dhd_bus_t *bus)
 #define ARMCA7_WAR_REG_VAL 0xFF00u
 #define CC_BPIND_ACCESS_POLL_TMO_US 10000u
 
+#define NCI_HNDSHK_STUCKERR_INTSTATUS 0xa30u
+#define NCI_PWR_ERROR_INTSTATUS_OFFSET 0xa04u
+
 dhd_pcie_link_state_type_t
 dhdpcie_get_link_state(dhd_bus_t *bus)
 {
@@ -4916,6 +4959,8 @@ dhdpcie_get_link_state(dhd_bus_t *bus)
 	uint bpaddr = 0, val = 0;
 	uint32 idx = 0, core_addr = 0;
 	int ret = 0;
+	uint32 nci_hndshk_stuckerr_intstatus;
+	uint32 nci_pwr_error_intstatus_offset;
 
 	/* If the link down is already set, no need to further access registers */
 	if (bus->is_linkdown) {
@@ -4935,7 +4980,7 @@ dhdpcie_get_link_state(dhd_bus_t *bus)
 		bus->no_cfg_restore = 1;
 #endif /* CONFIG_ARCH_MSM */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
-		bus->is_linkdown = 1;
+		dhd_bus_set_linkdown(bus->dhd, TRUE);
 		goto exit;
 	}
 	if ((base_addr0 == PCI_CFG_BAR0_RESET_VAL) || (base_addr1 == PCI_CFG_BAR1_RESET_VAL)) {
@@ -4947,7 +4992,7 @@ dhdpcie_get_link_state(dhd_bus_t *bus)
 		bus->no_cfg_restore = 1;
 #endif /* CONFIG_ARCH_MSM */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
-		bus->is_linkdown = 1;
+		dhd_bus_set_linkdown(bus->dhd, TRUE);
 		goto exit;
 	}
 
@@ -4959,6 +5004,36 @@ dhdpcie_get_link_state(dhd_bus_t *bus)
 	if (dhdpcie_chk_cmnbp_status_indirect(bus) != BCME_OK) {
 		link_state = DHD_PCIE_COMMON_BP_DOWN;
 		goto exit;
+	}
+
+	/* Read NCI error intstatus registers and dump them if WL BP is down */
+	if (CHIPTYPE(bus->sih->socitype) == SOCI_NCI) {
+		idx = si_findcoreidx(bus->sih, GCI_CORE_ID, 0);
+		core_addr = si_get_coreaddr(bus->sih, idx);
+		if (!core_addr) {
+			DHD_ERROR(("%s: Failed to get GCI core addr for idx 0x%x !\n",
+				__FUNCTION__, idx));
+			goto exit;
+		}
+		bpaddr = core_addr + NCI_HNDSHK_STUCKERR_INTSTATUS;
+		ret = si_bpind_access(bus->sih, 0, bpaddr, (int32 *)&nci_hndshk_stuckerr_intstatus,
+			TRUE, CC_BPIND_ACCESS_POLL_TMO_US);
+		if (ret != BCME_OK) {
+			DHD_ERROR(("%s: Failed to read nci_hndshk_stuckerr_intstatus!\n",
+				__FUNCTION__));
+			link_state = DHD_PCIE_WLAN_BP_DOWN;
+			goto exit;
+		}
+
+		bpaddr = core_addr + NCI_PWR_ERROR_INTSTATUS_OFFSET;
+		ret = si_bpind_access(bus->sih, 0, bpaddr, (int32 *)&nci_pwr_error_intstatus_offset,
+			TRUE, CC_BPIND_ACCESS_POLL_TMO_US);
+		if (ret != BCME_OK) {
+			DHD_ERROR(("%s: Failed to read nci_pwr_error_intstatus_offset!\n",
+				__FUNCTION__));
+			link_state = DHD_PCIE_WLAN_BP_DOWN;
+			goto exit;
+		}
 	}
 
 	if (MULTIBP_ENAB(bus->sih)) {
@@ -5011,6 +5086,12 @@ dhdpcie_get_link_state(dhd_bus_t *bus)
 	}
 
 exit:
+	if (link_state == DHD_PCIE_WLAN_BP_DOWN) {
+		DHD_ERROR(("%s: nci_hndshk_stuckerr_intstatus=0x%x "
+			"nci_pwr_error_intstatus_offset:0x%x\n",
+			__FUNCTION__, nci_hndshk_stuckerr_intstatus,
+			nci_pwr_error_intstatus_offset));
+	}
 	return link_state;
 }
 
@@ -5024,17 +5105,14 @@ dhd_validate_pcie_link_cbp_wlbp(dhd_bus_t *bus)
 
 	bus->link_state = dhdpcie_get_link_state(bus);
 
-	if (bus->link_state == DHD_PCIE_ALL_GOOD) {
-		dhd_bus_dump_imp_cfg_registers(bus);
-		dhd_bus_dump_dar_registers(bus);
-	} else if (bus->link_state == DHD_PCIE_LINK_DOWN) {
+	if (bus->link_state == DHD_PCIE_LINK_DOWN) {
 		DHD_ERROR(("%s: pcie link down\n", __FUNCTION__));
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 #ifdef CONFIG_ARCH_MSM
 		bus->no_cfg_restore = 1;
 #endif /* CONFIG_ARCH_MSM */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
-		bus->is_linkdown = 1;
+		dhd_bus_set_linkdown(bus->dhd, TRUE);
 	} else if (bus->link_state == DHD_PCIE_LINK_RESET) {
 		DHD_ERROR(("%s: pcie link reset\n", __FUNCTION__));
 #ifdef SUPPORT_LINKDOWN_RECOVERY
@@ -5042,7 +5120,7 @@ dhd_validate_pcie_link_cbp_wlbp(dhd_bus_t *bus)
 		bus->no_cfg_restore = 1;
 #endif /* CONFIG_ARCH_MSM */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
-		bus->is_linkdown = 1;
+		dhd_bus_set_linkdown(bus->dhd, TRUE);
 	} else if (bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
 		dhd_bus_dump_imp_cfg_registers(bus);
 		dhd_bus_dump_dar_registers(bus);
@@ -5051,10 +5129,17 @@ dhd_validate_pcie_link_cbp_wlbp(dhd_bus_t *bus)
 		bus->no_cfg_restore = 1;
 #endif /* CONFIG_ARCH_MSM */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
-		bus->is_linkdown = 1;
+		DHD_ERROR(("%s : Set do_chip_bighammer\n", __FUNCTION__));
+		bus->dhd->do_chip_bighammer = TRUE;
+#if defined(DHD_FW_COREDUMP)
+#ifdef DHD_SSSR_DUMP
+		DHD_PRINT(("%s : Set collect_sssr\n", __FUNCTION__));
+		bus->dhd->collect_sssr = TRUE;
+		dhdpcie_set_collect_fis(bus);
+		bus->dhd->memdump_type = DUMP_TYPE_COMMON_BP_DOWN;
+#endif /* DHD_SSSR_DUMP */
+#endif /* DHD_FW_COREDUMP */
 	} else if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		dhd_bus_dump_imp_cfg_registers(bus);
-		dhd_bus_dump_dar_registers(bus);
 		DHD_ERROR(("%s : Set do_chip_bighammer\n", __FUNCTION__));
 		bus->dhd->do_chip_bighammer = TRUE;
 #if defined(DHD_FW_COREDUMP)
@@ -5576,9 +5661,10 @@ dhdpcie_get_mem_dump(dhd_bus_t *bus)
 	/* Check link status before collecting memdump */
 	dhd_validate_pcie_link_cbp_wlbp(bus);
 
-	if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s: DHD_PCIE_WLAN_BP_DOWN return success and collect only FIS if set\n",
-			__FUNCTION__));
+	if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
+		DHD_ERROR(("%s: link_state(%u) not good, return success and "
+			"collect only FIS if set\n", __FUNCTION__, bus->link_state));
 		ret = BCME_OK;
 		goto exit;
 	}
@@ -5764,6 +5850,8 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 		goto exit;
 	}
 
+	DHD_PRINT(("%s: pcie_hwhdr_rev = %u\n", __FUNCTION__, bus->ewp_hw_info.pcie_hwhdr_rev));
+
 	/* Check link status before collecting memdump */
 	dhd_validate_pcie_link_cbp_wlbp(bus);
 
@@ -5782,6 +5870,11 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 			ret = BCME_ERROR;
 			goto exit;
 		}
+	} else if (bus->cto_triggered && bus->dhd->collect_fis) {
+		DHD_PRINT(("%s: CTO triggered and FIS is set, collect in memdump work\n",
+			__FUNCTION__));
+		ret = BCME_OK;
+		goto sched_memdump;
 	}
 
 	/* Induce DB7 trap for below non-trap cases */
@@ -5930,18 +6023,11 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 	bus->dhd->memdump_success = TRUE;
 #endif	/* DHD_DEBUG_UART */
 
-	/* for no db7 ack case, since BP may be bad, do not dump anything
-	 * collect FIS - this will have arm pc and nci wrapper regs anyway
-	 */
-#ifdef DHD_SSSR_DUMP
-	if (timeout && !dhdp->collect_fis) {
-#else
-	if (timeout) {
-#endif /* DHD_SSSR_DUMP */
+	if (timeout && (bus->link_state == DHD_PCIE_ALL_GOOD)) {
 		/* print ARMCA7 PC, SR engine regs, and nci wrapper dump for timeout cases */
 		dhd_bus_get_armca7_pc(dhdp->bus, TRUE);
 		dhdpcie_dump_sreng_regs(bus);
-		dhd_pcie_nci_wrapper_dump(dhdp);
+		dhd_pcie_nci_wrapper_dump(dhdp, FALSE);
 	}
 
 
@@ -6050,6 +6136,16 @@ dhdpcie_bus_membytes(dhd_bus_t *bus, bool write, dhd_pcie_mem_region_t region,
 
 	if (bus->is_linkdown) {
 		DHD_ERROR(("%s: PCIe link was down\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	/* if FIS trigerred, allow membytes to go through in order to get
+	 * FIS dumps
+	 */
+	if (!bus->dhd->fis_triggered && (bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		bus->link_state == DHD_PCIE_COMMON_BP_DOWN)) {
+		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u), skip.\n",
+			__FUNCTION__, bus->link_state));
 		return BCME_ERROR;
 	}
 
@@ -6493,6 +6589,12 @@ int dhd_bus_console_in(dhd_pub_t *dhd, uchar *msg, uint msglen)
 #ifdef PCIE_INB_DW
 	unsigned long flags = 0;
 #endif /* PCIE_INB_DW */
+
+	if (bus->sih->buscorerev >= 133) {
+		DHD_ERROR(("%s: not supported for bus corerev %u\n", __FUNCTION__,
+			bus->sih->buscorerev));
+		return BCME_UNSUPPORTED;
+	}
 
 	/* Address could be zero if CONSOLE := 0 in dongle Makefile */
 	if (bus->console_addr == 0)
@@ -7553,6 +7655,15 @@ dhd_bus_perform_flr(dhd_bus_t *bus, bool force_fail)
 	uint val;
 	int retry = 0;
 	bool in_flr_already = FALSE;
+
+	if (!bus->sih) {
+		DHD_ERROR(("%s: bus->sih is NULL! si_attach not done\n", __FUNCTION__));
+		return BCME_BADARG;
+	}
+	if (bus->is_linkdown) {
+		DHD_ERROR(("%s: pcie linkdown, return\n", __FUNCTION__));
+		return BCME_NOTUP;
+	}
 
 	DHD_PRINT(("******** Perform FLR ********\n"));
 
@@ -9697,6 +9808,19 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		bcopy(&int_val, arg, val_size);
 		break;
 
+	case IOV_SVAL(IOV_CTO_RECOVERY):
+		bus->cto_recovery_enable = bool_val;
+		break;
+
+	case IOV_GVAL(IOV_CTO_RECOVERY):
+		if (bus->sih->buscorerev < 19) {
+			bcmerror = BCME_UNSUPPORTED;
+			break;
+		}
+		int_val = (int32)bus->cto_recovery_enable;
+		bcopy(&int_val, arg, val_size);
+		break;
+
 	case IOV_SVAL(IOV_CTO_THRESHOLD):
 		{
 			if (bus->sih->buscorerev < 19) {
@@ -10636,7 +10760,7 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			dhd_plat_pcie_skip_config_set(TRUE);
 			DHD_ERROR(("%s: Treating D3 ack timeout during"
 				" suspend-resume as PCIe linkdown !\n", __FUNCTION__));
-			bus->is_linkdown = 1;
+			dhd_bus_set_linkdown(bus->dhd, TRUE);
 			bus->d3ackto_as_linkdwn_cnt++;
 			bus->dhd->hang_reason = HANG_REASON_PCIE_LINK_DOWN_RC_DETECT;
 
@@ -10938,7 +11062,7 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 					bus->pcie_mailbox_int, 0, 0);
 				if (intstatus == (uint32)-1) {
 					/* Invalidate PCIe bus status */
-					bus->is_linkdown = 1;
+					dhd_bus_set_linkdown(bus->dhd, TRUE);
 				}
 
 				dhd_bus_dump_console_buffer(bus);
@@ -11705,6 +11829,7 @@ static int
 dhdpcie_bus_download_fw_signature(dhd_bus_t *bus, bool *do_write)
 {
 	int bcmerror = BCME_OK;
+	uint32 security_status = 0;
 
 	DHD_PRINT(("FWSIG: bl=%s,%x fw=%x,%u sig=%s,%x,%u"
 		" stat=%x,%u ram=%x,%x\n",
@@ -11714,6 +11839,15 @@ dhdpcie_bus_download_fw_signature(dhd_bus_t *bus, bool *do_write)
 		bus->fwsig_download_len,
 		bus->fwstat_download_addr, bus->fwstat_download_len,
 		bus->dongle_ram_base, bus->ramtop_addr));
+
+	/* check if sboot is enabled, if not write flops */
+	(void) dhd_bus_get_security_status(bus, &security_status);
+	DHD_PRINT(("%s: security_status = 0x%x\n", __FUNCTION__, security_status));
+	if (!(security_status & DAR_SEC_SBOOT_MASK)) {
+		DHD_ERROR(("%s: non-secure chip, so write flops\n", __FUNCTION__));
+		*do_write = TRUE;
+		goto exit;
+	}
 
 	if (bus->fwsig_filename[0] == 0) {
 		DHD_INFO(("%s: missing signature file\n", __FUNCTION__));
@@ -12705,13 +12839,12 @@ dhdpcie_clkreq(osl_t *osh, uint32 mask, uint32 val)
 static bool
 dhd_bus_support_dar_sec_status(dhd_bus_t *bus)
 {
-	DHD_PRINT(("%s: buscorerev=%d chipid=0x%x\n",
-		__FUNCTION__, bus->sih->buscorerev, si_chipid(bus->sih)));
-
 	/* Support for DAR security status register provided for pcie core
 	 * generation2 at revisions > 73 and for generation3 at revisions > 128
 	 */
 	if ((bus->sih->buscorerev < 74) || (bus->sih->buscorerev == 128)) {
+		DHD_PRINT(("%s: unspported buscorerev=%d chipid=0x%x\n",
+			__FUNCTION__, bus->sih->buscorerev, si_chipid(bus->sih)));
 		return FALSE;
 	}
 
@@ -12778,8 +12911,9 @@ dhd_bus_sboot_disable(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	int ret = BCME_OK;
 	dhd_bus_t *bus = dhdp->bus;
 	uint32 save_idx, val;
-	sysmemregs_t *regs;
+	sysmemregs_t *regs = NULL;
 	uint32 dar_sec_val;
+	volatile uint32 *mpucontrol_addr = NULL;
 
 	save_idx = si_coreidx(bus->sih);
 	ret = dhd_bus_get_security_status(bus, &dar_sec_val);
@@ -12793,26 +12927,37 @@ dhd_bus_sboot_disable(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 		goto exit;
 	}
 
+	/* CA7 Bus MPU in Sysmem regs */
 	if ((regs = si_setcore(bus->sih, SYSMEM_CORE_ID, 0)) != NULL) {
+		mpucontrol_addr = &((sysmemregs_t *)regs)->mpucontrol;
+	/* CR4 Bus MPU in Armcr4 regs */
+	} else if ((regs = si_setcore(bus->sih, ARMCR4_CORE_ID, 0)) != NULL) {
+		mpucontrol_addr = &((cr4regs_t *)regs)->mpucontrol;
+	}
+
+	if (mpucontrol_addr) {
 		/* check if mpu control is unlocked */
-		val = R_REG(dhdp->osh, MPU_REG(regs, mpucontrol));
+		val = R_REG(dhdp->osh, mpucontrol_addr);
 		if (val & BUS_MPU_LOCK_MASK) {
 			bcm_bprintf(strbuf, "\nFail: Mpu Control is locked!\n");
 			goto exit;
 		}
 
 		/* clear RomProtect and VectorProtect */
-		W_REG(dhdp->osh, MPU_REG(regs, mpucontrol),
+		W_REG(dhdp->osh, mpucontrol_addr,
 			val & ~(BUS_MPU_ROM_PR_MASK | BUS_MPU_VEC_PR_MASK));
 
 		/* validate RomProtect and VectorProtect are cleared */
-		val = R_REG(dhdp->osh, MPU_REG(regs, mpucontrol));
+		val = R_REG(dhdp->osh, mpucontrol_addr);
 		if (val & (BUS_MPU_ROM_PR_MASK | BUS_MPU_VEC_PR_MASK)) {
 			bcm_bprintf(strbuf, "\nFail: Secure Boot still enabled!\n");
 		} else {
 			bcm_bprintf(strbuf, "\nSecure Boot disabled!\n");
 		}
 
+	} else {
+		bcm_bprintf(strbuf, "\nFail: MpuControl is not defined!\n");
+		goto exit;
 	}
 exit:
 	si_setcoreidx(bus->sih, save_idx);
@@ -14363,7 +14508,7 @@ dhdpci_bus_read_frames(dhd_bus_t *bus)
 #ifdef CONFIG_ARCH_MSM
 			bus->no_cfg_restore = 1;
 #endif /* CONFIG_ARCH_MSM */
-			bus->is_linkdown = 1;
+			dhd_bus_set_linkdown(bus->dhd, TRUE);
 		}
 
 		/* The dhd_prot_debug_info_print() function *has* to be
@@ -14576,7 +14721,7 @@ dhdpcie_wait_readshared_area_addr(dhd_bus_t *bus, uint32 *share_addr)
 
 /* In phones sometimes NOC is seen for any further access after readshared fails */
 #ifdef DHD_NO_DUMP_FOR_READSHARED_FAIL
-		bus->is_linkdown = 1;
+		dhd_bus_set_linkdown(bus->dhd, TRUE);
 		DHD_ERROR(("%s : PCIe link might be down\n", __FUNCTION__));
 		ret = BCME_ERROR;
 		goto done;
@@ -14589,7 +14734,7 @@ dhdpcie_wait_readshared_area_addr(dhd_bus_t *bus, uint32 *share_addr)
 				bus->sih->buscoreidx, bus->pcie_mailbox_int, 0, 0);
 		if (intstatus == (uint32)-1) {
 			DHD_ERROR(("%s : PCIe link might be down\n", __FUNCTION__));
-			bus->is_linkdown = TRUE;
+			dhd_bus_set_linkdown(bus->dhd, TRUE);
 		} else {
 #if defined(DHD_FW_COREDUMP)
 #ifdef DHD_SSSR_DUMP
@@ -14731,7 +14876,7 @@ dhdpcie_validate_sh_ring_info(dhd_bus_t *bus, ring_info_t *ring_info)
 		dhd_bus_dump_imp_cfg_registers(bus);
 		dhd_bus_dump_dar_registers(bus);
 		DHD_ERROR(("%s: Set linkdown occured !\n", __FUNCTION__));
-		bus->is_linkdown = TRUE;
+		dhd_bus_set_linkdown(bus->dhd, TRUE);
 		ret = BCME_BADADDR;
 	}
 
@@ -15503,6 +15648,51 @@ fail:
 #endif /* DHD_FW_COREDUMP && !OEM_ANDROID */
 	return ret;
 }
+
+#ifdef DHD_COREDUMP
+void
+dhd_get_ewp_init_state(dhd_bus_t *bus, uint8 *init_state)
+{
+	int ret = BCME_OK;
+	pciedev_shared_t *sh;
+	ewp_info_t ewp_info;
+
+	/* Initialize state to 0xff */
+	*init_state = -1;
+
+	if (!bus) {
+		DHD_ERROR(("%s: bus null\n", __FUNCTION__));
+		return;
+	}
+
+	sh = bus->pcie_sh;
+	if (!sh) {
+		DHD_ERROR(("%s: sh null\n", __FUNCTION__));
+		return;
+	}
+
+	/* check sanity of ewp_info_addr */
+	if (IS_HWADDR_INVALID(sh->ewp_info_addr)) {
+		DHD_ERROR(("%s: bad ewp_info_addr(%x) \n", __FUNCTION__,
+			sh->ewp_info_addr));
+		return;
+	}
+
+	(void)memset_s(&ewp_info, sizeof(ewp_info), 0, sizeof(ewp_info));
+
+	/* read the ewp_info_t structure */
+	ret = dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1, (ulong)sh->ewp_info_addr,
+		(uint8 *)&ewp_info, sizeof(ewp_info));
+	if (ret < 0) {
+		DHD_ERROR(("%s: Error reading ewp_info structure from dongle \n",
+			__FUNCTION__));
+		return;
+	}
+
+	*init_state = ewp_info.init_state;
+	return;
+}
+#endif /* DHD_COREDUMP */
 
 #if defined(__linux__)
 /*
@@ -16340,7 +16530,11 @@ dhd_bus_pktq_flush(dhd_pub_t *dhdp)
 void
 dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val)
 {
-	dhdp->bus->is_linkdown = val;
+	if (dhdp && dhdp->bus) {
+		dhdp->bus->is_linkdown = val;
+		DHD_PRINT(("%s: pcie_hwhdr_rev = %u\n", __FUNCTION__,
+			dhdp->bus->ewp_hw_info.pcie_hwhdr_rev));
+	}
 }
 
 int
@@ -16353,6 +16547,18 @@ bool
 dhd_bus_is_wl_bp_down(dhd_pub_t *dhdp)
 {
 	return (dhdp->bus->link_state == DHD_PCIE_WLAN_BP_DOWN);
+}
+
+bool
+dhd_bus_is_common_bp_down(dhd_pub_t *dhdp)
+{
+	return (dhdp->bus->link_state == DHD_PCIE_COMMON_BP_DOWN);
+}
+
+void
+dhd_bus_reset_link_state(dhd_pub_t *dhdp)
+{
+	dhdp->bus->link_state = DHD_PCIE_ALL_GOOD;
 }
 
 int
@@ -16967,6 +17173,59 @@ dhd_sbreg_op(dhd_pub_t *dhd, uint addr, uint *val, bool read)
 	}
 	return;
 }
+
+#ifdef DHD_COREDUMP
+void
+dhdpcie_get_etd_trapcode_str(dhd_pub_t *dhdp, char *trap_code, char *trap_subcode, int buflen)
+{
+	uint32 *ext_data;
+	hnd_ext_trap_hdr_t *hdr;
+	const bcm_tlv_t *tlv;
+
+	ext_data = dhdp->extended_trap_data;
+
+	/* Initialize code string to 0x0 */
+	snprintf(trap_code, buflen, "0x%x", TAG_TRAP_NONE);
+	snprintf(trap_subcode, buflen, "0x%x", 0);
+
+	/* return if there is no extended trap data */
+	if (!ext_data || !(dhdp->dongle_trap_data & D2H_DEV_EXT_TRAP_DATA)) {
+		DHD_ERROR(("%s: Not case for filling trap code (0x%x)",
+			__FUNCTION__, dhdp->dongle_trap_data));
+		return;
+	}
+
+	/* First word is original trap_data */
+	ext_data++;
+
+	/* Followed by the extended trap data header */
+	hdr = (hnd_ext_trap_hdr_t *)ext_data;
+
+	/* length sanity check */
+	if (hdr->len == 0 || (int16)hdr->len == -1) {
+		DHD_ERROR(("%s: invalid len:%u", __FUNCTION__, hdr->len));
+		return;
+	}
+
+	/* Extract TAG_TRAP_CODE */
+	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_CODE);
+	if (tlv) {
+		snprintf(trap_code, buflen, "0x%x", *(uint32 *)tlv->data);
+		DHD_PRINT(("%s: ETD TRAP_CODE:0x%x len:%d\n",
+			__FUNCTION__, *(uint32 *)tlv->data, tlv->len));
+	}
+
+	/* Extract TAG_TRAP_SUBCODE */
+	tlv = bcm_parse_tlvs(hdr->data, hdr->len, TAG_TRAP_SUBCODE);
+	if (tlv) {
+		snprintf(trap_subcode, buflen, "0x%x", *(uint32 *)tlv->data);
+		DHD_PRINT(("%s: ETD TRAP_SUBCODE:0x%x len:%d\n",
+			__FUNCTION__, *(uint32 *)tlv->data, tlv->len));
+	}
+
+	return;
+}
+#endif /* DHD_COREDUMP */
 
 #if defined(BCMPCIE) && defined(EWP_ETD_PRSRV_LOGS)
 void
