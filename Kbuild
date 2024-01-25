@@ -410,9 +410,9 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
     # Skip coredump for continousy pkt drop health check
     DHDCFLAGS += -DSKIP_COREDUMP_PKTDROP_RXHC
     # Boost host cpufreq to max for peak tput. default is false
-    DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST
+    #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST
     # Boost host cpufreq to max for peak tput. default is true
-    DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST_DEFAULT_ENAB
+    #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST_DEFAULT_ENAB
   endif
 endif # CONFIG_BCMDHD_PCIE
 
