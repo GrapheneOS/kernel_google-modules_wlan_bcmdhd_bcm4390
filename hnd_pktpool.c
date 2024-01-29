@@ -1,7 +1,7 @@
 /*
  * HND generic packet pool operation primitives
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1479,11 +1479,17 @@ BCMFASTPATH(pktpool_nfree)(pktpool_t *pktp, void *head, void *tail, uint count)
 	BCM_REFERENCE(count_orig);
 
 #ifdef URB
+#ifdef USE_URB_CHAINED_RX_CB
+	if (URB_ENAB() && pktp->dmarxurb.cb && count) {
+		pktp->dmarxurb.cb(pktp, pktp->dmarxurb.arg, head, count);
+	}
+#else
 	if (URB_ENAB() && count && PKT_IS_RX_PKT(OSH_NULL, head)) {
 		pktp->dmarxurb.cb(pktp, pktp->dmarxurb.arg, PKTHEAD(NULL, head),
 				PKTEND(head) - PKTHEAD(NULL, head));
 		PKT_CLR_RX_PKT(OSH_NULL, head);
 	}
+#endif /* USE_URB_CHAINED_RX_CB */
 #endif /* URB */
 
 	if (count > 1) {
@@ -1493,6 +1499,8 @@ BCMFASTPATH(pktpool_nfree)(pktpool_t *pktp, void *head, void *tail, uint count)
 				_head = PKTLINK(_head);
 				ASSERT_FP(_head);
 				if (URB_ENAB()) {
+					/* Already handled above for URB in a chained manner */
+#ifndef USE_URB_CHAINED_RX_CB
 #ifdef URB
 					if (PKT_IS_RX_PKT(OSH_NULL, _head)) {
 						pktp->dmarxurb.cb(pktp, pktp->dmarxurb.arg,
@@ -1502,6 +1510,7 @@ BCMFASTPATH(pktpool_nfree)(pktpool_t *pktp, void *head, void *tail, uint count)
 						PKT_CLR_RX_PKT(OSH_NULL, _head);
 					}
 #endif /* URB */
+#endif /* !USE_URB_CHAINED_RX_CB */
 				} else {
 #ifdef BCMRXDATAPOOL
 					pktpool_enq(pktpool_shared_rxdata,
@@ -1537,11 +1546,17 @@ BCMPOSTTRAPFASTPATH(pktpool_free)(pktpool_t *pktp, void *p)
 			pktp->cb_haddr.cb(pktp, pktp->cb_haddr.arg, p, REMOVE_RXCPLID, NULL);
 			PKTRESETRXFRAG(OSH_NULL, p);
 		}
+#ifdef USE_URB_CHAINED_RX_CB
+		if (pktp->dmarxurb.cb) {
+			pktp->dmarxurb.cb(pktp, pktp->dmarxurb.arg, p, 1u);
+		}
+#else
 		if (PKT_IS_RX_PKT(OSH_NULL, p)) {
 			pktp->dmarxurb.cb(pktp, pktp->dmarxurb.arg, PKTHEAD(OSH_NULL, p),
 					PKTEND(p) - PKTHEAD(OSH_NULL, p));
 			PKT_CLR_RX_PKT(OSH_NULL, p);
 		}
+#endif /* USE_URB_CHAINED_RX_CB */
 	}
 #endif /* URB */
 

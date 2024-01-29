@@ -1,7 +1,7 @@
 /*
  * Customer HW 2 dependant file
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -939,6 +939,30 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 	}
 }
 
+extern uint dhd_force_max_cpu_freq;
+
+static void dhd_force_affinity_cpufreq(struct pci_dev *pdev)
+{
+	int err;
+
+	if (is_plat_pcie_resume || !is_irq_on_big_core) {
+		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_BIG_CORE));
+		if (!err) {
+			is_irq_on_big_core = TRUE;
+			is_plat_pcie_resume = FALSE;
+#ifdef DHD_HOST_CPUFREQ_BOOST
+			if (dhd_cpufreq_boost) {
+				dhd_set_max_cpufreq();
+			}
+#endif /* DHD_HOST_CPUFREQ_BOOST */
+			DHD_PRINT(("%s switches to big core successfully\n", __FUNCTION__));
+		} else {
+			DHD_ERROR(("%s switches to big core unsuccessfully!\n", __FUNCTION__));
+		}
+	}
+
+}
+
 /*
  * DHD Core layer reports whether the bottom half is getting rescheduled or not
  * resched = 1, BH is getting rescheduled.
@@ -950,6 +974,11 @@ void dhd_plat_report_bh_sched(void *plat_info, int resched)
 	dhd_plat_info_t *p = plat_info;
 	uint64 curr_time_ns;
 	uint64 time_delta_ns;
+
+	if (dhd_force_max_cpu_freq) {
+		dhd_force_affinity_cpufreq(p->pdev);
+		return;
+	}
 
 	if (resched > 0) {
 		resched_streak++;

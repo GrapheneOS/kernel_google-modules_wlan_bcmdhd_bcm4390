@@ -1,6 +1,6 @@
 # bcmdhd
 #
-# Copyright (C) 2023, Broadcom.
+# Copyright (C) 2024, Broadcom.
 #
 #      Unless you and Broadcom execute a separate written software license
 # agreement governing use of this software, this software is licensed to you
@@ -385,11 +385,14 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
     DHDCFLAGS += -DDHD_MSI_SUPPORT
 
     # Tx/Rx tasklet bounds
-    DHDCFLAGS += -DDHD_TX_CPL_BOUND=512
-    DHDCFLAGS += -DDHD_TX_POST_BOUND=128
-    DHDCFLAGS += -DDHD_RX_CPL_POST_BOUND=96
-    DHDCFLAGS += -DDHD_CTRL_CPL_POST_BOUND=8
-    DHDCFLAGS += -DDHD_LB_TXBOUND=32
+    # Currently these bounds will be taken default value from the code
+    # These need to be tuned per platform to reduce DPC time without
+    # tput regression
+    #DHDCFLAGS += -DDHD_TX_CPL_BOUND=512
+    #DHDCFLAGS += -DDHD_TX_POST_BOUND=128
+    #DHDCFLAGS += -DDHD_RX_CPL_POST_BOUND=96
+    #DHDCFLAGS += -DDHD_CTRL_CPL_POST_BOUND=8
+    #DHDCFLAGS += -DDHD_LB_TXBOUND=32
 
     # Detect NON DMA M2M corruption (MFG only)
     DHDCFLAGS += -DDHD_NON_DMA_M2M_CORRUPTION
@@ -413,6 +416,8 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
     #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST
     # Boost host cpufreq to max for peak tput. default is true
     #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST_DEFAULT_ENAB
+    # Force all CPUs to run at MAX frequencies
+    # DHDCFLAGS += -DDHD_FORCE_MAX_CPU_FREQ
   endif
 endif # CONFIG_BCMDHD_PCIE
 
@@ -729,7 +734,7 @@ DHDCFLAGS += -DNDO_CONFIG_SUPPORT
 DHDCFLAGS += -DIPV6_NDO_SUPPORT
 
 #Debugaility
-DHDCFLAGS += -DDBG_PKT_MON -DDBG_PKT_MON_INIT_DEFAULT
+DHDCFLAGS += -DDBG_PKT_MON -DDBG_PKT_MON_INIT_DEFAULT -DDHD_PKT_MON_DUAL_STA
 DHDCFLAGS += -DDNGL_EVENT_SUPPORT -DPARSE_DONGLE_HOST_EVENT
 DHDCFLAGS += -DWL_CFGVENDOR_SEND_ALERT_EVENT
 
@@ -1030,6 +1035,11 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
   DHDCFLAGS += -DDHD_REDUCE_PM_LOG
   # LB RXP Flow control to avoid OOM
   DHDCFLAGS += -DLB_RXP_STOP_THR=500 -DLB_RXP_STRT_THR=499
+  ifneq ($(CONFIG_BCMDHD_PCIE),)
+    # Enable FIS Dump (without common subcore) to collect on special cases
+    DHDCFLAGS += -DDHD_FIS_DUMP
+    DHDCFLAGS += -DFIS_WITHOUT_CMN
+  endif
   # Dongle init fail
   # Increase assoc beacon wait time
   DHDCFLAGS += -DDEFAULT_RECREATE_BI_TIMEOUT=40
@@ -1067,8 +1077,6 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
 
 else ifneq ($(CONFIG_ARCH_HISI),)
   DHDCFLAGS += -DBOARD_HIKEY -DBOARD_HIKEY_HW2 -DBCMDEV
-  # Enable FIS Dump to collect on special cases
-  DHDCFLAGS += -DDHD_FIS_DUMP
   DHDCFLAGS += -DDHD_SUPPORT_VFS_CALL
   # Skip pktlogging of data packets
   DHDCFLAGS += -DDHD_SKIP_PKTLOGGING_FOR_DATA_PKTS
@@ -1079,6 +1087,9 @@ else ifneq ($(CONFIG_ARCH_HISI),)
   ifneq ($(CONFIG_BCMDHD_PCIE),)
     # LB RXP Flow control to avoid OOM
     DHDCFLAGS += -DLB_RXP_STOP_THR=200 -DLB_RXP_STRT_THR=199
+    # Enable FIS Dump (with common subcore) to collect on special cases
+    DHDCFLAGS += -DDHD_FIS_DUMP
+    DHDCFLAGS += -DFIS_WITH_CMN
   endif
   DHDCFLAGS += -DDHD_SUPPORT_VFS_CALL
   DHDCFLAGS += -DDHD_IOVAR_LOG_FILTER_DUMP
@@ -1086,8 +1097,11 @@ else ifneq ($(CONFIG_ARCH_HISI),)
   DHDCFLAGS := $(filter-out -DSIMPLE_MAC_PRINT ,$(DHDCFLAGS))
 else ifneq ($(CONFIG_ARCH_BRCMSTB),)
   DHDCFLAGS += -DBOARD_STB -DBOARD_STB_HW2 -DBCMDEV
-  # Enable FIS Dump to collect on special cases
-  DHDCFLAGS += -DDHD_FIS_DUMP
+  ifneq ($(CONFIG_BCMDHD_PCIE),)
+    # Enable FIS Dump (with common subcore) to collect on special cases
+    DHDCFLAGS += -DDHD_FIS_DUMP
+    DHDCFLAGS += -DFIS_WITH_CMN
+  endif
   DHDCFLAGS += -DDHD_SUPPORT_VFS_CALL
   # Skip pktlogging of data packets
   DHDCFLAGS += -DDHD_SKIP_PKTLOGGING_FOR_DATA_PKTS

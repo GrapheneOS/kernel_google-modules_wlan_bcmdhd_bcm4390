@@ -1,7 +1,7 @@
 /*
  * Neighbor Awareness Networking
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -2243,7 +2243,11 @@ wl_cfgnan_set_if_addr(struct bcm_cfg80211 *cfg)
 	}
 #ifdef WL_NMI_IF
 	/* copy new nmi addr to dedicated NMI interface */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+	__dev_addr_set(cfg->nmi_ndev, if_addr.octet, ETHER_ADDR_LEN);
+#else
 	eacopy(if_addr.octet, cfg->nmi_ndev->dev_addr);
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) */
 #endif /* WL_NMI_IF */
 	/* Reset bootstrapping entries cache info as NMI has changed */
 	wl_cfgnan_reset_bootstrapping_entries(cfg);
@@ -6752,6 +6756,7 @@ wl_cfgnan_trigger_ranging(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 			range_req->egress = svc->egress_limit;
 		}
 		range_req->indication = NAN_RANGING_INDICATE_CONTINUOUS_MASK;
+		range_req->num_meas = ranging_inst->num_meas;
 	} else {
 		/* range response config */
 		sub_cmd->id = htod16(WL_NAN_CMD_RANGE_RESPONSE);

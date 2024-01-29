@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver scan related code
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1579,6 +1579,45 @@ chanspec_t wl_freq_to_chanspec(int freq)
 	chanspec |= WL_CHANSPEC_CTL_SB_NONE;
 
 	return chanspec;
+}
+
+/*
+ * Return chan_info from driver cached values for cases
+ * except where channel flag can be dynamically change.
+ */
+s32
+wl_cfgscan_get_dynamic_chan_info(struct bcm_cfg80211 *cfg,
+		u32 *chan_info, chanspec_t in_chspec, u32 chan_info_flags)
+{
+	struct net_device *dev = bcmcfg_to_prmry_ndev(cfg);
+	s32 ret = BCME_OK;
+	u32 local_chaninfo;
+	u8 ioctl_buf[WLC_IOCTL_SMLEN];
+
+	/* If channel information doesn't change dynamic, retrieve it
+	 * from cfg80211 cache. But if its radar/indoor channel it could
+	 * change dynamically based on STA connection.
+	 */
+	if (wl_cfgscan_get_chan_info(cfg,
+		&local_chaninfo, in_chspec) == BCME_OK) {
+		if (!(local_chaninfo & chan_info_flags)) {
+			*chan_info = local_chaninfo;
+			return BCME_OK;
+		}
+	}
+
+	bzero(ioctl_buf, WLC_IOCTL_SMLEN);
+	ret = wldev_iovar_getbuf(dev, "per_chan_info",
+			(void *)&in_chspec, sizeof(in_chspec),
+			ioctl_buf, WLC_IOCTL_SMLEN, NULL);
+	if (ret != BCME_OK) {
+		WL_ERR(("Failed to get per_chan_info chspec:0x%x, error:%d\n",
+				in_chspec, ret));
+		return BCME_ERROR;
+	}
+
+	*chan_info = dtoh32(*(uint *)ioctl_buf);
+	return ret;
 }
 
 s32
@@ -6001,7 +6040,7 @@ wl_get_assoc_channels(struct bcm_cfg80211 *cfg,
 			 */
 			for (i = 0; i < rcc_chan_cnt; i++) {
 				if (CHSPEC_IS6G(chanspecs[i])) {
-					WL_INFORM_MEM(("6G channel in rcc. use fw nw sel\n"));
+					WL_DBG_MEM(("6G channel in rcc. use fw nw sel\n"));
 					/* skip bssid hint inclusion and provide bcast bssid */
 					info->bssid_hint = false;
 					info->targeted_join = false;
@@ -6415,7 +6454,7 @@ static int wl_cfgscan_acs_parse_parameter(struct bcm_cfg80211 *cfg,
 			wl_cellavoid_sync_unlock(cfg);
 #endif /* WL_CELLULAR_CHAN_AVOID */
 			if (chspec != INVCHANSPEC) {
-				WL_INFORM_MEM(("set %d/80 (0x%x)\n", channel, chspec));
+				WL_DBG_MEM(("set %d/80 (0x%x)\n", channel, chspec));
 				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
 			} else {
 				bw = 40;	/* downgrade if not found proper chanspec */
@@ -6436,7 +6475,7 @@ static int wl_cfgscan_acs_parse_parameter(struct bcm_cfg80211 *cfg,
 			wl_cellavoid_sync_unlock(cfg);
 #endif /* WL_CELLULAR_CHAN_AVOID */
 			if (chspec != INVCHANSPEC) {
-				WL_INFORM_MEM(("set %d/40 (0x%x)\n", channel, chspec));
+				WL_DBG_MEM(("set %d/40 (0x%x)\n", channel, chspec));
 				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
 			} else {
 				bw = 20;	/* downgrade if not found proper chanspec */
@@ -6457,7 +6496,7 @@ static int wl_cfgscan_acs_parse_parameter(struct bcm_cfg80211 *cfg,
 			wl_cellavoid_sync_unlock(cfg);
 #endif /* WL_CELLULAR_CHAN_AVOID */
 			if (chspec != INVCHANSPEC) {
-				WL_INFORM_MEM(("set %d/20 (0x%x)\n", channel, chspec));
+				WL_DBG_MEM(("set %d/20 (0x%x)\n", channel, chspec));
 				wl_cfgscan_acs_parse_parameter_save(&qty, pList, chspec);
 			}
 		}
@@ -6758,8 +6797,8 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 	for (i = 0, j = 0; i < freq_list_len; i++) {
 		chspeclist[j] = wl_freq_to_chanspec(pElem_freq[i]);
 		if (CHSPEC_IS6G(chspeclist[j])) {
-			if ((wl_cfgscan_get_chan_info(cfg,
-				&chan_info, chspeclist[j]) == BCME_OK) &&
+			if ((wl_cfgscan_get_dynamic_chan_info(cfg, &chan_info,
+				chspeclist[j], WL_CHAN_INDOOR_ONLY) == BCME_OK) &&
 				(!(chan_info & WL_CHAN_BAND_6G_PSC) ||
 				!(chan_info & WL_CHAN_BAND_6G_VLP))) {
 				/* Skip non PSC channels */
@@ -6773,8 +6812,8 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 		/* Skip UNII-4 frequencies */
 		if (CHSPEC_IS5G(chspeclist[j])) {
 			if (IS_UNII4_CHANNEL(wf_chspec_center_channel(chspeclist[j])) ||
-				((wl_cfgscan_get_chan_info(cfg,
-				&chan_info, chspeclist[j]) == BCME_OK) &&
+				((wl_cfgscan_get_dynamic_chan_info(cfg,
+				&chan_info, chspeclist[j], WL_CHAN_INDOOR_ONLY) == BCME_OK) &&
 				wl_is_chan_info_restricted(chan_info, chspeclist[j]))) {
 				WL_DBG_MEM(("Skipped UNII-4/restricted chanspec 0x%x\n",
 					chspeclist[j]));
@@ -6784,8 +6823,8 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 #endif /* WL_UNII4_CHAN */
 
 		if (CHSPEC_IS2G(chspeclist[j])) {
-			if ((wl_cfgscan_get_chan_info(cfg,
-				&chan_info, chspeclist[j]) == BCME_OK) &&
+			if ((wl_cfgscan_get_dynamic_chan_info(cfg,
+				&chan_info, chspeclist[j], WL_CHAN_INDOOR_ONLY) == BCME_OK) &&
 				wl_is_chan_info_restricted(chan_info, chspeclist[j])) {
 				WL_DBG_MEM(("Skipped restricted chanspec 0x%x\n",
 					chspeclist[j]));
@@ -7189,24 +7228,24 @@ wl_cfgscan_chaninfo_restricted(struct bcm_cfg80211 *cfg,
 
 	/* common restrictions for GO/AP */
 	if (chan_info & (WL_CHAN_RADAR | WL_CHAN_PASSIVE)) {
-		WL_INFORM_MEM(("radar/passive restricted chspec:0x%x chaninfo:0x%x\n",
+		WL_DBG_MEM(("radar/passive restricted chspec:0x%x chaninfo:0x%x\n",
 			chspec, chan_info));
 		return TRUE;
 	}
 
 	if (chan_info & (WL_CHAN_RESTRICTED | WL_CHAN_CLM_RESTRICTED)) {
-		WL_INFORM_MEM(("restricted ch_spec:0x%x chan_info:0x%x\n", chspec, chan_info));
+		WL_DBG_MEM(("restricted ch_spec:0x%x chan_info:0x%x\n", chspec, chan_info));
 		return TRUE;
 	}
 
 	if (chan_info & WL_CHAN_INDOOR_ONLY) {
-		WL_INFORM_MEM(("Indoor restricted chan_info:0x%x\n", chan_info));
+		WL_DBG_MEM(("Indoor restricted chan_info:0x%x\n", chan_info));
 		return TRUE;
 	}
 
 	if (IS_P2P_GO(wdev)) {
 		if (chan_info & WL_CHAN_P2P_PROHIBITED) {
-			WL_INFORM_MEM(("P2P prohibited for chspec:0x%x\n", chspec));
+			WL_DBG_MEM(("P2P prohibited for chspec:0x%x\n", chspec));
 			return TRUE;
 		}
 	}

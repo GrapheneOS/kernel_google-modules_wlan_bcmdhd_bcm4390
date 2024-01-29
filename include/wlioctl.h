@@ -6,7 +6,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1130,6 +1130,13 @@ typedef struct wl_scan_params_v4 {
 	int32 home_time;		/**< -1 use default, dwell time for the home channel
 					 * between channel scans
 					 */
+#ifdef WL_SCAN_TX
+					/* This feature does not ever go into ROM.
+					 * Therefore, the #ifdef inside this structure definition
+					 * does not increase risk of ROM invalidation, and is OK.
+					 */
+	int32 scan_tx_cnt;		/**< -1 use default, number of mgmt frames per channel */
+#endif /* WL_SCAN_TX */
 	int32 channel_num;		/**< count of channels and ssids that follow
 					 *
 					 * low half is count of channels in channel_list, 0
@@ -2523,6 +2530,8 @@ typedef struct _pmkid_cand_list {
 	uint32	npmkid_cand;
 	pmkid_cand_t	pmkid_cand[BCM_FLEX_ARRAY];
 } pmkid_cand_list_t;
+
+#define WL_STA_ANT_MAX		4	/**< max possible rx antennas */
 
 typedef struct wl_assoc_info {
 	uint32		req_len;
@@ -4568,6 +4577,7 @@ typedef struct dvfs_hist_v1 {
 #define WL_DVFS_REASON_PHYBW			0x4000u /* Channel BW Change */
 #define WL_DVFS_REASON_MCHAN_ACTIVE		0x8000u /* Mchan Active */
 #define WL_DVFS_REASON_MONITOR			0x10000u /* Monitor Mode */
+#define WL_DVFS_REASON_COEX			0x20000u /* BT COEX  */
 
 /*
  * Join preference iovar value is an array of tuples. Each tuple has a one-byte type,
@@ -12994,6 +13004,8 @@ typedef struct wl_nan_range_req {
 	uint32 ingress; /* ingress limit in mm */
 	uint32 egress; /* egress limit in mm */
 	uint32 interval; /* max interval(in TU) b/w two ranging measurements */
+	uint8 num_meas; /* number of ftm measurement frames for ranging */
+	uint8 pad[3];
 } wl_nan_range_req_t;
 
 #define NAN_RNG_REQ_IOV_LEN	24
@@ -19615,6 +19627,8 @@ enum {
 	WL_MLO_CMD_CONFIG_PREF		= 11u,	/* Configure mlo mode and band preferences */
 	WL_MLO_CMD_MAX_MLO_LINKS	= 12u,	/* set/get max MLO links supported */
 	WL_MLO_CMD_FEATURE_EN		= 13u,	/* Enable/Disable a given feature */
+	WL_MLO_CMD_NPLINK_CONFIG	= 14u,	/* configure nplink op upon offchannel of plink */
+	WL_MLO_CMD_STATS		= 15u,	/* stats on MLO feature */
 	/* Add new sub command IDs here... */
 
 	/* debug/test related sub-commands, mogrify? */
@@ -20199,6 +20213,18 @@ typedef struct wl_mlo_mld_ap_op {
 	uint8	link_id;
 	uint16	del_timer;		/* delete timer in units of TBTT */
 } wl_mlo_mld_ap_op_t;
+
+#define WL_MLO_NPLINK_CONFIG_VER_1	1u
+
+typedef struct wl_mlo_nplink_config_v1 {
+	uint16	version;			/* Structure version */
+	uint16	length;				/* Length of structure */
+	/* rssi threshold to determine the usage of nplink during offchannel of plink */
+	int8	rssi_threshold;
+	/* nplink psr threshold to transmit the onward pkts on nplink */
+	uint8	tx_block_threshold;
+	uint8	PAD[2];
+} wl_mlo_nplink_config_v1_t;
 
 /* Current version for wlc_clm_power_limits_req_t structure and flags */
 #define WLC_CLM_POWER_LIMITS_REQ_VERSION_1	 1
@@ -26443,6 +26469,7 @@ struct wl_seed_test_roam_add_targets_v1 {
 /* subcommand ids for phy_dbg */
 enum wl_phy_dbg_cmd_type {
 	WL_PHY_DBG_CMD_GCI = 0u,	/* GCI Dump */
+	WL_PHY_DBG_CMD_SRA = 1u,	/* SRA Info */
 	WL_PHY_DBG_CMD_LAST
 };
 
@@ -26474,13 +26501,32 @@ typedef struct wl_phy_dbg_gci_data_v1 {
 	uint16 gci_dbg03;
 	uint16 gci_dbg04;
 	uint16 gci_dbg05;
+	uint16 gci_dbg06;
 } wl_phy_dbg_gci_data_v1_t;
 
+#define WL_PHY_DBG_SRA_INFO_VERSION_1	1u
+/* Info struct */
+typedef struct wl_phy_dbg_sra_info_v1 {
+	uint32	srmc_init_status_bt;	/* SRCB init_status reg for bt */
+	uint32	srmc_init_status_wl;	/* SRCB init_status reg for wl */
+	uint32	sr_crash_counter_bt;	/* BT FW trap count */
+	uint32	sr_crash_counter_wl;	/* WL FW trap count */
+	uint16	sr_crash_reason_bt;	/* BT FW trap reason */
+	uint16	sr_crash_reason_wl;	/* WL FW trap reason */
+	uint8	sr_boot_count;		/* critical + non-critical region boot count */
+	uint8	sr_softrecovery_count;	/* critical region recoverable boot count */
+	uint16	sr_dbg01;
+	uint32	sr_dbg02;
+	uint32	sr_dbg03;
+	uint32	sr_dbg04;
+} wl_phy_dbg_sra_info_v1_t;
+
 typedef struct wl_phy_dbg_v1 {
-	uint16  subcmd_version;		/* Version of the sub-command */
+	uint16	subcmd_version;		/* Version of the sub-command */
 	uint16  length;			/* Length of the particular struct being used in union */
 	union {
 		wl_phy_dbg_gci_data_v1_t gcivals_v1;	/* GCI data */
+		wl_phy_dbg_sra_info_v1_t srainfo_v1;	/* SRA info */
 	} u;
 } wl_phy_dbg_v1_t;
 
@@ -26613,8 +26659,16 @@ typedef struct wlc_scan_cache_v1 {
 } wlc_scan_cache_v1_t;
 
 #define SCAN_CACHE_FIXED_SIZE	(OFFSETOF(wlc_scan_cache_v1_t, scan_data))
-/* bit definition for uint16 iovar wifi_bt5g_policy */
-#define WIFI_BT5G_POLICY_ASSOC	0x0001u
+
+/* definition for uint16 iovar wifi_bt5g_policy */
+#define WIFI_BT5G_POLICY_ASSOC		0x0001u	/**< to be obsoleted */
+#define WIFI_BT5G_POLICY_ASSOCMODE	0xFu	/**< reserved after this */
+
+enum {
+	WIFI_BT5G_BT_SWITCH_ASSOC_WAIT		= 0u, /* BT switch band, wait for BT switch */
+	WIFI_BT5G_BT_SWITCH_ASSOC_NOWAIT	= 1u, /* BT switch band, associate immediately */
+	WIFI_BT5G_NO_BT_SWITCH			= 2u, /* No BT switch the band, BT coexist in 5G */
+};
 
 /* Event throttle configuration */
 #define WL_EVT_THROT_CFG_VERSION_1	1u
@@ -26846,6 +26900,7 @@ enum capext_ecounters_subfeature_bitpos {
 	CAPEXT_ECOUNTERS_BITPOS_CHSTATS		= 4,
 	CAPEXT_ECOUNTERS_BITPOS_PEERSTATS	= 5,
 	CAPEXT_ECOUNTERS_BITPOS_DTIM_MISS	= 6,
+	CAPEXT_ECOUNTERS_BITPOS_SOFTAPSTATS	= 7,
 	CAPEXT_ECOUNTERS_BITPOS_MAX
 };
 
@@ -27070,4 +27125,68 @@ typedef struct wl_antgain6g_list {
 	uint8	pad[3];
 	wl_antgain6g_t antgain[];	/* list of antenna gain values */
 } wl_antgain6g_list_t;
+
+/* Debug Crash types */
+#define WL_DBG_CRSH_TYPE_RD_RANDOM			0x00
+#define WL_DBG_CRSH_TYPE_RD_INV_CORE			0x01
+#define WL_DBG_CRSH_TYPE_WR_INV_CORE			0x02
+#define WL_DBG_CRSH_TYPE_RD_INV_WRAP			0x03
+#define WL_DBG_CRSH_TYPE_WR_INV_WRAP			0x04
+#define WL_DBG_CRSH_TYPE_RD_RES_CORE			0x05
+#define WL_DBG_CRSH_TYPE_WR_RES_CORE			0x06
+#define WL_DBG_CRSH_TYPE_RD_RES_WRAP			0x07
+#define WL_DBG_CRSH_TYPE_WR_RES_WRAP			0x08
+#define WL_DBG_CRSH_TYPE_RD_CORE_NO_CLK			0x09
+#define WL_DBG_CRSH_TYPE_WR_CORE_NO_CLK			0x0A
+#define WL_DBG_CRSH_TYPE_RD_CORE_NO_PWR			0x0B
+#define WL_DBG_CRSH_TYPE_WR_CORE_NO_PWR			0x0C
+#define WL_DBG_CRSH_TYPE_PCIe_AER			0x0D
+#define WL_DBG_CRSH_TYPE_POWERCYCLE			0x0E
+#define WL_DBG_CRSH_TYPE_TRAP				0x0E
+#define WL_DBG_CRSH_TYPE_HANG				0x0F
+#define WL_DBG_CRSH_TYPE_PHYTXERR			0x10
+
+#define WL_DBG_CRSH_TYPE_PHYREAD			0x11
+#define WL_DBG_CRSH_TYPE_PHYWRITE			0x12
+#define WL_DBG_CRSH_TYPE_INV_PHYREAD			0x13
+#define WL_DBG_CRSH_TYPE_INV_PHYWRITE			0x14
+#define WL_DBG_CRSH_TYPE_DUMP_STATE			0x15
+
+
+/* Radio/PHY health check crash scenarios - reserved 0x16 to 0x30 */
+#define WL_DBG_CRSH_TYPE_RADIO_HEALTHCHECK_START	0x16
+#define WL_DBG_CRSH_TYPE_DESENSE_LIMITS			0x17
+#define WL_DBG_CRSH_TYPE_BASEINDEX_LIMITS		0x18
+#define WL_DBG_CRSH_TYPE_TXCHAIN_INVALID		0x19
+#define WL_DBG_CRSH_TYPE_CRITICAL_MALLOC_FAIL		0x1a
+#define WL_DBG_CRSH_TYPE_TEMPSENSE_LIMITS		0x20
+#define WL_DBG_CRSH_TYPE_TXPOWER_LIMITS			0x21
+#define WL_DBG_CRSH_TYPE_VCOCAL_FAILED			0x22
+#define WL_DBG_CRSH_TYPE_PLL_NOTLOCKED			0x23
+#define WL_DBG_CRSH_TYPE_RADIO_HEALTHCHECK_LAST		0x30
+#define WL_DBG_CRSH_TYPE_BTCOEX_RFACTIVE		0x31
+#define WL_DBG_CRSH_TYPE_BTCOEX_TXCONF_DELAY		0x32
+#define WL_DBG_CRSH_TYPE_BTCOEX_ANT_DELAY		0x33
+#define WL_DBG_CRSH_TYPE_BTCOEX_INVLD_TASKID		0x34
+#define WL_DBG_CRSH_TYPE_STACK_OVERRUN			0x35
+#define WL_DBG_CRSH_TYPE_MPU_HCHK			0x36
+#define WL_DBG_CRSH_TYPE_STACK_CORRUPTION		0x38
+/* To maintain uniformity with other branches, leaving 0x37 & 0x38 unused */
+#define WL_DBG_CRSH_TYPE_ARM_DBG_REG_ACCESS		0x39
+#define WL_DBG_CRSH_TYPE_WLREGON			0x3a
+
+#define WL_DBG_CRSH_TYPE_SR_DCCAL0			0x40
+#define WL_DBG_CRSH_TYPE_SR_DCCAL1			0x41
+#define WL_DBG_CRSH_TYPE_SR_RXIQCAL0			0x50
+#define WL_DBG_CRSH_TYPE_SR_RXIQCAL1			0x51
+#define WL_DBG_CRSH_TYPE_SR_TEMP0			0x60
+#define WL_DBG_CRSH_TYPE_SR_TEMP1			0x61
+#define WL_DBG_CRSH_TYPE_SR_FULLCAL0			0x70
+#define WL_DBG_CRSH_TYPE_SR_FULLCAL1			0x71
+#define WL_DBG_CRSH_TYPE_SR_MPCAL0			0x80
+#define WL_DBG_CRSH_TYPE_SR_MPCAL1			0x81
+#define WL_DBG_CRSH_TYPE_SR_SEM				0x90
+#define WL_DBG_CRSH_TYPE_SR_AXI				0x91
+#define WL_DBG_CRSH_TYPE_LAST				0x92
+
 #endif /* _wlioctl_h_ */

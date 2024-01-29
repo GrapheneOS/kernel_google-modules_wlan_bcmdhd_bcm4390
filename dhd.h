@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -2047,6 +2047,8 @@ typedef struct dhd_pub {
 	uint32 alert_reason;		/* reason codes for alert event */
 #endif /* WL_CFGVENDOR_SEND_ALERT_EVENT */
 
+	/* Do not toggle wlan regulator during init */
+	bool reg_on_through_init;
 	bool fw_mode_changed;
 	bool do_chip_bighammer;
 	uint chip_bighammer_count;
@@ -2102,8 +2104,10 @@ typedef struct dhd_pub {
 #ifdef DHD_TREAT_D3ACKTO_AS_LINKDWN
 	bool no_pcie_access_during_dump;
 #endif /* DHD_TREAT_D3ACKTO_AS_LINKDWN */
+#ifdef DHD_SSSR_DUMP
 	uint *sssr_srcb_buf_after;
 	uint *sssr_cmn_buf_after;
+#endif /* DHD_SSSR_DUMP */
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -5059,4 +5063,7 @@ int dhd_bt_fw_dwnld_blob(void *wl_hdl, char* buf, size_t len);
 extern void dhd_etb_dump_deinit(dhd_pub_t *dhd);
 #endif /* DHD_SDTC_ETB_DUMP */
 int write_dump_to_file(dhd_pub_t *dhd, uint8 *buf, int size, char *fname);
+#ifdef SHOW_LOGTRACE
+int dhd_reinit_logtrace_process(void *dhd_info);
+#endif /* SHOW_LOGTRACE */
 #endif /* _dhd_h_ */

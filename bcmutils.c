@@ -1,7 +1,7 @@
 /*
  * Driver O/S-independent utility routines
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -728,9 +728,9 @@ struct bcm_sm_log_info {
 	 * TODO: any issue with packing?
 	 */
 	uint8 *state;		/* Logger data: State number */
-	uint8 *event;		/* Logger data: State number */
+	uint8 *event;		/* Logger data: Event number */
 	void **call_site;	/* Logger data: Caller address */
-	uint32 *time_stamp;	/* Logger data: Caller address */
+	uint32 *time_stamp;	/* Logger data: Time stamp */
 	void *data;		/* Logger data: Module specific data */
 };
 
@@ -787,12 +787,12 @@ bcm_sm_logger_init(osl_t *osh, uint32 flags, uint32 num_entries, uint32 module_e
 	return bsli;
 
 fail:
-	MFREE(osh, bsli, sizeof(*bsli));
 	MFREE(osh, bsli->state, (num_entries * sizeof(*bsli->state)));
 	MFREE(osh, bsli->event, (num_entries * sizeof(*bsli->event)));
 	MFREE(osh, bsli->call_site, (num_entries * sizeof(*bsli->call_site)));
 	MFREE(osh, bsli->time_stamp, (num_entries * sizeof(*bsli->time_stamp)));
 	MFREE(osh, bsli->data, (num_entries * (num_entries * module_entry_sz)));
+	MFREE(osh, bsli, sizeof(*bsli));
 
 	return NULL;
 }

@@ -1,7 +1,7 @@
 /*
  * DHD Bus Module for PCIE
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1641,19 +1641,6 @@ dhdpcie_bus_intstatus(dhd_bus_t *bus)
 	return intstatus;
 }
 
-bool
-dhdpcie_set_collect_fis(dhd_bus_t *bus)
-{
-#if defined(BOARD_HIKEY) || defined(CONFIG_X86)
-	if (CHIPTYPE(bus->sih->socitype) == SOCI_NCI) {
-		DHD_PRINT(("%s : Collect FIS dumps\n", __FUNCTION__));
-		bus->dhd->collect_fis = TRUE;
-		return TRUE;
-	}
-#endif /* BOARD_HIKEY || CONFIG_X86 */
-	return FALSE;
-}
-
 void
 dhdpcie_cto_recovery_handler(dhd_pub_t *dhd)
 {
@@ -1691,7 +1678,7 @@ dhdpcie_cto_recovery_handler(dhd_pub_t *dhd)
 	 * without going for CTO recovery step
 	 */
 	if (!bus->is_linkdown && bus->dhd->memdump_enabled &&
-		dhdpcie_set_collect_fis(bus)) {
+		dhd_is_fis_enabled() && dhdpcie_set_collect_fis(bus)) {
 		DHD_PRINT(("%s: FIS is supported, skip CTO recovery and collect FIS directly\n",
 			__FUNCTION__));
 		DHD_PRINT(("%s : Set collect_sssr as TRUE\n", __FUNCTION__));
@@ -1796,17 +1783,17 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 		DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 		/* verify argument */
 		if (!bus) {
-			DHD_LOG_MEM(("%s : bus is null pointer, exit \n", __FUNCTION__));
+			DHD_INFO(("%s : bus is null pointer, exit \n", __FUNCTION__));
 			break;
 		}
 
 		if (bus->dhd->dongle_reset) {
-			DHD_LOG_MEM(("%s : dongle is reset\n", __FUNCTION__));
+			DHD_INFO(("%s : dongle is reset\n", __FUNCTION__));
 			break;
 		}
 
 		if (bus->dhd->busstate == DHD_BUS_DOWN) {
-			DHD_LOG_MEM(("%s : bus is down \n", __FUNCTION__));
+			DHD_INFO(("%s : bus is down \n", __FUNCTION__));
 			break;
 		}
 
@@ -1820,7 +1807,7 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 				(!bus->fw_boot_intr)) {
 				bus->rd_shared_pass_time = OSL_LOCALTIME_NS();
 				bus->fw_boot_intr = TRUE;
-				DHD_PRINT(("%s: recd. boot intr\n", __FUNCTION__));
+				DHD_CONS_ONLY(("%s: recd. boot intr\n", __FUNCTION__));
 				dhd_os_fwboot_intr_wake(bus->dhd);
 			} else {
 				DHD_INFO(("%s, not ready to receive interrupts:\n", __FUNCTION__));
@@ -1840,7 +1827,7 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 
 		/* Do not process any ISR after receiving D3_ACK */
 		if (__DHD_CHK_BUS_LPS_D3_ACKED(bus)) {
-			DHD_LOG_MEM(("%s: D3 Ack Received, skip\n", __FUNCTION__));
+			DHD_CONS_ONLY(("%s: D3 Ack Received, skip\n", __FUNCTION__));
 			break;
 		}
 
@@ -1850,9 +1837,9 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 
 			if (intstatus == (uint32)-1 ||
 				bus->dhd->dhd_induce_error == DHD_INDUCE_PCIE_LINK_DOWN_IN_ISR) {
-				DHD_ERROR(("%s: Invalid cfg intstatus(0x%x):0x%x, pcie link down,"
-					"induce %u\n", __FUNCTION__, PCI_INT_STATUS, intstatus,
-					bus->dhd->dhd_induce_error));
+				DHD_CONS_ONLY(("%s: Invalid cfg intstatus(0x%x):0x%x, "
+					"pcie link down, dhd_induce_error %u\n", __FUNCTION__,
+					PCI_INT_STATUS, intstatus, bus->dhd->dhd_induce_error));
 				dhd_bus_set_linkdown(bus->dhd, TRUE);
 				dhdpcie_disable_irq_nosync(bus);
 				dhd_pcie_debug_info_dump(bus->dhd);
@@ -1870,7 +1857,7 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 			}
 
 			if (intstatus & PCI_CTO_INT_MASK) {
-				DHD_ERROR(("%s: ##### CTO REPORTED BY DONGLE "
+				DHD_CONS_ONLY(("%s: ##### CTO REPORTED BY DONGLE "
 					"intstat=0x%x enab=%d\n", __FUNCTION__,
 					intstatus, bus->cto_enable));
 				bus->cto_triggered = 1;
@@ -1917,7 +1904,7 @@ dhdpcie_bus_isr(dhd_bus_t *bus)
 
 		/* return error for 0xFFFFFFFF */
 		if (intstatus == (uint32)-1) {
-			DHD_LOG_MEM(("%s : wrong interrupt status val : 0x%x\n",
+			DHD_CONS_ONLY(("%s : wrong interrupt status val : 0x%x\n",
 				__FUNCTION__, intstatus));
 			dhd_bus_set_linkdown(bus->dhd, TRUE);
 			dhdpcie_disable_irq_nosync(bus);
@@ -3207,7 +3194,10 @@ dhdpcie_advertise_bus_cleanup(dhd_pub_t *dhdp)
 			__FUNCTION__));
 		dhd_os_wd_timer(dhdp, 0);
 	}
-	if (dhdp->busstate != DHD_BUS_DOWN) {
+	/* issue db7 trap only if hostready has been rung by dhd,
+	 * else FW will not send db7 ack
+	 */
+	if (dhdp->busstate != DHD_BUS_DOWN && dhdp->bus->hostready_count > 0) {
 #ifdef DHD_DONGLE_TRAP_IN_DETACH
 		/*
 		 * For x86 platforms, rmmod/insmod is failing due to some power
@@ -7656,10 +7646,6 @@ dhd_bus_perform_flr(dhd_bus_t *bus, bool force_fail)
 	int retry = 0;
 	bool in_flr_already = FALSE;
 
-	if (!bus->sih) {
-		DHD_ERROR(("%s: bus->sih is NULL! si_attach not done\n", __FUNCTION__));
-		return BCME_BADARG;
-	}
 	if (bus->is_linkdown) {
 		DHD_ERROR(("%s: pcie linkdown, return\n", __FUNCTION__));
 		return BCME_NOTUP;
@@ -7688,7 +7674,7 @@ dhd_bus_perform_flr(dhd_bus_t *bus, bool force_fail)
 	DHD_INFO(("Read Device Capability: reg=0x%x read val=0x%x flr_capab=0x%x\n",
 		PCIE_CFG_DEVICE_CAPABILITY, val, flr_capab));
 	if (!flr_capab) {
-		if (bus->sih->buscorerev < 64) {
+		if (bus->sih && bus->sih->buscorerev < 64) {
 			DHD_ERROR(("%s: Chip does not support FLR\n",
 				__FUNCTION__));
 			return BCME_UNSUPPORTED;
@@ -8100,6 +8086,7 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			 * should be located after the dhdpcie_bus_disable_device().
 			 */
 			dhd_prot_reset(dhdp);
+			dhd_bus_reset_link_state(dhdp);
 			/* Reset dhd_pub_t instance to initial status
 			 * for built-in type driver
 			 */
@@ -8215,9 +8202,8 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 #endif
 
 #ifdef OEM_ANDROID
-			/*
-			 * This will be enabled from phone platforms to
-			 * reset (FLR) dongle during Wifi ON.
+			/* For android platforms reset (FLR) dongle during Wifi ON
+			 * this should be done before dongle attach
 			 */
 			dhdpcie_dongle_reset(bus);
 #endif /* OEM_ANDROID */
@@ -8237,6 +8223,22 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 				bcmerror = BCME_NOTREADY;
 				goto done;
 			}
+
+#ifdef SHOW_LOGTRACE
+			/* logtrace kthread is stopped in dhd_stop.
+			 * During dhd_open, for force-regon cases,
+			 * need to re-start logtrace kthread here before
+			 * FW download, because once FW is up, EDL will be in action
+			 * any moment, and if kthread is not active, inital FW event
+			 * logs may be missed
+			 */
+			if (dhd_reinit_logtrace_process(bus->dhd->info) != BCME_OK) {
+				DHD_ERROR(("%s: dhd_reinit_logtrace_process fails!\n",
+					__FUNCTION__));
+				bcmerror = BCME_NOTREADY;
+				goto done;
+			}
+#endif /* SHOW_LOGTRACE */
 
 			bus->dhd->dongle_reset = FALSE;
 			bus->fw_boot_intr = FALSE;
@@ -10436,7 +10438,7 @@ dhd_bus_hostready(struct  dhd_bus *bus)
 #endif /* defined(DHD_MMIO_TRACE) */
 
 	si_corereg(bus->sih, bus->sih->buscoreidx, dhd_bus_db1_addr_get(bus), ~0, 0x12345678);
-	bus->hostready_count ++;
+	bus->hostready_count++;
 	DHD_ERROR_MEM(("%s: Ring Hostready:%d\n", __FUNCTION__, bus->hostready_count));
 }
 
@@ -11840,40 +11842,50 @@ dhdpcie_bus_download_fw_signature(dhd_bus_t *bus, bool *do_write)
 		bus->fwstat_download_addr, bus->fwstat_download_len,
 		bus->dongle_ram_base, bus->ramtop_addr));
 
-	/* check if sboot is enabled, if not write flops */
-	(void) dhd_bus_get_security_status(bus, &security_status);
-	DHD_PRINT(("%s: security_status = 0x%x\n", __FUNCTION__, security_status));
-	if (!(security_status & DAR_SEC_SBOOT_MASK)) {
-		DHD_ERROR(("%s: non-secure chip, so write flops\n", __FUNCTION__));
-		*do_write = TRUE;
-		goto exit;
-	}
 
 	if (bus->fwsig_filename[0] == 0) {
 		DHD_INFO(("%s: missing signature file\n", __FUNCTION__));
 		goto exit;
 	}
 
-	/* Write RAM Bootloader to TCM if requested */
-	if ((bcmerror = dhdpcie_bus_download_ram_bootloader(bus))
-		!= BCME_OK) {
-		DHD_ERROR(("%s: could not write RAM BL to TCM, err %d\n",
-			__FUNCTION__, bcmerror));
+	/* check if sboot is enabled, if not write flops */
+	(void) dhd_bus_get_security_status(bus, &security_status);
+	DHD_PRINT(("%s: security_status = 0x%x\n", __FUNCTION__, security_status));
+
+	if ((security_status & DAR_SEC_SBOOT_MASK) && (bus->bootloader_filename[0] != 0)) {
+		DHD_ERROR(("%s: **** FLOPS Vector is secured, "
+			"Ram Booloader can't be loaded ***\n", __FUNCTION__));
+		bcmerror = BCME_BADARG;
 		goto exit;
 	}
 
-	/* Write FW signature to memory */
-	if ((bcmerror = dhdpcie_bus_write_fw_signature(bus))) {
-		DHD_ERROR(("%s: could not write FWsig , err %d\n",
-			__FUNCTION__, bcmerror));
-		goto exit;
-	}
+	/*  Sboot is enabled */
+	if ((security_status & DAR_SEC_SBOOT_MASK)) {
+		/* Write FW signature to memory */
+		if ((bcmerror = dhdpcie_bus_write_fw_signature(bus)) != BCME_OK) {
+			DHD_ERROR(("%s: could not write FWsig , err %d\n",
+				__FUNCTION__, bcmerror));
+			goto exit;
+		}
 
-	/* In case of BL RAM, do write flops */
-	if (bus->bootloader_filename[0] != 0) {
-		*do_write = TRUE;
-	} else {
 		*do_write = FALSE;
+	} else if ((bus->bootloader_filename[0] != 0)) {
+		/* Ram Bootloader */
+		/* Write FW signature to memory */
+		if ((bcmerror = dhdpcie_bus_write_fw_signature(bus)) != BCME_OK) {
+			DHD_ERROR(("%s: could not write FWsig , err %d\n",
+				__FUNCTION__, bcmerror));
+			goto exit;
+		}
+
+		/* Write RAM Bootloader to TCM if requested */
+		if ((bcmerror = dhdpcie_bus_download_ram_bootloader(bus)) != BCME_OK) {
+			DHD_ERROR(("%s: could not write RAM BL to TCM, err %d\n",
+				__FUNCTION__, bcmerror));
+			goto exit;
+		}
+
+		*do_write = TRUE;
 	}
 
 	DHD_PRINT(("AFTER FWSIG: bl=%s,%x fw=%x,%u sig=%s,%x,%u"

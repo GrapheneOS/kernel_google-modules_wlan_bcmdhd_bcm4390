@@ -1,7 +1,7 @@
 /*
  * wlu capext procesing. Shared between DHD and WLU tool.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -149,6 +149,7 @@ static const capext_bitpos_to_string_map_t capext_ecounters_subfeature_map[] = {
 	CAPEXT_SUBFEATURE_MAP(CAPEXT_ECOUNTERS_BITPOS_PEERSTATS, "peerstats"),
 	CAPEXT_SUBFEATURE_MAP(CAPEXT_ECOUNTERS_BITPOS_TXHIST, "txhist"),
 	CAPEXT_SUBFEATURE_MAP(CAPEXT_ECOUNTERS_BITPOS_DTIM_MISS, "dtim_miss"),
+	CAPEXT_SUBFEATURE_MAP(CAPEXT_ECOUNTERS_BITPOS_SOFTAPSTATS, "softapstats"),
 	CAPEXT_SUBFEATURE_MAP(CAPEXT_ECOUNTERS_BITPOS_MAX, NULL)
 };
 

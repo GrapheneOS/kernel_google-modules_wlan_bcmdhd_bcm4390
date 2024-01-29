@@ -1,7 +1,7 @@
 /*
  * Driver O/S-independent utility routines
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -851,8 +851,12 @@ bcm_xtlv_process_gather_descs_fill_container(xtlv_gather_desc_t *desc,
 	hsz = bcm_xtlv_hdr_size(xtlvbuf->opts);
 
 	/* Create a new local XTLV buffer after leaving space for container's type and length */
-	bcm_xtlv_buf_init(&local_xtlvbuf,
+	rc = bcm_xtlv_buf_init(&local_xtlvbuf,
 		(bcm_xtlv_buf(xtlvbuf) + hsz), (rlen - (uint16)hsz), xtlvbuf->opts);
+
+	if (rc != BCME_OK) {
+		goto fail;
+	}
 
 	/* Go through all leaf level descriptors */
 	if (leaf_level_desc) {

@@ -1,7 +1,7 @@
 /*
  * Linux cfgp2p driver
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -179,6 +179,7 @@ bool wl_cfgp2p_is_p2p_action(void *frame, u32 frame_len)
 bool wl_cfgp2p_is_gas_action(void *frame, u32 frame_len)
 {
 	wifi_p2psd_gas_pub_act_frame_t *sd_act_frm;
+	u8 gas_frame_type = WL_PUB_AF_STYPE_INVALID;
 
 	if (frame == NULL)
 		return false;
@@ -189,7 +190,7 @@ bool wl_cfgp2p_is_gas_action(void *frame, u32 frame_len)
 	if (sd_act_frm->category != P2PSD_ACTION_CATEGORY)
 		return false;
 
-	if (wl_cfg80211_is_dpp_gas_action(frame, frame_len)) {
+	if (wl_cfg80211_is_dpp_gas_action(frame, frame_len, &gas_frame_type)) {
 		return true;
 	}
 
@@ -460,13 +461,13 @@ wl_cfgp2p_ifadd(struct bcm_cfg80211 *cfg, struct ether_addr *mac, u8 if_type,
 	struct net_device *ndev = bcmcfg_to_prmry_ndev(cfg);
 
 	ifreq.type = if_type;
-	ifreq.chspec = chspec;
+	ifreq.chspec = wf_chspec_ctlchspec(chspec);
 	memcpy(ifreq.addr.octet, mac->octet, sizeof(ifreq.addr.octet));
 
-	CFGP2P_ERR(("---cfg p2p_ifadd "MACDBG" %s %u\n",
+	CFGP2P_ERR(("---cfg p2p_ifadd "MACDBG" %s channel:%u chspec:0x%x\n",
 		MAC2STRDBG(ifreq.addr.octet),
 		(if_type == WL_P2P_IF_GO) ? "go" : "client",
-		wf_chspec_ctlchan((chanspec_t)chspec)));
+		wf_chspec_ctlchan((chanspec_t)chspec), ifreq.chspec));
 
 	err = wldev_iovar_setbuf(ndev, "p2p_ifadd", &ifreq, sizeof(ifreq),
 		cfg->ioctl_buf, WLC_IOCTL_MAXLEN, &cfg->ioctl_buf_sync);

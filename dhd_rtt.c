@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), RTT
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -107,7 +107,7 @@ static DEFINE_SPINLOCK(noti_list_lock);
 #define FTM_IOC_BUFSZ  2048	/* ioc buffsize for our module (> BCM_XTLV_HDR_SIZE) */
 #define FTM_AVAIL_MAX_SLOTS		32
 #define FTM_MAX_CONFIGS 10
-#define FTM_MAX_PARAMS 20
+#define FTM_MAX_PARAMS 25
 #define FTM_DEFAULT_SESSION 1
 #define FTM_BURST_TIMEOUT_UNIT 250 /* 250 ns */
 #define FTM_INVALID -1
@@ -191,6 +191,7 @@ typedef struct ftm_config_options_info {
 
 typedef struct ftm_mc_az_config_options_info {
 	uint64 flags;				/* wl_ftm_flags_t/wl_ftm_session_flags_t */
+	uint64 flags_mask;
 	bool enable;
 } ftm_mc_az_config_options_info_t;
 
@@ -246,9 +247,10 @@ dhd_rtt_convert_results_to_host_v3(rtt_mc_az_result_t *rtt_result, const uint8 *
 	uint16 tlvid, uint16 len);
 
 #ifdef FTM
-static int
-dhd_rtt_convert_az_results_to_host_v1(rtt_mc_az_result_t *rtt_result, const uint8 *p_data,
-	uint16 tlvid, uint16 len);
+static int dhd_rtt_convert_az_results_to_host_v1(rtt_mc_az_result_t *rtt_result,
+	const uint8 *p_data, uint16 tlvid, uint16 len);
+static int dhd_rtt_convert_az_results_to_host_v2(rtt_mc_az_result_t *rtt_result,
+	const uint8 *p_data, uint16 tlvid, uint16 len);
 #endif /* FTM */
 
 static wifi_rate_v1
@@ -1266,6 +1268,10 @@ rtt_unpack_xtlv_cbfn(void *ctx, const uint8 *p_data, uint16 tlvid, uint16 len)
 		DHD_RTT(("WL_FTM_TLV_ID_AZ_RTT_RESULT_V1 \n"));
 		dhd_rtt_convert_az_results_to_host_v1(rtt_result, p_data, tlvid, len);
 		break;
+	case WL_FTM_TLV_ID_AZ_RTT_RESULT_V2:
+		DHD_RTT(("WL_FTM_TLV_ID_AZ_RTT_RESULT_V2 \n"));
+		dhd_rtt_convert_az_results_to_host_v2(rtt_result, p_data, tlvid, len);
+		break;
 #endif /* FTM */
 	default:
 		DHD_RTT_ERR(("> Unsupported TLV ID %d\n", tlvid));
@@ -1475,11 +1481,11 @@ dhd_rtt_handle_mc_az_config_options(wl_proxd_session_id_t session_id, wl_proxd_t
 	for (cfg_idx = 0; cfg_idx < ftm_cfg_cnt; cfg_idx++) {
 		p_option_info = (ftm_configs + cfg_idx);
 		if (p_option_info != NULL) {
-			new_mask = p_option_info->flags;
+			new_mask = p_option_info->flags_mask;
 			/* update flags mask */
 			flags_mask |= new_mask;
 			if (p_option_info->enable) {
-				flags |= new_mask;	/* set the bit on */
+				flags |= p_option_info->flags;	/* set the bit on */
 			} else {
 				flags &= ~new_mask;	/* set the bit off */
 			}
@@ -1791,10 +1797,16 @@ dhd_rtt_nan_start_session(dhd_pub_t *dhd, rtt_mc_az_target_info_t *rtt_target)
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	nan_ranging_inst_t *ranging_inst = NULL;
 	rtt_status_info_t *rtt_status = GET_RTTSTATE(dhd);
-	ftm_config_param_info_t ftm_params[FTM_MAX_PARAMS];
+	ftm_config_param_info_t *ftm_params;
 	int ftm_param_cnt = 0;
 
-	memset(ftm_params, 0, sizeof(ftm_params));
+	ftm_params = MALLOCZ(dhd->osh, sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS);
+	if (!ftm_params) {
+		DHD_RTT_ERR(("dhd_rtt_nan_start_session: "
+			"failed to allocate %ld bytes of memory\n",
+			sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS));
+		goto exit;
+	}
 
 	NAN_MUTEX_LOCK();
 
@@ -1852,6 +1864,7 @@ dhd_rtt_nan_start_session(dhd_pub_t *dhd, rtt_mc_az_target_info_t *rtt_target)
 	}
 
 	DHD_RTT(("Trigger nan based range request\n"));
+	ranging_inst->num_meas = rtt_target->u.mc_tgt_info.num_frames_per_burst;
 	err = wl_cfgnan_trigger_ranging(bcmcfg_to_prmry_ndev(cfg),
 			cfg, ranging_inst, NULL, NAN_RANGE_REQ_CMD, TRUE);
 	if (unlikely(err)) {
@@ -1871,6 +1884,9 @@ exit:
 		dhd_rtt_event_trigger_failure(dhd, rtt_target);
 	}
 	NAN_MUTEX_UNLOCK();
+	if (ftm_params) {
+		MFREE(dhd->osh, ftm_params, sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS);
+	}
 	return err;
 }
 #endif /* WL_NAN */
@@ -3225,6 +3241,7 @@ dhd_rtt_set_ftm_config_ratespec(ftm_config_param_info_t *ftm_params,
 	if (!(rtt_target->cmn_tgt_info.bw && rtt_target->u.mc_tgt_info.preamble)) {
 		goto exit;
 	}
+
 	switch (rtt_target->u.mc_tgt_info.preamble) {
 		case RTT_PREAMBLE_LEGACY:
 			rspec |= WL_RSPEC_ENCODE_RATE; /* 11abg */
@@ -3247,6 +3264,7 @@ dhd_rtt_set_ftm_config_ratespec(ftm_config_param_info_t *ftm_params,
 			use_default = TRUE;
 			break;
 	}
+
 	switch (rtt_target->cmn_tgt_info.bw) {
 		case RTT_BW_20:
 			rspec |= WL_RSPEC_BW_20MHZ;
@@ -3256,6 +3274,9 @@ dhd_rtt_set_ftm_config_ratespec(ftm_config_param_info_t *ftm_params,
 			break;
 		case RTT_BW_80:
 			rspec |= WL_RSPEC_BW_80MHZ;
+			break;
+		case RTT_BW_160:
+			rspec |= WL_RSPEC_BW_160MHZ;
 			break;
 		default:
 			DHD_RTT(("doesn't support this BW : %d\n",
@@ -3443,6 +3464,14 @@ dhd_rtt_set_ftm_config_param(ftm_config_param_info_t *ftm_params,
 }
 
 #ifdef FTM
+#define	FTM_FMT_BW_HE_20	0u
+#define	FTM_FMT_BW_HE_40	1u
+#define	FTM_FMT_BW_HE_80	2u
+#define FTM_FMT_BW_HE_80_80	3u
+#define	FTM_FMT_BW_HE_2RF_160	4u
+#define FTM_FMT_BW_HE_1RF_160	5u
+#define	FTM_FMT_BW_AUTO		255u
+
 static void
 dhd_rtt_set_mc_az_ftm_config_param(ftm_config_param_info_t *ftm_params,
 	int *ftm_param_cnt, rtt_mc_az_target_info_t *rtt_target, uint16 tlvid)
@@ -3635,18 +3664,18 @@ dhd_rtt_set_mc_az_ftm_config_param(ftm_config_param_info_t *ftm_params,
 			if (rtt_target->cmn_tgt_info.bw) {
 				/* TODO: define format bw macro in wlioct */
 				if (rtt_target->cmn_tgt_info.bw == WIFI_RTT_BW_20) {
-					ftm_params[*ftm_param_cnt].data8 = 0;
+					ftm_params[*ftm_param_cnt].data8 = FTM_FMT_BW_HE_20;
 				} else if (rtt_target->cmn_tgt_info.bw == WIFI_RTT_BW_40) {
-					ftm_params[*ftm_param_cnt].data8 = 1;
+					ftm_params[*ftm_param_cnt].data8 = FTM_FMT_BW_HE_40;
 				} else if (rtt_target->cmn_tgt_info.bw == WIFI_RTT_BW_80) {
-					ftm_params[*ftm_param_cnt].data8 = 2;
+					ftm_params[*ftm_param_cnt].data8 = FTM_FMT_BW_HE_80;
 				} else if (rtt_target->cmn_tgt_info.bw == WIFI_RTT_BW_160) {
-					ftm_params[*ftm_param_cnt].data8 = 3;
+					/* firmware supports only 1RF LO */
+					ftm_params[*ftm_param_cnt].data8 = FTM_FMT_BW_HE_1RF_160;
 				}
 				ftm_params[*ftm_param_cnt].tlvid = WL_FTM_TLV_ID_FORMAT_BW;
 				*ftm_param_cnt = *ftm_param_cnt + 1;
-				DHD_RTT((">\t format bw %d \n",
-					rtt_target->u.az_tgt_info.format_bw));
+				DHD_RTT((">\t format bw %d \n", rtt_target->cmn_tgt_info.bw));
 			}
 			break;
 		case WL_FTM_TLV_ID_SECURITY_KEY_IDLE_TIME:
@@ -3741,15 +3770,28 @@ dhd_rtt_config_sta_rtt(dhd_pub_t *dhd, struct net_device *dev,
 	rtt_mc_az_target_info_t *rtt_target)
 {
 	int ftm_cfg_cnt = 0;
-	ftm_config_options_info_t ftm_configs[FTM_MAX_CONFIGS];
-	ftm_config_param_info_t ftm_params[FTM_MAX_PARAMS];
+	ftm_config_options_info_t *ftm_configs = NULL;
+	ftm_config_param_info_t *ftm_params = NULL;
 	int ftm_param_cnt = 0;
 	int err = BCME_OK;
 	uint8 err_at = 0;
 	u8 ioctl_buf[WLC_IOCTL_SMLEN];
 
-	memset(ftm_configs, 0, sizeof(ftm_configs));
-	memset(ftm_params, 0, sizeof(ftm_params));
+	ftm_configs = MALLOCZ(dhd->osh, sizeof(ftm_config_options_info_t) * FTM_MAX_CONFIGS);
+	if (!ftm_configs) {
+		DHD_RTT_ERR(("dhd_rtt_config_sta_rtt: "
+			"failed to allocate %ld bytes of memory\n",
+			sizeof(ftm_config_options_info_t) * FTM_MAX_CONFIGS));
+		goto exit;
+	}
+
+	ftm_params = MALLOCZ(dhd->osh, sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS);
+	if (!ftm_params) {
+		DHD_RTT_ERR(("dhd_rtt_config_sta_rtt: "
+			"failed to allocate %ld bytes of memory\n",
+			sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS));
+		goto exit;
+	}
 
 	/* configure the session 1 as initiator */
 	if  (ftm_cfg_cnt < FTM_MAX_CONFIGS) {
@@ -3859,6 +3901,14 @@ exit:
 		DHD_RTT_ERR(("dhd_rtt_config_sta_rtt: err %d err_at %d\n",
 			err, err_at));
 	}
+
+	if (ftm_configs) {
+		MFREE(dhd->osh, ftm_configs, sizeof(ftm_config_options_info_t) * FTM_MAX_CONFIGS);
+	}
+
+	if (ftm_params) {
+		MFREE(dhd->osh, ftm_params, sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS);
+	}
 	return err;
 }
 
@@ -3871,15 +3921,29 @@ dhd_rtt_mc_az_config_sta_rtt(dhd_pub_t *dhd, struct net_device *dev,
 	rtt_mc_az_target_info_t *rtt_target)
 {
 	int ftm_cfg_cnt = 0;
-	ftm_mc_az_config_options_info_t ftm_configs[FTM_MAX_CONFIGS];
-	ftm_config_param_info_t ftm_params[FTM_MAX_PARAMS];
+	ftm_mc_az_config_options_info_t *ftm_configs = NULL;
+	ftm_config_param_info_t *ftm_params = NULL;
 	int ftm_param_cnt = 0;
 	int err = BCME_OK;
 	uint8 err_at = 0;
 	u8 ioctl_buf[WLC_IOCTL_SMLEN];
 
-	memset(ftm_configs, 0, sizeof(ftm_configs));
-	memset(ftm_params, 0, sizeof(ftm_params));
+	ftm_configs = MALLOCZ(dhd->osh, sizeof(ftm_config_options_info_t) * FTM_MAX_CONFIGS);
+	if (!ftm_configs) {
+		DHD_RTT_ERR(("dhd_rtt_mc_az_config_sta_rtt: "
+			"failed to allocate %ld bytes of memory\n",
+			sizeof(ftm_config_options_info_t) * FTM_MAX_CONFIGS));
+		goto exit;
+	}
+
+	ftm_params = MALLOCZ(dhd->osh, sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS);
+	if (!ftm_params) {
+		DHD_RTT_ERR(("dhd_rtt_mc_az_config_sta_rtt: "
+			"failed to allocate %ld bytes of memory\n",
+			sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS));
+		goto exit;
+	}
+
 
 	/* configure the session 1 as initiator */
 	ftm_configs[ftm_cfg_cnt].enable = TRUE;
@@ -3902,7 +3966,11 @@ dhd_rtt_mc_az_config_sta_rtt(dhd_pub_t *dhd, struct net_device *dev,
 		}
 #endif /* WL_RTT_LCI */
 	}
-
+	/* Set flags mask */
+	ftm_configs[ftm_cfg_cnt].flags_mask = ftm_configs[ftm_cfg_cnt].flags;
+	if (rtt_target->cmn_tgt_info.tgt_type == RTT_TWO_WAY_NTB) {
+		ftm_configs[ftm_cfg_cnt].flags_mask |= WL_FTM_SESSION_FLAG_SEC_LTF_SUPPORTED;
+	}
 	ftm_cfg_cnt++;
 
 	memset(ioctl_buf, 0, WLC_IOCTL_SMLEN);
@@ -4008,6 +4076,13 @@ exit:
 	if (err != BCME_OK) {
 		DHD_RTT_ERR(("dhd_rtt_config_sta_rtt: err %d err_at %d\n",
 			err, err_at));
+	}
+	if (ftm_configs) {
+		MFREE(dhd->osh, ftm_configs, sizeof(ftm_config_options_info_t) * FTM_MAX_CONFIGS);
+	}
+
+	if (ftm_params) {
+		MFREE(dhd->osh, ftm_params, sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS);
 	}
 	return err;
 }
@@ -5252,36 +5327,102 @@ static int
 dhd_rtt_convert_az_results_to_host_v1(rtt_mc_az_result_t *rtt_result,
 	const uint8 *p_data, uint16 tlvid, uint16 len)
 {
-	const wl_ftm_az_rtt_result_v1_t *p_data_info = NULL;
+	const wl_ftm_az_rtt_result_v1_t *result_v1 = NULL;
 	rtt_report_t *rtt_report = &(rtt_result->u.az_result.report);
+	wl_ftm_status_t ftm_status;
 	int i;
 
-	p_data_info = (wl_ftm_az_rtt_result_v1_t *)p_data;
+	result_v1 = (wl_ftm_az_rtt_result_v1_t *)p_data;
 
 	rtt_report->type = RTT_TWO_WAY_NTB;
+	rtt_report->addr = result_v1->peer;
+	rtt_report->ftm_num = result_v1->max_num_meas;
+	rtt_report->success_num = result_v1->num_meas;
+
+	ftm_status = result_v1->status;
+	/* Framework expects status as SUCCESS else all results will be
+	* set to zero even if we have partial valid result.
+	* So setting status as SUCCESS if we have a valid_rtt
+	* On burst timeout we stop burst with "timeout" reason and
+	* on msch end we set status as "cancel"
+	*/
+	if (((ftm_status == WL_FTM_E_TIMEOUT) ||
+			(ftm_status == WL_FTM_E_CANCELED) ||
+			(ftm_status == WL_FTM_E_OFF_CHAN)) &&
+			rtt_report->success_num) {
+		ftm_status = RTT_STATUS_SUCCESS;
+	}
+	rtt_report->status = ftm_status;
+
+	rtt_report->rssi = 0;
+	for (i = 0; i < WL_RSSI_ANT_MAX; i++) {
+		rtt_report->rssi += result_v1->rssi_mean[i];
+	}
+	rtt_report->rssi = rtt_report->rssi/WL_RSSI_ANT_MAX;
+	rtt_report->rtt = result_v1->rtt_mean;
+	rtt_report->rtt_sd = result_v1->rtt_sd;
+	rtt_report->distance = result_v1->dist;
+
+	rtt_result->u.az_result.detail_len =
+		sizeof(rtt_result->u.az_result.rtt_detail);
+	return BCME_OK;
+}
+
+#define FTM_CM_TO_MM	10u
+static int
+dhd_rtt_convert_az_results_to_host_v2(rtt_mc_az_result_t *rtt_result,
+	const uint8 *p_data, uint16 tlvid, uint16 len)
+{
+	const wl_ftm_az_rtt_result_v2_t *p_data_info = NULL;
+	rtt_report_t *rtt_report = &(rtt_result->u.az_result.report);
+	wl_ftm_intvl_t min_delta, max_delta;
+	wl_ftm_status_t ftm_status;
+	int i;
+	p_data_info = (wl_ftm_az_rtt_result_v2_t *)p_data;
+	if (rtt_result->type == RTT_TWO_WAY_NTB) {
+		rtt_report->type = RTT_TWO_WAY_NTB;
+		min_delta = p_data_info->min_delta; /* min_delta is in us */
+		max_delta = p_data_info->max_delta; /* max delta is in ms */
+		/* min delta should be in 100us unit */
+		rtt_result->u.az_result.rtt_detail.min_delta = min_delta.intvl / 100u;
+		/* max delta should be in 10 ms unit */
+		rtt_result->u.az_result.rtt_detail.max_delta = max_delta.intvl / 10u;
+	}
 	rtt_report->addr = p_data_info->peer;
 	rtt_report->ftm_num = p_data_info->max_num_meas;
 	rtt_report->success_num = p_data_info->num_meas;
-	rtt_report->status = p_data_info->status;
+	ftm_status = p_data_info->status;
+	/* Framework expects status as SUCCESS else all results will be
+	* set to zero even if we have partial valid result.
+	* So setting status as SUCCESS if we have a valid_rtt
+	* On burst timeout we stop burst with "timeout" reason and
+	* on msch end we set status as "cancel"
+	*/
+	if (((ftm_status == WL_FTM_E_TIMEOUT) ||
+			(ftm_status == WL_FTM_E_CANCELED) ||
+			(ftm_status == WL_FTM_E_OFF_CHAN)) &&
+			rtt_report->success_num) {
+		ftm_status = RTT_STATUS_SUCCESS;
+	}
+	rtt_report->status = ftm_status;
 	rtt_report->rssi = 0;
 	for (i = 0; i < WL_RSSI_ANT_MAX; i++) {
 		rtt_report->rssi += p_data_info->rssi_mean[i];
 	}
 	rtt_report->rssi = rtt_report->rssi/WL_RSSI_ANT_MAX;
-	rtt_report->rtt = p_data_info->rtt_mean;
+	rtt_report->rtt = p_data_info->rtt_mean; /* rtt mean is in pico sec */
 	rtt_report->rtt_sd = p_data_info->rtt_sd;
-	rtt_report->distance = p_data_info->dist;
-
+	/* distance comes in cm unit from fw. Framework expects distance in mm
+	 * convert cm to mm here.
+	 */
+	rtt_report->distance = (p_data_info->dist * FTM_CM_TO_MM);
 	rtt_result->u.az_result.detail_len =
 		sizeof(rtt_result->u.az_result.rtt_detail);
-	/* TODO: Add these elements in result structure */
-	/* min delta should be in 100us unit */
-	rtt_result->u.az_result.rtt_detail.min_delta = 0;
-	/* max delta should be in 10 ms unit */
-	rtt_result->u.az_result.rtt_detail.max_delta = 0;
-	rtt_result->u.az_result.rtt_detail.i2r_ltf_rep = 0;
-	rtt_result->u.az_result.rtt_detail.r2i_ltf_rep = 0;
+	rtt_result->u.az_result.rtt_detail.i2r_ltf_rep = p_data_info->i2r_ltf_rep;
+	rtt_result->u.az_result.rtt_detail.r2i_ltf_rep = p_data_info->r2i_ltf_rep;
 
+	DHD_RTT(("dhd_rtt_convert_az_results_to_host_v2 : distance = %d mm success_num = %d \n",
+			rtt_report->distance, rtt_report->success_num));
 	return BCME_OK;
 }
 #endif /* FTM */
@@ -6368,9 +6509,25 @@ dhd_rtt_enable_responder(dhd_pub_t *dhd, wifi_channel_info *channel_info)
 	chanspec_t chanspec;
 	wifi_channel_info channel;
 	struct net_device *dev = dhd_linux_get_primary_netdev(dhd);
-	ftm_config_options_info_t ftm_configs[FTM_MAX_CONFIGS];
-	ftm_config_param_info_t ftm_params[FTM_MAX_PARAMS];
+	ftm_config_options_info_t *ftm_configs = NULL;
+	ftm_config_param_info_t *ftm_params = NULL;
 	rtt_status_info_t *rtt_status;
+
+	ftm_configs = MALLOCZ(dhd->osh, sizeof(ftm_config_options_info_t) * FTM_MAX_CONFIGS);
+	if (!ftm_configs) {
+		DHD_RTT_ERR(("dhd_rtt_mc_az_config_sta_rtt: "
+			"failed to allocate %ld bytes of memory\n",
+			sizeof(ftm_config_options_info_t) * FTM_MAX_CONFIGS));
+		goto exit;
+	}
+
+	ftm_params = MALLOCZ(dhd->osh, sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS);
+	if (!ftm_params) {
+		DHD_RTT_ERR(("dhd_rtt_mc_az_config_sta_rtt: "
+			"failed to allocate %ld bytes of memory\n",
+			sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS));
+		goto exit;
+	}
 
 	memset(&channel, 0, sizeof(channel));
 	BCM_REFERENCE(chanbuf);
@@ -6428,8 +6585,6 @@ dhd_rtt_enable_responder(dhd_pub_t *dhd, wifi_channel_info *channel_info)
 	}
 	rtt_status->status = RTT_ENABLED;
 	DHD_RTT(("Responder enabled \n"));
-	memset(ftm_configs, 0, sizeof(ftm_configs));
-	memset(ftm_params, 0, sizeof(ftm_params));
 	ftm_configs[ftm_cfg_cnt].enable = TRUE;
 	ftm_configs[ftm_cfg_cnt++].flags = WL_PROXD_SESSION_FLAG_TARGET;
 	rtt_status->flags = WL_PROXD_SESSION_FLAG_TARGET;
@@ -6452,6 +6607,14 @@ exit:
 			}
 		}
 	}
+	if (ftm_configs) {
+		MFREE(dhd->osh, ftm_configs, sizeof(ftm_config_options_info_t) * FTM_MAX_CONFIGS);
+	}
+
+	if (ftm_params) {
+		MFREE(dhd->osh, ftm_params, sizeof(ftm_config_param_info_t) * FTM_MAX_PARAMS);
+	}
+
 	return err;
 }
 

@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), RTT
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -441,8 +441,8 @@ typedef struct rtt_report {
 	wifi_timespan rtt;	/*  round trip time in 0.1 nanoseconds */
 	wifi_timespan rtt_sd;	/* rtt standard deviation in 0.1 nanoseconds */
 	wifi_timespan rtt_spread; /* difference between max and min rtt times recorded */
-	int distance; /* distance in cm (optional) */
-	int distance_sd; /* standard deviation in cm (optional) */
+	int distance; /* distance in mm (optional) */
+	int distance_sd; /* standard deviation in mm (optional) */
 	int distance_spread; /* difference between max and min distance recorded (optional) */
 	wifi_timestamp ts; /* time of the measurement (in microseconds since boot) */
 	int burst_duration; /* in ms, how long the FW time is to fininish one burst measurement */

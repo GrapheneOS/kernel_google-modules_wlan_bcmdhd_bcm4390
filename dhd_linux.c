@@ -1,7 +1,7 @@
 /*
  * Basically selected code segments from usb-cdc.c and usb-rndis.c
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -293,6 +293,10 @@ static void dhd_blk_tsfl_handler(struct work_struct * work);
 #include <dhd_mesh_route.h>
 #endif /* defined(DHD_MESH) */
 
+#ifdef DBG_PKT_MON
+#include <802.11.h>
+#endif /* DBG_PKT_MON */
+
 #if defined(DHD_TCP_WINSIZE_ADJUST)
 static uint target_ports[MAX_TARGET_PORTS] = {20, 0, 0, 0, 0};
 static uint dhd_use_tcp_window_size_adjust = FALSE;
@@ -571,6 +575,13 @@ static void dhd_update_rx_pkt_chainable_state(dhd_pub_t* dhdp, uint32 idx);
 
 /* Error bits */
 module_param(dhd_msg_level, int, 0);
+
+#ifdef DHD_FORCE_MAX_CPU_FREQ
+uint dhd_force_max_cpu_freq = 1;
+#else
+uint dhd_force_max_cpu_freq = 0;
+#endif /* DHD_FORCE_MAX_CPU_FREQ */
+module_param(dhd_force_max_cpu_freq, int, 0644);
 
 #ifdef ARP_OFFLOAD_SUPPORT
 /* ARP offload agent mode : Enable ARP Host Auto-Reply and ARP Peer Auto-Reply */
@@ -4221,8 +4232,10 @@ dhd_init_logtrace_process(dhd_info_t *dhd)
 
 
 int
-dhd_reinit_logtrace_process(dhd_info_t *dhd)
+dhd_reinit_logtrace_process(void *dhd_info)
 {
+	dhd_info_t *dhd = (dhd_info_t *)dhd_info;
+	BCM_REFERENCE(dhd);
 #ifdef DHD_USE_KTHREAD_FOR_LOGTRACE
 	/* Re-init only if PROC_STOP from dhd_stop was called
 	 * which can be checked via thr_pid
@@ -4234,12 +4247,12 @@ dhd_reinit_logtrace_process(dhd_info_t *dhd)
 			DHD_ERROR(("%s: reinit logtrace process failed\n", __FUNCTION__));
 			return BCME_ERROR;
 		} else {
-		DHD_ERROR(("%s: thr_logtrace_ctl(%ld) not inited\n", __FUNCTION__,
-			dhd->thr_logtrace_ctl.thr_pid));
-	}
+			DHD_ERROR(("%s: thr_logtrace_ctl(%ld) not inited\n", __FUNCTION__,
+				dhd->thr_logtrace_ctl.thr_pid));
+		}
 	}
 #else
-	/* No need to re-init for WQ as calcel_delayed_work_sync will
+	/* No need to re-init for WQ as cancel_delayed_work_sync will
 	 * will not delete the WQ
 	 */
 #endif /* DHD_USE_KTHREAD_FOR_LOGTRACE */
@@ -5287,14 +5300,20 @@ static bool dhd_check_hang(struct net_device *net, dhd_pub_t *dhdp, int error)
 }
 
 #if defined(DBG_PKT_MON) && defined(PCIE_FULL_DONGLE)
+#define PKT_MON_TYPESTR_MAX 30
 void
-dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
+dhd_dbg_monitor_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 {
 	/* Distinguish rx/tx frame */
 	wl_aml_header_v1_t hdr;
 	bool wpa_sup;
 	struct sk_buff *skb = pkt;
 	frame_type type;
+	struct dot11_management_header *d11hdr;
+	uint8 subtype;
+	char type_str[PKT_MON_TYPESTR_MAX] = {0};
+	msg_eapol_t eapol_type;
+	bool ack, direction;
 #ifdef DHD_PKT_LOGGING
 	struct ether_header *eh;
 	uint32 pktid;
@@ -5306,8 +5325,25 @@ dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 	PKTPULL(dhdp->osh, skb, sizeof(hdr));
 	wpa_sup = !!(hdr.flags & WL_AML_F_EAPOL);
 	type = wpa_sup ? FRAME_TYPE_ETHERNET_II : FRAME_TYPE_80211_MGMT;
+	if (type == FRAME_TYPE_80211_MGMT) {
+		d11hdr = (struct dot11_management_header *)PKTDATA(dhdp->osh, skb);
+		subtype = FC_SUBTYPE(d11hdr->fc);
+		dhd_dbg_monitor_mgmt_str(subtype, type_str, sizeof(type_str));
+	} else if (type == FRAME_TYPE_ETHERNET_II) {
+		eapol_type = dhd_is_4way_msg(PKTDATA(dhdp->osh, skb));
+		dhd_dbg_monitor_eapol_str(eapol_type, type_str, sizeof(type_str));
+	}
+	ack = !!(hdr.flags & WL_AML_F_ACKED);
+	direction = !!(hdr.flags & WL_AML_F_DIRECTION);
 
-	if (hdr.flags & WL_AML_F_DIRECTION) {
+	if (DHD_PKT_MON_DUMP_ON()) {
+		DHD_PKT_MON(("%s: fw driven pkt [%s] %s %s status:%d ifidx:%d length:%d\n",
+			__FUNCTION__, direction ? "TXS" : "RX",
+			wpa_sup ? "EAPOL" : "80211", type_str, ack,
+			ifidx, PKTLEN(dhdp->osh, skb)));
+	}
+
+	if (direction) {
 		bool ack = !!(hdr.flags & WL_AML_F_ACKED);
 #ifdef DHD_PKT_LOGGING
 		/* Send Tx-ed 4HS packet in dongle to packet logging buffer */
@@ -5320,9 +5356,13 @@ dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 #endif /* DHD_PKT_LOGGING */
 
 		/* Send Tx-ed mgmt frame and 4HS packet in dongle to upper layer */
+#ifdef DHD_PKT_MON_DUAL_STA
+		DHD_DBG_PKT_MON_TX(dhdp, ifidx, skb, 0, type, (uint8)ack, TRUE);
+#else
 		DHD_DBG_PKT_MON_TX(dhdp, skb, 0, type, (uint8)ack, TRUE);
+#endif /* DHD_PKT_MON_DUAL_STA */
 
-		/* skb can be null here. do null check if skb is used */
+		/* skb can be null here. do not refer to skb */
 	} else {
 #ifdef DHD_PKT_LOGGING
 		/* Send Rx-ed 4HS packet in dongle to packet logging buffer */
@@ -5334,9 +5374,13 @@ dhd_80211_mon_pkt(dhd_pub_t *dhdp, host_rxbuf_cmpl_t* msg, void *pkt, int ifidx)
 #endif /* DHD_PKT_LOGGING */
 
 		/* Send Rx-ed mgmt frame and 4HS packet in dongle to upper layer */
+#ifdef DHD_PKT_MON_DUAL_STA
+		DHD_DBG_PKT_MON_RX(dhdp, ifidx, (struct sk_buff *)skb, type, TRUE);
+#else
 		DHD_DBG_PKT_MON_RX(dhdp, (struct sk_buff *)skb, type, TRUE);
+#endif /* DHD_PKT_MON_DUAL_STA */
 
-		/* skb can be null here. do null check if skb is used */
+		/* skb can be null here. do not refer to skb */
 	}
 }
 #endif /* DBG_PKT_MON && PCIE_FULL_DONGLE */
@@ -7087,18 +7131,31 @@ dhd_open(struct net_device *net)
 #if defined(USE_INITIAL_2G_SCAN) || defined(USE_INITIAL_SHORT_DWELL_TIME)
 			g_first_broadcast_scan = TRUE;
 #endif /* USE_INITIAL_2G_SCAN || USE_INITIAL_SHORT_DWELL_TIME */
+			dhd->pub.if_opened = TRUE;
 #ifdef SHOW_LOGTRACE
-			/* dhd_cancel_logtrace_process_sync is called in dhd_stop
-			 * for built-in models. Need to start logtrace kthread before
-			 * calling wifi on, because once wifi is on, EDL will be in action
-			 * any moment, and if kthread is not active, FW event logs will
-			 * not be available
+			/* EDL logtrace kthread is stopped in dhd_stop
+			 * Need to start logtrace kthread only for non force-regon
+			 * cases before calling wifi on, because once wifi is on,
+			 * EDL will be in action any moment, and if kthread is not active,
+			 * FW event logs after FW load may be missed.
+			 * For force-regon cases, logtrace kthread should be started
+			 * only after EDL ring reset is done in dhd_bus_devreset
+			 * else the kthread will process stale ring pointers
+			 * and wrongly conclude EDL items are present in the ring
 			 */
+#if defined(WLAN_ACCEL_BOOT)
+			if (!dhd->wl_accel_force_reg_on) {
+				if (dhd_reinit_logtrace_process(dhd) != BCME_OK) {
+					goto exit;
+				}
+			}
+#else
 			if (dhd_reinit_logtrace_process(dhd) != BCME_OK) {
 				goto exit;
 			}
+#endif /* WLAN_ACCEL_BOOT */
 #endif /* SHOW_LOGTRACE */
-			dhd->pub.if_opened = TRUE;
+
 #if defined(WLAN_ACCEL_BOOT)
 			ret = wl_android_wifi_accel_on(net, dhd->wl_accel_force_reg_on);
 			/* Enable wl_accel_force_reg_on if ON fails, else disable it */
@@ -9783,7 +9840,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 
 #if defined(OEM_ANDROID)
 #ifdef DHD_COREDUMP
-#if defined(BOARD_HIKEY) || defined (BOARD_STB)
+#if defined(BOARD_HIKEY)
 	dhd->pub.memdump_enabled = DUMP_MEMFILE_BUGON;
 #else
 	dhd->pub.memdump_enabled = DUMP_MEMFILE;
@@ -12287,6 +12344,15 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 		DHD_ERROR(("%s: failed to set assoc_early_prsv_log_flush ret=%d\n",
 			__FUNCTION__, ret2));
 	}
+#if defined(BOARD_HIKEY)
+	val = 1;
+	ret2 = dhd_iovar(dhd, 0, "bus:skip_wop", (char *)&val,
+		sizeof(val), NULL, 0, TRUE);
+	if (ret2 < 0) {
+		DHD_ERROR(("%s: failed to set 'bus:skip_wop ret=%d\n",
+			__FUNCTION__, ret2));
+	}
+#endif /* BOARD_HIKEY */
 #endif /* (BOARD_HIKEY) || (BOARD_STB) */
 
 done:
@@ -14691,11 +14757,14 @@ dhd_register_if(dhd_pub_t *dhdp, int ifidx, bool need_rtnl_lock)
 #endif /* BCMPCIE && DHDTCPACK_SUPPRESS */
 
 #if defined(WLAN_ACCEL_BOOT)
-			/*
-			 * Make Wifi suspended after boot up with forge_reg_on true
-			 * This will download fw when ifconfig wlan0 up sequence
-			 */
+			/* Do not toggle wlan regulator during init */
+			dhdp->reg_on_through_init = TRUE;
 			wl_android_wifi_off(net, TRUE);
+			dhdp->reg_on_through_init = FALSE;
+			/*
+			 * Set forge_reg_on true, so that FW is
+			 * downloaded when first 'ifconfig up' is done
+			 */
 			dhd->wl_accel_force_reg_on = TRUE;
 			/* Module init time clear do_chip_bighammer */
 			dhd->pub.do_chip_bighammer = FALSE;
@@ -20142,7 +20211,8 @@ char map_path[PATH_MAX] = DHD_MAP_NAME;
 #else
 char map_path[PATH_MAX] = VENDOR_PATH CONFIG_BCMDHD_MAP_PATH;
 #endif /* DHD_LINUX_STD_FW_API */
-extern int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump, bool collect_sssr);
+extern int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump,
+	bool collect_sssr, bool collect_fis);
 #endif /* DHD_COREDUMP */
 
 #ifdef DHD_SSSR_COREDUMP
@@ -20200,7 +20270,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 #endif /* DHD_COREDUMP */
 	uint32 memdump_type;
 #ifdef DHD_SSSR_DUMP
-	uint32 collect_sssr;
+	uint32 collect_sssr, collect_fis;
 #endif /* DHD_SSSR_DUMP */
 	bool set_linkdwn_cto = FALSE;
 
@@ -20221,6 +20291,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	memdump_type = dhdp->memdump_type;
 #ifdef DHD_SSSR_DUMP
 	collect_sssr = dhdp->collect_sssr;
+	collect_fis = dhdp->collect_fis;
 #endif /* DHD_SSSR_DUMP */
 #ifdef DHD_COREDUMP
 	ewp_init_state = dhdp->ewp_init_state;
@@ -20413,7 +20484,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	/* Only for dongle trap case, generate coredump header and TLVs */
 	if (dhd_is_coredump_reqd(dhdp->memdump_str,
 		strnlen(dhdp->memdump_str, DHD_MEMDUMP_LONGSTR_LEN), dhdp)) {
-		ret = dhd_collect_coredump(dhdp, dump, collect_sssr);
+		ret = dhd_collect_coredump(dhdp, dump, collect_sssr, collect_fis);
 		if (ret == BCME_ERROR) {
 			DHD_ERROR(("%s: dhd_collect_coredump() failed.\n",
 				__FUNCTION__));
@@ -20458,6 +20529,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	 */
 	if (collect_sssr == TRUE) {
 		dhdp->collect_sssr = FALSE;
+	}
+	if (collect_fis == TRUE) {
+		dhdp->collect_fis = FALSE;
 	}
 #endif /* DHD_SSSR_DUMP */
 

@@ -1,7 +1,7 @@
 /*
  * OS Abstraction Layer
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -542,4 +542,14 @@ do { \
 #define OSL_GET_FATAL_LOGBUF_END(osh, size, alloced)	\
 	(osl_get_fatal_logbuf_end(osh, size, alloced))
 
+#define OSL_TIMER_CREATE(osh, name, fn, arg) \
+	(osl_timer_create(osh, name, fn, arg))
+#define OSL_TIMER_INIT(osh, name, fn, arg) \
+	(osl_timer_init(osh, name, fn, arg))
+#define OSL_TIMER_ADD(osh, t, ms, periodic) \
+	(osl_timer_add(osh, t, ms, periodic))
+#define OSL_TIMER_DEL(osh, t) \
+	(osl_timer_del(osh, t))
+#define OSL_TIMER_FREE(osh, t) \
+	(osl_timer_free(osh, t))
 #endif	/* _osl_h_ */

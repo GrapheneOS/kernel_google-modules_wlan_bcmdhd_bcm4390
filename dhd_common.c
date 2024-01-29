@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), common DHD core.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -953,8 +953,10 @@ dhd_coredump_t dhd_coredump_types[] = {
 	{DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_BEFORE, 0, NULL},
 	{DHD_COREDUMP_TYPE_SSSRDUMP_SAQM_AFTER, 0, NULL},
 #ifdef COEX_CPU
-	{DHD_COREDUMP_TYPE_COEX_DUMP, 0, NULL}
+	{DHD_COREDUMP_TYPE_COEX_DUMP, 0, NULL},
 #endif /* COEX_CPU */
+	{DHD_COREDUMP_TYPE_SSSRDUMP_CMN, 0, NULL},
+	{DHD_COREDUMP_TYPE_SSSRDUMP_SRCB, 0, NULL}
 };
 #endif /* DHD_SSSR_DUMP */
 
@@ -1050,7 +1052,8 @@ int dhd_coredump_fill_section(uint8 **dst_buf, int dst_rlen, char *src_buf, int 
 
 
 /* reconstruct dump memory with socram and sssr dump as TLV format */
-int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump, bool collect_sssr)
+int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump,
+	bool collect_sssr, bool collect_fis)
 {
 	uint8 *buf_ptr = dhdp->coredump_mem;
 	int buf_len = dhdp->coredump_len;
@@ -1063,19 +1066,25 @@ int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump, bool collect_sssr)
 	int ret = 0, i = 0;
 	int total_size = 0;
 	uint32 *magic;
+#ifdef DHD_SSSR_DUMP
 	uint8 num_d11cores = 0;
 	int saqm_buf_len = dhd_sssr_saqm_buf_size(dhdp);
+	int cmn_buf_len = dhd_sssr_cmn_buf_size(dhdp);
+	int srcb_buf_len = dhd_sssr_srcb_buf_size(dhdp);
+#endif /* DHD_SSSR_DUMP */
 
 	if (!buf_ptr) {
 		DHD_ERROR(("coredump mem is not allocated\n"));
 		return BCME_ERROR;
 	}
 
+#ifdef DHD_SSSR_DUMP
 	/* check for SSSR dump support */
-	if (!sssr_enab || !collect_sssr) {
-		DHD_ERROR(("SSSR is not enabled or not collected yet.\n"));
+	if ((!sssr_enab && !dhd_is_fis_enabled()) || (!collect_sssr && !collect_fis)) {
+		DHD_ERROR(("SSSR/FIS is not enabled or not collected yet.\n"));
 		return BCME_UNSUPPORTED;
 	}
+#endif /* DHD_SSSR_DUMP */
 
 	/* SOCRAM dump start with magic code */
 	magic = (uint32*)buf_ptr;
@@ -1091,6 +1100,7 @@ int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump, bool collect_sssr)
 		return ret;
 	}
 
+#ifdef DHD_SSSR_DUMP
 	/* DHD_COREDUMP_TYPE_SSSR_ */
 	num_d11cores = dhd_d11_slices_num_get(dhdp);
 	for (i = 0; i < num_d11cores + 1; i++) {
@@ -1128,6 +1138,25 @@ int dhd_collect_coredump(dhd_pub_t *dhdp, dhd_dump_t *dump, bool collect_sssr)
 	if (ret) {
 		return ret;
 	}
+
+	if (dhdp->sssr_dump_mode == SSSR_DUMP_MODE_FIS) {
+		/* SSSR CMN BUF */
+		ret = dhd_coredump_fill_section(&buf_ptr, buf_len - total_size,
+				(char *)dhdp->sssr_cmn_buf_after, cmn_buf_len,
+				DHD_COREDUMP_TYPE_SSSRDUMP_CMN, &total_size);
+		if (ret) {
+			return ret;
+		}
+
+		/* SSSR SRCB BUF */
+		ret = dhd_coredump_fill_section(&buf_ptr, buf_len - total_size,
+				(char *)dhdp->sssr_srcb_buf_after, srcb_buf_len,
+				DHD_COREDUMP_TYPE_SSSRDUMP_SRCB, &total_size);
+		if (ret) {
+			return ret;
+		}
+	}
+#endif /* DHD_SSSR_DUMP */
 
 #ifdef DHD_SDTC_ETB_DUMP
 	ret = dhd_coredump_fill_section(&buf_ptr, buf_len - total_size,
@@ -1438,6 +1467,7 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 
 	/* Base DHD info */
 	bcm_bprintf(strbuf, "%s\n", dhd_version);
+	bcm_bprintf(strbuf, "%s\n", fw_version);
 	bcm_bprintf(strbuf, "\n");
 	bcm_bprintf(strbuf, "pub.up %d pub.txoff %d pub.busstate %d\n",
 	            dhdp->up, dhdp->txoff, dhdp->busstate);

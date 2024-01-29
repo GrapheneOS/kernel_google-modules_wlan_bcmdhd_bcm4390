@@ -1,7 +1,7 @@
 /*
  * DHD WiFi BT RegON Coordinator - WBRC
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -349,6 +349,9 @@ wbrc_bt_dev_open(struct inode *inodep, struct file *filep)
 	struct wbrc_pvt_data *wbrc_data;
 	int ret = 0, tmo_ret = 0;
 	int state = 0;
+	int err = 0;
+
+	BCM_REFERENCE(err);
 
 	WBRC_LOCK(wbrc_mutex);
 	wbrc_data = g_wbrc_data;
@@ -392,7 +395,11 @@ wbrc_bt_dev_open(struct inode *inodep, struct file *filep)
 			WBRC_WAIT_TIMEOUT, &wbrc_data->state, IDLE);
 		if (tmo_ret <= 0) {
 			pr_err("%s: WLAN ON/OFF timed out !\n", __func__);
-			goto exit;
+			/* return error if WLAN ON times out, else there is a chance
+			 * that BTHal can proceed with BT FW dwnld without
+			 * WLAN FW running first
+			 */
+			return -EFAULT;
 		} else {
 			pr_err("%s: WLAN ON/OFF finished\n", __func__);
 		}
@@ -407,8 +414,9 @@ wbrc_bt_dev_open(struct inode *inodep, struct file *filep)
 #ifdef WBRC_WLAN_ON_FIRST_ALWAYS
 	/* turn on wlan - will return immediately if wlan is already on */
 	pr_err("%s: turn WLAN ON ... \n", __func__);
-	if (wbrc2wl_wlan_on_request(wbrc_data->wl_hdl)) {
-		pr_err("%s: WLAN failed to turn ON ! \n", __func__);
+	err = wbrc2wl_wlan_on_request(wbrc_data->wl_hdl);
+	if (err) {
+		pr_err("%s: WLAN failed to turn ON ! err=%d\n", __func__, err);
 	} else {
 		pr_err("%s: WLAN is ON \n", __func__);
 	}
@@ -419,6 +427,15 @@ wbrc_bt_dev_open(struct inode *inodep, struct file *filep)
 	wbrc_data->state = IDLE;
 	pr_err("%s: state -> IDLE \n", __func__);
 	WBRC_STATE_UNLOCK(wbrc_data);
+
+#ifdef WBRC_WLAN_ON_FIRST_ALWAYS
+	/* return error if wlan fails to turn on, else BTHal will
+	 * proceed with BT FW dwnld without WLAN FW running first
+	 */
+	if (err) {
+		return -EFAULT;
+	}
+#endif /* WBRC_WLAN_ON_FIRST_ALWAYS */
 
 	wake_up(&wbrc_data->state_change_waitq);
 

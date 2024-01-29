@@ -1,7 +1,7 @@
 /*
  * HND generic packet pool operation primitives
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -76,7 +76,12 @@ typedef struct {
 	uint8 refcnt;
 } pktpool_cbinfo_t;
 
+#ifdef USE_URB_CHAINED_RX_CB
+typedef void (*pktpool_rxurb_cb_t)(struct pktpool *pool, void *arg, void *head, uint32 count);
+#else
 typedef void (*pktpool_rxurb_cb_t)(struct pktpool *pool, void *arg, uint8 *addr, uint16 len);
+#endif /* USE_URB_CHAINED_RX_CB */
+
 typedef struct {
 	pktpool_rxurb_cb_t cb;
 	void *arg;

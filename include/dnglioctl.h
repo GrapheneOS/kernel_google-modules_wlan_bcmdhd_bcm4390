@@ -1,7 +1,7 @@
 /*
  * HND Run Time Environment ioctl.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -41,7 +41,7 @@
 #define RTESALLMULTI		0x8906
 #define RTEGPROMISC		0x8907
 #define RTESPROMISC		0x8908
-#define RTESMULTILIST	0x8909
+#define RTESMULTILIST		0x8909
 #define RTEGUP			0x890A
 #define RTEGPERMADDR		0x890B
 #define RTEDEVPWRSTCHG		0x890C	/* Device pwr state change for PCIedev */
@@ -63,8 +63,9 @@
 #define RTEPTMENABLE		0x891C	/* Start/stop PTM time stamping in TX/RX status */
 #define RTEMACSUSPEND		0x891D	/* Suspend MAC cores */
 #define RTEPTMHOFFSET		0x891E	/* PTM offsets */
+#define RTE_REAL_D3_D0		0x891F	/* Transition from real D3/D0. */
 /* Ensure last RTE IOCTL define val is assigned to RTEIOCTLEND */
-#define RTEIOCTLEND		0x891E  /* LAST RTE IOCTL value */
+#define RTEIOCTLEND		0x891F  /* LAST RTE IOCTL value */
 
 #define RTE_IOCTL_QUERY		0x00
 #define RTE_IOCTL_SET		0x01
