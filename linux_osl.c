@@ -1,7 +1,7 @@
 /*
  * Linux OS Independent Layer
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -56,6 +56,20 @@
 
 #define DUMPBUFSZ 1024
 
+struct osl_timer {
+	timer_list_compat_t	timer;
+	void			(*fn)(void *);
+	void			*arg;	/**< argument to fn */
+	uint32			ms;	/* Time in millisec */
+	bool			periodic;
+	bool			set;	/* If set timer is active */
+	uint8			PAD[2];
+	struct osl_timer	*next;	/* list of osl timers */
+#ifdef BCMDBG
+	char			*name; /* Desription of the timer */
+#endif
+};
+
 #if defined(NICBUILD) && defined(WL_MACDBG)
 /* TODO: This buffer size is good enough for register dump
  * collection. In future when other dumps like ucode code
@@ -70,11 +84,12 @@
 #endif
 #endif /* NICBUILD && WL_MACDBG */
 
-#if defined(CUSTOMER_HW4_DEBUG) || defined(CUSTOMER_HW2_DEBUG) || defined(CUSTOMER_HW7_DEBUG)
+#if defined(CUSTOMER_HW4_DEBUG) || defined(CUSTOMER_HW2_DEBUG) || \
+	defined(CUSTOMER_HW7_DEBUG) || defined(XRAPI_COMMON)
 uint32 g_assert_type = 1; /* By Default not cause Kernel Panic */
 #else
 uint32 g_assert_type = 0; /* By Default Kernel Panic */
-#endif /* CUSTOMER_HW4_DEBUG || CUSTOMER_HW2_DEBUG || CUSTOMER_HW7_DEBUG */
+#endif /* CUSTOMER_HW4_DEBUG || CUSTOMER_HW2_DEBUG || CUSTOMER_HW7_DEBUG || XRAPI_COMMON */
 
 module_param(g_assert_type, int, 0);
 
@@ -323,6 +338,7 @@ void* osl_get_bus_handle(osl_t *osh)
 void
 osl_detach(osl_t *osh)
 {
+	osl_timer_t *t, *next;
 	if (osh == NULL)
 		return;
 
@@ -348,6 +364,17 @@ osl_detach(osl_t *osh)
 	atomic_sub(1, &osh->cmn->refcount);
 	if (atomic_read(&osh->cmn->refcount) == 0) {
 			kfree(osh->cmn);
+	}
+
+	/* free timers */
+	for (t = osh->timers; t; t = next) {
+		next = t->next;
+#ifdef BCMDBG
+		if (t->name) {
+			MFREE(osh, t->name, strlen(t->name) + 1);
+		}
+#endif
+		MFREE(osh, t, sizeof(*t));
 	}
 	kfree(osh);
 }
@@ -2008,29 +2035,77 @@ timer_cb_compat(struct timer_list *tl)
 }
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0) */
 
+static void
+osl_timer_main(ulong data)
+{
+	osl_timer_t *t = (osl_timer_t *)data;
+
+	if (t->set && (!timer_pending(&t->timer))) {
+		if (t->periodic) {
+			/* Periodic timer can't be a zero delay */
+			ASSERT(t->ms != 0);
+#if defined(BCMSLTGT)
+			timer_expires(&t->timer) = jiffies + (((t->ms * HZ) / 1000u) * htclkratio);
+
+#else
+			/* See the comment in the similar logic in osl_timer_add in this file but
+			 * note in this case of re-programming a periodic timer, there has
+			 * been a conscious decision to still add the +1 adjustment.  We want
+			 * to guarantee that two consecutive callbacks are always AT LEAST the
+			 * requested ms delay apart, even if this means the callbacks might "drift"
+			 * from even the rounded ms to jiffy HZ period.
+			 */
+			timer_expires(&t->timer) = jiffies + (((t->ms * HZ) + 999u) / 1000u) + 1u;
+#endif
+			add_timer(&t->timer);
+			t->set = TRUE;
+		} else {
+			t->set = FALSE;
+		}
+		if (t->fn) {
+			t->fn(t->arg);
+		}
+	}
+}
+
+void *
+osl_timer_get_ctx(osl_timer_t *t)
+{
+	return (t->arg);
+}
+
 /* timer apis */
 /* Note: All timer api's are thread unsafe and should be protected with locks by caller */
+
+/* Create a osl timer, init and return timer if succeeds. */
+osl_timer_t *
+osl_timer_create(osl_t *osh, const char *name, void (*fn)(void *arg), void *arg)
+{
+	osl_timer_t *t, *ret = NULL;
+
+	t = osl_timer_init(osh, name, fn, arg);
+	if (t != NULL) {
+		ret = t;
+	} else {
+		OSL_PRINT(("osl_timer_create: out of memory, malloced %d bytes\n", MALLOCED(osh)));
+	}
+	return ret;
+}
 
 osl_timer_t *
 osl_timer_init(osl_t *osh, const char *name, void (*fn)(void *arg), void *arg)
 {
 	osl_timer_t *t;
 	BCM_REFERENCE(fn);
-	if ((t = MALLOCZ(NULL, sizeof(osl_timer_t))) == NULL) {
+
+	if ((t = MALLOCZ(osh, sizeof(osl_timer_t))) == NULL) {
 		OSL_PRINT(("osl_timer_init: out of memory, malloced %d bytes\n",
 			(int)sizeof(osl_timer_t)));
 		return (NULL);
 	}
 	bzero(t, sizeof(osl_timer_t));
-	if ((t->timer = MALLOCZ(NULL, sizeof(timer_list_compat_t))) == NULL) {
-		OSL_PRINT(("osl_timer_init: malloc failed\n"));
-		MFREE(NULL, t, sizeof(osl_timer_t));
-		return (NULL);
-	}
-
-	t->set = TRUE;
 #ifdef BCMDBG
-	if ((t->name = MALLOCZ(NULL, strlen(name) + 1)) != NULL) {
+	if ((t->name = MALLOCZ(osh, strlen(name) + 1)) != NULL) {
 		strcpy(t->name, name);
 	}
 #endif
@@ -2039,34 +2114,80 @@ osl_timer_init(osl_t *osh, const char *name, void (*fn)(void *arg), void *arg)
 	 * void pointer is compatible with ulong.
 	 */
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_FN_TYPE();
+	init_timer_compat(&t->timer, osl_timer_main, t);
 
-	init_timer_compat(t->timer, (linux_timer_fn)fn, arg);
+	t->fn = fn;
+	t->arg = arg;
+	t->next = osh->timers;
+	osh->timers = t;
 
+#ifdef BCMDBG
+	{
+		int slen = 0u;
+		slen = strlen(name) + 1;
+		if ((t->name = MALLOCZ(osh, slen))) {
+			strlcpy(t->name, name, slen);
+		}
+	}
+#endif /* BCMDBG */
 	return (t);
 }
 
-void
+bool
 osl_timer_add(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic)
 {
 	if (t == NULL) {
-		OSL_PRINT(("%s: Timer handle is NULL\n", __FUNCTION__));
-		return;
+		OSL_PRINT(("osl_timer_add: Timer handle is NULL\n"));
+		return FALSE;
 	}
-	ASSERT(!t->set);
 
-	t->set = TRUE;
-	if (periodic) {
-		OSL_PRINT(("Periodic timers are not supported by Linux timer apis\n"));
+	/* Delay can't be zero for a periodic timer */
+	ASSERT(periodic == 0 || ms != 0);
+
+	t->ms = ms;
+	t->periodic = (bool) periodic;
+
+	/* This case happens in passive mode */
+	/* if timer has been added, Just return w/ updated behavior */
+	if (t->set) {
+		return TRUE;
 	}
+
 #if defined(BCMSLTGT)
-	timer_expires(t->timer) = jiffies + ms*HZ/1000*htclkratio;
+	timer_expires(&t->timer) = jiffies + (((ms * HZ) / 1000u) * htclkratio);
 #else
-	timer_expires(t->timer) = jiffies + ms*HZ/1000;
+	/* Make sure that you meet the guarantee of ms delay before
+	 * calling the function. You must consider both rounding to
+	 * HZ and the fact that the next jiffy might be imminent,
+	 * e.g. the timer interrupt is only a us away.
+	 */
+	if (ms == 0) {
+		/* Zero is special - no HZ rounding up necessary nor
+		 * accounting for an imminent timer tick.  Just use
+		 * the current jiffies value.
+		 */
+		timer_expires(&t->timer) = jiffies;
+	} else {
+		/* In converting ms to HZ, round up. Example: with HZ=250
+		 * and thus a 4 ms jiffy/tick, round a 3 ms request to
+		 * 1 jiffy, i.e. 4 ms.	In addition because the timer
+		 * tick might occur imminently, you must add an extra
+		 * jiffy/tick to guarantee the 3 ms request.
+		 */
+		timer_expires(&t->timer) = jiffies + (((ms * HZ) + 999u) / 1000u) + 1u;
+	}
 #endif /* defined(BCMSLTGT) */
 
-	add_timer(t->timer);
+	add_timer(&t->timer);
+	t->set = TRUE;
 
-	return;
+	return TRUE;
+}
+
+void
+osl_timer_add_us(osl_t *osh, osl_timer_t *t, uint us, bool periodic)
+{
+	(void)osl_timer_add(osh, t, us, periodic);
 }
 
 void
@@ -2081,12 +2202,12 @@ osl_timer_update(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic)
 	}
 	t->set = TRUE;
 #if defined(BCMSLTGT)
-	timer_expires(t->timer) = jiffies + ms*HZ/1000*htclkratio;
+	timer_expires(&t->timer) = jiffies + (((ms * HZ) / 1000u) * htclkratio);
 #else
-	timer_expires(t->timer) = jiffies + ms*HZ/1000;
+	timer_expires(&t->timer) = jiffies + ((ms * HZ) / 1000u);
 #endif /* defined(BCMSLTGT) */
 
-	mod_timer(t->timer, timer_expires(t->timer));
+	mod_timer(&t->timer, timer_expires(&t->timer));
 
 	return;
 }
@@ -2097,25 +2218,63 @@ osl_timer_update(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic)
 bool
 osl_timer_del(osl_t *osh, osl_timer_t *t)
 {
+	bool ret = TRUE;
 	if (t == NULL) {
-		OSL_PRINT(("%s: Timer handle is NULL\n", __FUNCTION__));
-		return (FALSE);
+		OSL_PRINT(("osl_timer_del: Timer handle is NULL\n"));
+		ret = FALSE;
+		goto exit;
 	}
 	if (t->set) {
 		t->set = FALSE;
-		if (t->timer) {
-			del_timer(t->timer);
-			MFREE(NULL, t->timer, sizeof(timer_list_compat_t));
-		}
+		if (!del_timer(&t->timer)) {
 #ifdef BCMDBG
-		if (t->name) {
-			MFREE(NULL, t->name, strlen(t->name) + 1);
-		}
+			OSL_PRINT(("osl_timer_del: Deleted inactive timer %s.\n", t->name));
 #endif
-		MFREE(NULL, t, sizeof(osl_timer_t));
+			ret = FALSE;
+		}
 	}
-	return (TRUE);
+exit:
+	return ret;
 }
+
+void
+osl_timer_free(osl_t *osh, osl_timer_t *t)
+{
+	osl_timer_t *tmp;
+
+	/* delete the timer in case it is active */
+	if (t) {
+		osl_timer_del(osh, t);
+	}
+
+	if (osh->timers == t) {
+		osh->timers = osh->timers->next;
+#ifdef BCMDBG
+		if (t->name)
+			MFREE(osh, t->name, strlen(t->name) + 1);
+#endif
+		MFREE(osh, t, sizeof(osl_timer_t));
+		return;
+
+	}
+
+	tmp = osh->timers;
+	while (tmp) {
+		if (tmp->next == t) {
+			tmp->next = t->next;
+#ifdef BCMDBG
+			if (t->name) {
+				MFREE(osh, t->name, strlen(t->name) + 1);
+			}
+#endif
+			MFREE(osh, t, sizeof(osl_timer_t));
+			return;
+		}
+		tmp = tmp->next;
+	}
+
+}
+
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
 int

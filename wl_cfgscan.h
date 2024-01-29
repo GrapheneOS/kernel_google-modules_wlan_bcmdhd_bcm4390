@@ -1,7 +1,7 @@
 /*
  * Header for Linux cfg80211 scan
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -250,4 +250,6 @@ wl_cfgscan_get_bw_chspec(chanspec_t *chspec, u32 bw);
 extern s32 wl_cfgscan_get_chan_info(struct bcm_cfg80211 *cfg,
 		u32 *chan_info, chanspec_t in_chspec);
 extern u8 wl_cfgscan_get_max_num_chans_per_bw(chanspec_t chspec);
+extern s32 wl_cfgscan_get_dynamic_chan_info(struct bcm_cfg80211 *cfg,
+		u32 *chan_info, chanspec_t in_chspec, u32 chan_info_flags);
 #endif /* _wl_cfgscan_h_ */

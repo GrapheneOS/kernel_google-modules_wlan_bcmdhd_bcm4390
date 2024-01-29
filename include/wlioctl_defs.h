@@ -4,7 +4,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -297,6 +297,7 @@ typedef uint32 ratespec_t;
 						 * enable LISTEN along with PASSIVE flag
 						 */
 
+/* Use lower 16 bit for scan flags, the upper 16 bits are for internal use */
 /* WL_SCANFLAGS_EXT_ flags */
 #define WL_SCANFLAGS_EXT_LOWPOWER_PARALLEL_2G_SCAN	0x1U	/* Lowpower parallel 2G scan */
 #define WL_SCANFLAGS_EXT_NOMLOFOLLOWUP			0x2U	/* No 2G or 5G band active
@@ -2665,6 +2666,7 @@ enum {
 	WL_REINIT_RC_LAST,	/* DONOT use this any more, kept for legacy reasons */
 	WL_REINIT_RC_RADIO_CRASH	  = 55,
 	WL_REINIT_RC_BM_IDLE_FAIL_TO	  = 56, /* BM idle fail timeout */
+	WL_REINIT_RC_URB_CBM_ERROR	  = 57, /* URB CBM error. */
 	WL_REINIT_RC_SUPPORTED_LAST	/* Use for app ONLY, DONOT use this in wlc code.
 					 * For wlc, use WL_REINIT_RC_VERSIONED_LAST
 					 */
@@ -3364,5 +3366,4 @@ enum wlc_capext_feature_bitpos {
 	WLC_CAPEXT_FEATURE_BITPOS_MAX
 };
 
-#define WL_STA_ANT_MAX		4	/**< max possible rx antennas */
 #endif /* wlioctl_defs_h */

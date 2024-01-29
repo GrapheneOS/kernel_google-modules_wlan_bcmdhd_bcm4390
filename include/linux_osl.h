@@ -1,7 +1,7 @@
 /*
  * Linux OS Independent Layer
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -970,20 +970,21 @@ typedef struct sk_buff_head PKT_LIST;
 #ifndef _linuxver_h_
 typedef struct timer_list_compat timer_list_compat_t;
 #endif /* _linuxver_h_ */
-typedef struct osl_timer {
-	timer_list_compat_t *timer;
-	bool   set;
-#ifdef BCMDBG
-	char    *name;          /* Desription of the timer */
-#endif
-} osl_timer_t;
+
+typedef struct osl_timer osl_timer_t;
+
+extern void *osl_timer_get_ctx(osl_timer_t *t);
 
 typedef void (*linux_timer_fn)(ulong arg);
 
-extern osl_timer_t * osl_timer_init(osl_t *osh, const char *name, void (*fn)(void *arg), void *arg);
-extern void osl_timer_add(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic);
+extern osl_timer_t *osl_timer_create(osl_t *osh, const char *name, void (*fn)(void *arg),
+	void *arg);
+extern osl_timer_t *osl_timer_init(osl_t *osh, const char *name, void (*fn)(void *arg), void *arg);
+extern bool osl_timer_add(osl_t *osh, osl_timer_t *t, uint us, bool periodic);
+extern void osl_timer_add_us(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic);
 extern void osl_timer_update(osl_t *osh, osl_timer_t *t, uint32 ms, bool periodic);
 extern bool osl_timer_del(osl_t *osh, osl_timer_t *t);
+extern void osl_timer_free(osl_t *osh, osl_timer_t *t);
 
 #ifdef BCMDRIVER
 typedef atomic_t osl_atomic_t;

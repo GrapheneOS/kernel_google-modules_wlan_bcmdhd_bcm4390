@@ -6,7 +6,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -6048,6 +6048,67 @@ typedef struct wl_sta_mlo_slot_sw_stats_v1 {
 	uint32	rx_decrypt_failures;	/**< rx decrypt failures */
 } wl_sta_mlo_slot_sw_stats_v1_t;
 
+/* MLO LINK STATS */
+/* TLVs for LINK STATs related IOVAR */
+typedef enum wl_mlo_link_stats_tlv {
+	MLO_LINK_STATS_RSVD = 0,
+	MLO_LINK_STATS_PLINK = 1u,
+	MLO_LINK_STATS_NPLINK = 2u,
+	MLO_LINK_STATS_MAX
+} wl_mlo_link_stats_tlv_t;
+
+/* common stats of each link */
+typedef struct wl_mlo_link_stats_common_v1 {
+	uint8	link_idx;		/* link index - link config idx */
+	uint8	is_pref;		/* Is Preferred link */
+	chanspec_t	chanspec;	/* Chanspec */
+	uint8	is_emlsr_primary;	/* Is emlsr primary */
+	uint8	PAD[3];
+	uint32	txframe;		/* total num of tx pkts */
+	uint32	txfail;			/* num of packets failed */
+	uint32	txretry;		/* num of packets where a retry was necessary */
+	uint32	txretry_exhausted;	/* num of packets where a retry was exhausted */
+	uint32	rxframe;		/* num of unicast packets received */
+} wl_mlo_link_stats_common_v1_t;
+
+typedef struct wl_mlp_nplink_specific_stats_v1 {
+	uint32	nplink_switch_try;	/* # of link switch trial */
+	uint32	nplink_use;		/* # of link switch used */
+	uint32	nplink_block_old_rssi;	/* # of nplink blocked by old rssi */
+	uint32	nplink_block_low_rssi;	/* # of nplink blocked by low rssi */
+	uint32	nplink_block_psr;	/* # of nplink blocked by txpsr */
+} wl_mlo_nplink_specific_stats_v1_t;
+
+typedef struct wl_mlo_plink_specific_stats_v1 {
+	uint32	plink_offchan_rsn_scan;	/* # of plink offchan by scan */
+	uint32	plink_offchan_rsn_sb;	/* # of plink offchan by sb */
+} wl_mlo_plink_specific_stats_v1_t;
+
+#define WL_MLO_PLINK_STATS_VERSION_1 1u
+/* mlo plink stats structure */
+typedef struct wl_mlo_plink_stats_v1 {
+	uint16	version;		/* version field */
+	uint8	PAD[2];
+	wl_mlo_link_stats_common_v1_t link_cmn_stats;
+	wl_mlo_plink_specific_stats_v1_t link_specific_stats;
+} wl_mlo_plink_stats_v1_t;
+
+#define WL_MLO_NPLINK_STATS_VERSION_1 1u
+/* mlo nplink stats structure */
+typedef struct wl_mlo_nplink_stats_v1 {
+	uint16	version;		/* version field */
+	uint8	PAD[2];
+	wl_mlo_link_stats_common_v1_t link_cmn_stats;
+	wl_mlo_nplink_specific_stats_v1_t link_specific_stats;
+} wl_mlo_nplink_stats_v1_t;
+
+#define WL_MLO_STATS_VERSION_1 1u
+typedef struct wl_mlo_stats_v1 {
+	uint16	version;	/* version field */
+	uint16	length;		/* struct length starting from version */
+	uint8	link_stats_tlvs[];	/* link stat xtlv per each link */
+} wl_mlo_stats_v1_t;
+
 /* ##### Ecounters v2 section ##### */
 
 #define ECOUNTERS_VERSION_2	2
@@ -6401,6 +6462,7 @@ typedef struct wl_chan_macstats_v1 {
 enum wl_peer_stats_iovar_container_xtlv {
 	WL_PEER_STATS_XTLV_IOVAR_CONTAINER_RSVD = 0,
 	WL_PEER_STATS_XTLV_IOVAR_CONTAINER = 1,		/* version 1 */
+	WL_PEER_STATS_XTLV_IOVAR_SOFTAP_CONTAINER = 2,
 	WL_PEER_STATS_XTLV_IOVAR_CONTAINER_MAX
 };
 
@@ -6427,6 +6489,8 @@ typedef struct wl_peer_stats_per_peer_collection_v1 {
  * (host may use this to rebase the counter snapshot)
  */
 #define WL_PEER_STATS_PER_PEER_FLAGS_RESTART	(1u << 0)
+#define WL_PEER_STATS_SOFTAP_CLIENT_START	WL_PEER_STATS_PER_PEER_FLAGS_RESTART
+#define WL_PEER_STATS_SOFTAP_CLIENT_IND		(1u << 1)
 
 /* XTLV types reported within in peer stats collection structure
  * Types below are payload in data[] of peer stats collection structure above
@@ -6527,6 +6591,10 @@ typedef struct wl_peer_stats_iovar_v1 {
 #define WL_PEER_STATS_IOVAR_FLAGS_GET			0u
 #define WL_PEER_STATS_IOVAR_FLAGS_SET_START		(1u << 0)
 #define WL_PEER_STATS_IOVAR_FLAGS_SET_STOP		(1u << 1)
+/* SoftAP Stats flags */
+#define WL_SOFTAP_STATS_IOVAR_FLAGS_GET			WL_PEER_STATS_IOVAR_FLAGS_GET
+#define WL_SOFTAP_STATS_IOVAR_FLAGS_SET_START		WL_PEER_STATS_IOVAR_FLAGS_SET_START
+#define WL_SOFTAP_STATS_IOVAR_FLAGS_SET_STOP		WL_PEER_STATS_IOVAR_FLAGS_SET_STOP
 
 #define WL_DTIM_INFO_MISS_VERSION_1 1u
 /* dtim miss reason count */

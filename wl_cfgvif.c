@@ -1,7 +1,7 @@
 /*
  * Wifi Virtual Interface implementaion
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1815,11 +1815,16 @@ wl_cfg80211_set_chan_mlo_concurrency(struct bcm_cfg80211 *cfg, struct net_info *
 			wl_is_link_sleepable(cfg, pri_chspec, sta_chanspecs[WLC_BAND_5G]))) {
 			 /* if channel is not restricted, attempt 6G SCC */
 			target_chspec =	wf_chspec_primary20_chspec(sta_chanspecs[WLC_BAND_6G]);
-			WL_DBG(("6G SCC case 0x%x\n", target_chspec));
+			WL_DBG_MEM(("6G SCC case 0x%x\n", target_chspec));
+		} else if (!wl_is_5g_restricted(cfg, sta_chanspecs[WLC_BAND_5G]) &&
+			wl_is_link_sleepable(cfg, pri_chspec, sta_chanspecs[WLC_BAND_6G])) {
+			target_chspec = wf_chspec_primary20_chspec(sta_chanspecs[WLC_BAND_5G]);
+			WL_DBG_MEM(("6G ap downgrade to 5G primary 0x%x\n", target_chspec));
 		}
 	} else if (CHSPEC_IS6G(ap_chspec) &&
 		!wl_is_5g_restricted(cfg, sta_chanspecs[WLC_BAND_5G])) {
 		target_chspec = wf_chspec_primary20_chspec(sta_chanspecs[WLC_BAND_5G]);
+		WL_DBG_MEM(("6G ap downgrade, no 6G link 0x%x\n", target_chspec));
 	/* if STA dominant link is 5G and AP band is 5G link, attempt SCC */
 	} else if (CHSPEC_IS5G(sta_chanspecs[WLC_BAND_5G]) &&
 		wf_chspec_valid(sta_chanspecs[WLC_BAND_5G]) && CHSPEC_IS5G(ap_chspec)) {
@@ -1827,7 +1832,7 @@ wl_cfg80211_set_chan_mlo_concurrency(struct bcm_cfg80211 *cfg, struct net_info *
 			(!wf_chspec_valid(sta_chanspecs[WLC_BAND_6G]) ||
 			wl_is_link_sleepable(cfg, pri_chspec, sta_chanspecs[WLC_BAND_6G]))) {
 			target_chspec = wf_chspec_primary20_chspec(sta_chanspecs[WLC_BAND_5G]);
-			WL_DBG(("5G SCC case 0x%x\n", target_chspec));
+			WL_DBG_MEM(("5G SCC case 0x%x\n", target_chspec));
 		}
 	/* STA dominant link 2G case */
 	} else if (CHSPEC_IS2G(ap_chspec)) {
@@ -1835,7 +1840,7 @@ wl_cfg80211_set_chan_mlo_concurrency(struct bcm_cfg80211 *cfg, struct net_info *
 			if (!wl_is_2g_restricted(cfg, sta_chanspecs[WLC_BAND_2G])) {
 				target_chspec = wf_chspec_primary20_chspec(
 					sta_chanspecs[WLC_BAND_2G]);
-				WL_DBG(("2G SCC case 0x%x\n", target_chspec));
+				WL_DBG_MEM(("2G SCC case 0x%x\n", target_chspec));
 			} else {
 				WL_ERR(("Restricted 2G chanspec %x\n", sta_chanspecs[WLC_BAND_2G]));
 			}
@@ -2055,7 +2060,7 @@ wl_filter_restricted_subbands(struct bcm_cfg80211 *cfg,
 
 	 do {
 		bw = CHSPEC_BW(sel_chspec);
-		WL_INFORM_MEM(("chanspec_req:0x%x BW:%d overlap_channels:%d\n",
+		WL_DBG_MEM(("chanspec_req:0x%x BW:%d overlap_channels:%d\n",
 			sel_chspec, bw, arr_idx));
 		 for (k = 0; k < arr_idx; k++) {
 			retry_bw = FALSE;
@@ -2588,12 +2593,16 @@ wl_get_mfp_capability(u8 rsn_cap, u32 *wpa_auth, u32 *mfp_val)
 		mfp = WL_MFP_CAPABLE;
 	}
 
-	/* Validate MFP */
-	if ((*wpa_auth == WPA3_AUTH_SAE_PSK) && (mfp != WL_MFP_REQUIRED)) {
-		WL_ERR(("MFPR should be set for SAE PSK. mfp:%d\n", mfp));
+	/* Validate MFP for single AKM case and transition mode so that error can be
+	 * caught on bringup itself.
+	 */
+	if (((*wpa_auth == WPA3_AUTH_SAE_PSK) ||
+			(*wpa_auth == WPA3_AUTH_SAE_EXT_PSK) ||
+			(*wpa_auth == WPA2_AUTH_PSK_SHA256)) && (mfp != WL_MFP_REQUIRED)) {
+		WL_ERR(("MFPR should be set for wpa_auth:0x%x. mfp:%d\n", *wpa_auth, mfp));
 		return BCME_ERROR;
-	} else if ((*wpa_auth == (WPA3_AUTH_SAE_PSK | WPA2_AUTH_PSK)) &&
-		(mfp != WL_MFP_CAPABLE)) {
+	} else if ((*wpa_auth & (WPA3_AUTH_SAE_PSK | WPA3_AUTH_SAE_EXT_PSK)) &&
+			(*wpa_auth & WPA2_AUTH_PSK) && (mfp != WL_MFP_CAPABLE)) {
 		WL_ERR(("mfp(%d) should be set to capable(%d) for SAE transition mode\n",
 				mfp, WL_MFP_CAPABLE));
 		return BCME_ERROR;
@@ -2650,20 +2659,20 @@ wl_validate_wpa2ie(struct net_device *dev, const bcm_tlv_t *wpa2ie, s32 bssidx)
 		case WPA_CIPHER_TKIP:
 			gval = TKIP_ENABLED;
 			break;
+		case WPA_CIPHER_CCMP_256:
 		case WPA_CIPHER_AES_CCM:
-			gval = AES_ENABLED;
-			break;
-
-
 #ifdef WL_GCMP
+			/* intentional fall through */
 		case WPA_CIPHER_AES_GCM:
 		case WPA_CIPHER_AES_GCM256:
 			cipher = ntoh32(*((const u32 *)&wpa2ie->data[WPA2_VERSION_LEN]));
 			algos |= KEY_ALGO_MASK(wl_rsn_cipher_wsec_key_algo_lookup(cipher));
-			mask = algos | KEY_ALGO_MASK(CRYPTO_ALGO_AES_CCM);
-			WL_DBG(("cipher:0x%x algo.0x%x mask:0x%x\n", cipher, algos, mask));
-			break;
+			mask |= algos | KEY_ALGO_MASK(CRYPTO_ALGO_AES_CCM);
+			WL_DBG_MEM(("cipher:0x%x algo.0x%x mask:0x%x\n", cipher, algos, mask));
 #endif /* WL_GCMP */
+			/* common config for AES */
+			gval = AES_ENABLED;
+			break;
 		default:
 			WL_ERR(("No Security Info\n"));
 			break;
@@ -2673,36 +2682,40 @@ wl_validate_wpa2ie(struct net_device *dev, const bcm_tlv_t *wpa2ie, s32 bssidx)
 
 	/* check the unicast cipher */
 	ucast = (const wpa_suite_ucast_t *)&mcast[1];
-	suite_count = ltoh16_ua(&ucast->count);
-	switch (ucast->list[0].type) {
-		case WPA_CIPHER_NONE:
-			pval = 0;
-			break;
-		case WPA_CIPHER_WEP_40:
-		case WPA_CIPHER_WEP_104:
-			pval = WEP_ENABLED;
-			break;
-		case WPA_CIPHER_TKIP:
-			pval = TKIP_ENABLED;
-			break;
-		case WPA_CIPHER_AES_CCM:
-			pval = AES_ENABLED;
-			break;
-
-
+	suite_count = cnt = ltoh16_ua(&ucast->count);
+	while (cnt--) {
+		switch (ucast->list[cnt].type) {
+			case WPA_CIPHER_NONE:
+				pval = 0;
+				break;
+			case WPA_CIPHER_WEP_40:
+			case WPA_CIPHER_WEP_104:
+				pval |= WEP_ENABLED;
+				break;
+			case WPA_CIPHER_TKIP:
+				pval |= TKIP_ENABLED;
+				break;
+			case WPA_CIPHER_CCMP_256:
+			case WPA_CIPHER_AES_CCM:
 #ifdef WL_GCMP
-		case WPA_CIPHER_AES_GCM:
-		case WPA_CIPHER_AES_GCM256:
-			cipher = ntoh32(*((const u32 *)&mcast[1]));
-			algos |= KEY_ALGO_MASK(wl_rsn_cipher_wsec_key_algo_lookup(cipher));
-			mask = algos | KEY_ALGO_MASK(CRYPTO_ALGO_AES_CCM);
-			WL_DBG(("cipher:%d algo.0x%x mask:0x%x\n", cipher, algos, mask));
-			break;
+				/* intentional fall through */
+			case WPA_CIPHER_AES_GCM:
+			case WPA_CIPHER_AES_GCM256:
+				cipher = ntoh32(*((const u32 *)&ucast->list[cnt]));
+				algos |= KEY_ALGO_MASK(wl_rsn_cipher_wsec_key_algo_lookup(cipher));
+				mask |= algos | KEY_ALGO_MASK(CRYPTO_ALGO_AES_CCM);
+				WL_DBG_MEM(("cipher:0x%x algo:0x%x mask:0x%x\n",
+					cipher, algos, mask));
 #endif /* WL_GCMP */
+				/* common config for AES */
+				pval |= AES_ENABLED;
+				break;
 
-		default:
-			WL_ERR(("No Security Info\n"));
+			default:
+				WL_ERR(("No Security Info\n"));
+		}
 	}
+
 	if ((len -= (WPA_IE_SUITE_COUNT_LEN + (WPA_SUITE_LEN * suite_count))) <= 0)
 		return BCME_BADLEN;
 
@@ -2748,6 +2761,9 @@ wl_validate_wpa2ie(struct net_device *dev, const bcm_tlv_t *wpa2ie, s32 bssidx)
 			case RSN_AKM_SAE_PSK:
 				wpa_auth |= WPA3_AUTH_SAE_PSK;
 				break;
+			case RSN_AKM_SAE_EXT_PSK:
+				wpa_auth |= WPA3_AUTH_SAE_EXT_PSK;
+				break;
 #endif /* WL_SAE || WL_CLIENT_SAE || WL_SAE_STD_API */
 #endif /* MFP */
 #if defined(WL_OWE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0))
@@ -2760,6 +2776,7 @@ wl_validate_wpa2ie(struct net_device *dev, const bcm_tlv_t *wpa2ie, s32 bssidx)
 			}
 		}
 	}
+
 	if ((len -= (WPA_IE_SUITE_COUNT_LEN + (WPA_SUITE_LEN * suite_count))) >= RSN_CAP_LEN) {
 		uint16 rsn_ocv_cap = 0;
 		rsn_cap[0] = *(const u8 *)&mgmt->list[suite_count];
@@ -2826,12 +2843,28 @@ wl_validate_wpa2ie(struct net_device *dev, const bcm_tlv_t *wpa2ie, s32 bssidx)
 #ifdef MFP
 	len -= WPA2_PMKID_COUNT_LEN;
 	if (len >= WPA_SUITE_LEN) {
-		cfg->bip_pos =
-		        (const u8 *)&mgmt->list[suite_count] + RSN_CAP_LEN + WPA2_PMKID_COUNT_LEN;
-	} else {
-		cfg->bip_pos = NULL;
+		const u8 *bip_pos =
+			(const u8 *)&mgmt->list[suite_count] + RSN_CAP_LEN + WPA2_PMKID_COUNT_LEN;
+		sec->bip = *((const u32 *)(bip_pos));
+		WL_INFORM_MEM(("host bip:0x%x\n", sec->bip));
+	} else if (mfp) {
+		/* host supplicant assumes default cmac-128 and doesn't advertise them
+		 * in the RSN IEs. Do nothing for external 4way HS. However, for idauth,
+		 * it expects host bip configuration. so use default BIP for idauth in that case.
+		 */
+#ifdef WL_IDAUTH
+		if (cfg->idauth_enabled) {
+			sec->bip = hton32(WLAN_CIPHER_SUITE_AES_CMAC);
+			WL_INFORM_MEM(("mfp enabled, but no host bip. use default 0x%x\n",
+				sec->bip));
+		} else
+#endif /* WL_IDAUTH */
+		{
+			/* Host based 4way HS with default BIP. No config required. */
+			WL_DBG_MEM(("mfp enabled, but no host bip.\n"));
+		}
 	}
-#endif
+#endif /* MFP */
 
 	/* set auth */
 	err = wldev_iovar_setint_bsscfg(dev, "auth", auth, bssidx);
@@ -3074,9 +3107,15 @@ wl_get_suite_auth_key_mgmt_type(uint8 type, const wpa_suite_mcast_t *mcast)
 				ret = WPA_AUTH_PSK;
 			}
 			break;
+		case RSN_AKM_MFP_PSK:
+			ret = WPA2_AUTH_PSK_SHA256;
+			break;
 #if defined(WL_SAE) || defined(WL_SAE_STD_API)
 		case RSN_AKM_SAE_PSK:
 			ret = WPA3_AUTH_SAE_PSK;
+			break;
+		case RSN_AKM_SAE_EXT_PSK:
+			ret = WPA3_AUTH_SAE_EXT_PSK;
 			break;
 #endif /* WL_SAE || WL_SAE_STD_API */
 		default:
@@ -3489,13 +3528,14 @@ wl_cfg80211_bcn_validate_sec(
 				/* For WPA-PSK case, the upper layer provides the PSK (PMK) */
 				if (!crypto || !crypto->psk) {
 					WL_INFORM_MEM(("idauth enabled. crypto->psk is null\n"));
-					if (!(sec->fw_wpa_auth & WPA3_AUTH_SAE_PSK)) {
-						return -EINVAL;
-					}
 					/* multi AKM case, host can provide single passphrase for
 					 * wpa-psk and sae. so gracefully proceed for multi AKM
-					 * involving SAE.
+					 * involving SAE. if SAE is not present and psk null, exit.
 					 */
+					if (!(sec->fw_wpa_auth &
+						(WPA3_AUTH_SAE_PSK | WPA3_AUTH_SAE_EXT_PSK))) {
+						return -EINVAL;
+					}
 				} else {
 					pmk.key_len = WL_SUPP_PMK_LEN;
 					if (pmk.key_len > sizeof(pmk.key)) {
@@ -3523,7 +3563,7 @@ wl_cfg80211_bcn_validate_sec(
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)) && WL_IDAUTH */
 #if defined(WL_SAE) || defined(WL_SAE_STD_API)
 		/* Set SAE passphrase */
-		if (sec->fw_wpa_auth & WPA3_AUTH_SAE_PSK) {
+		if (sec->fw_wpa_auth & (WPA3_AUTH_SAE_PSK | WPA3_AUTH_SAE_EXT_PSK)) {
 			wl_set_ap_passphrase(dev, crypto);
 #ifdef WL_SAE_STD_API
 			err = wl_set_sae_pwe(dev, crypto->sae_pwe);
@@ -3607,14 +3647,17 @@ wl_cfg80211_bcn_validate_sec(
 			}
 		}
 
-#ifdef BCN_PROT_AP
+#if defined(BCN_PROT_AP) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0))
 		/* Check if Beacon protection advertised in Ext Cap IE in beacons */
 		if (ies->ext_cap_ie->len >= DOT11_EXTCAP_LEN_BCN_PROT &&
 		    isset(ies->ext_cap_ie->data, DOT11_EXT_CAP_BCN_PROT)) {
 			WL_DBG(("Enable Beacon protection for AP\n"));
-			cfg->bcnprot_ap = TRUE;
+			sec->bcn_prot = TRUE;
+		} else {
+			WL_DBG_MEM(("EXT cap not advertising bcn_prot. len:%d\n",
+				ies->ext_cap_ie->len));
 		}
-#endif /* BCN_PROT_AP */
+#endif /* BCN_PROT_AP && (LINUX_VER >= 5.7) */
 	}
 
 	WL_INFORM_MEM(("[%s] wpa_auth:0x%x auth:0x%x wsec:0x%x mfp:0x%x\n",
@@ -3717,17 +3760,13 @@ wl_cfg80211_parse_ies(const u8 *ptr, u32 len, struct parsed_ies *ies)
 		ies->wpa_ie_len = ies->wpa_ie->length;
 	}
 
-#ifdef BCN_PROT_AP
 	/* find the Ext Cap IE */
 	if ((ies->ext_cap_ie = bcm_parse_tlvs(ptr, len,
 		DOT11_MNG_EXT_CAP_ID)) != NULL) {
-		WL_DBG(("Ext Cap IE found\n"));
 		ies->ext_cap_ie_len = ies->ext_cap_ie->len;
+		WL_DBG_MEM(("Ext Cap IE found. len:%d\n", ies->ext_cap_ie_len));
 	}
-#endif /* BCN_PROT_AP */
-
 	return err;
-
 }
 
 s32
@@ -3964,6 +4003,7 @@ wl_cfg80211_bcn_bringup_ap(
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 	bool dyn_rsdb = FW_SUPPORTED(dhd, sdb_modesw);
 #endif /* DYN_RSDB_ROAM_DISABLE */
+	struct wl_security *sec = wl_read_prof(cfg, dev, WL_PROF_SEC);
 
 #if defined (BCMDONGLEHOST)
 	is_rsdb_supported = DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_RSDB_MODE);
@@ -3972,6 +4012,12 @@ wl_cfg80211_bcn_bringup_ap(
 #endif /* BCMDONGLEHOST */
 
 	WL_DBG(("Enter dev_role:%d bssidx:%d ifname:%s\n", dev_role, bssidx, dev->name));
+
+	if (!sec) {
+		WL_ERR(("sec profile is null!\n"));
+		err = -EINVAL;
+		goto exit;
+	}
 
 	/* Common code for SoftAP and P2P GO */
 	wl_clr_drv_status(cfg, AP_CREATED, dev);
@@ -4083,12 +4129,13 @@ wl_cfg80211_bcn_bringup_ap(
 		}
 
 #ifdef MFP
-		if (cfg->bip_pos) {
+		if (cfg->mfp_mode && sec->bip) {
+			/* if mfp is set, configure the bip cipher */
 			err = wldev_iovar_setbuf_bsscfg(dev, "bip",
-				(const void *)(cfg->bip_pos), WPA_SUITE_LEN, cfg->ioctl_buf,
+				(const void *)&(sec->bip), WPA_SUITE_LEN, cfg->ioctl_buf,
 				WLC_IOCTL_SMLEN, bssidx, &cfg->ioctl_buf_sync);
 			if (err < 0) {
-				WL_ERR(("bip set error %d\n", err));
+				WL_ERR(("bip set error %d bip:0x%x\n", err, sec->bip));
 
 
 				{
@@ -4129,16 +4176,28 @@ wl_cfg80211_bcn_bringup_ap(
 			}
 		}
 
-#ifdef BCN_PROT_AP
-		err = wl_cfgvif_set_bcnprot_mode(dev, cfg, bssidx);
-		if (err < 0) {
-			WL_ERR(("Beacon protection Setting failed. ret = %d \n", err));
-			/* If fw doesn't support beacon protection, Ignore the error */
-			if (err != BCME_UNSUPPORTED) {
-				goto exit;
+#if defined(BCN_PROT_AP) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0))
+#ifdef WL_MLO_AP
+		if (cfg->mlo.eht_softap) {
+			/* If EHT is enabled, beacon prot is mandatory. Can't be modified. */
+			WL_INFORM_MEM(("EHT SAP. beacon_prot enabled by default\n"));
+		} else
+#endif /* WL_MLO_AP */
+		{
+			err = wl_cfgvif_set_bcnprot_mode(dev, cfg, bssidx, sec->bcn_prot);
+			if (err < 0) {
+				WL_ERR(("Beacon protection set failed. ret = %d\n", err));
+				/* If fw doesn't support beacon protection, print error and
+				 * proceed. For other cases, fail the bring up.
+				 */
+				if (err != BCME_UNSUPPORTED) {
+					goto exit;
+				}
+			} else {
+				WL_INFORM_MEM(("beacon_prot:%d configured\n", sec->bcn_prot));
 			}
 		}
-#endif /* BCN_PROT_AP */
+#endif /* BCN_PROT_AP && (LINUX_VER >= 5,7) */
 #endif /* MFP */
 
 		/* sync up host macaddr */
@@ -4195,12 +4254,6 @@ exit:
 
 #ifdef MFP
 	cfg->mfp_mode = 0;
-#ifdef BCN_PROT_AP
-	cfg->bcnprot_ap = 0;
-#endif
-	if (cfg->bip_pos) {
-		cfg->bip_pos = NULL;
-	}
 #endif /* MFP */
 
 	if (err) {
@@ -8289,6 +8342,47 @@ wl_sta_enable_roam(struct bcm_cfg80211 *cfg,
 }
 
 void
+wl_cfgvif_sta_multilink_config(struct bcm_cfg80211 *cfg, wl_assoc_state_t assoc_state)
+{
+	wl_iftype_t iftype;
+
+	if (!cfg->mlo.supported) {
+		/* Non ML case: Do nothing */
+		return;
+	}
+
+	if (assoc_state == WL_STATE_ASSOCIATING) {
+		/* disable multi link on all STA interfaces if there is already a STA connected */
+		if ((cfg->stas_associated >= 1u) &&
+			(wl_cfgvif_set_multi_link(cfg, FALSE))) {
+			WL_ERR(("multi sta assoc: multi_link_failed! associated_stas:%d\n",
+				cfg->stas_associated));
+		}
+	} else if (((assoc_state == WL_STATE_ASSOCIATED) || (assoc_state == WL_STATE_LINKDOWN)) &&
+		(cfg->stas_associated == 1u)) {
+		struct net_info *iter, *next;
+
+		iftype = wl_cfg80211_get_sec_iface(cfg);
+		if (iftype != WL_IFACE_NOT_PRESENT) {
+			/* concurrency interface present, don't enable back multilink active */
+			WL_DBG_MEM(("iface:%d present, skip multilink enable\n", iftype));
+			return;
+		}
+
+		/* single connected sta case. Enable on connected STA link */
+		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+		for_each_ndev(cfg, iter, next) {
+			GCC_DIAGNOSTIC_POP();
+			if (iter->ndev && (IS_STA_IFACE(ndev_to_wdev(iter->ndev))) &&
+				wl_get_drv_status(cfg, CONNECTED, iter->ndev) &&
+				wl_cfgvif_persta_multilink(cfg, iter->ndev, TRUE)) {
+				WL_ERR(("single sta multi_link config failed!\n"));
+			}
+		}
+	}
+}
+
+void
 wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		wl_roam_conf_t state)
 {
@@ -8794,9 +8888,10 @@ exit:
 	return err;
 }
 
-#ifdef BCN_PROT_AP
+#if defined(BCN_PROT_AP) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0))
 s32
-wl_cfgvif_set_bcnprot_mode(struct net_device *dev, struct bcm_cfg80211 *cfg, s32 bssidx)
+wl_cfgvif_set_bcnprot_mode(struct net_device *dev, struct bcm_cfg80211 *cfg,
+	s32 bssidx, u32 bcn_prot)
 {
 	uint16 bcnprot_enab = 0;
 	u8 ioctl_buf[WLC_IOCTL_SMLEN] = {0};
@@ -8805,12 +8900,12 @@ wl_cfgvif_set_bcnprot_mode(struct net_device *dev, struct bcm_cfg80211 *cfg, s32
 	uint16 iovlen = 0;
 	s32 err = BCME_OK;
 
-	WL_INFORM_MEM(("Beacon protection Set: 0x%x \n", cfg->bcnprot_ap));
+	WL_INFORM_MEM(("Beacon protection Set: 0x%x \n", bcn_prot));
 
 	iov_buf->version = WL_BCN_PROT_VERSION_1;
 	iov_buf->id = WL_BCN_PROT_CMD_ENABLE;
 	data = (uint8 *)&iov_buf->data[0];
-	bcnprot_enab = cfg->bcnprot_ap ? 0x1u : 0;
+	bcnprot_enab = bcn_prot ? 0x1u : 0;
 	*(uint16 *)data = bcnprot_enab;
 
 	iov_buf->len = sizeof(bcnprot_enab);
@@ -8823,7 +8918,7 @@ wl_cfgvif_set_bcnprot_mode(struct net_device *dev, struct bcm_cfg80211 *cfg, s32
 
 	return err;
 }
-#endif /* BCN_PROT_AP */
+#endif /* BCN_PROT_AP && (LINUX_VER >= 5,7) */
 
 s32
 wl_cfgvif_ml_link_update(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev,
@@ -8939,20 +9034,26 @@ wl_cfgvif_get_multilink_status(struct bcm_cfg80211 *cfg,
 }
 
 s32
-wl_cfgvif_persta_multilink(struct bcm_cfg80211 *cfg, struct net_device *dev, u8 enable)
+wl_cfgvif_persta_multilink(struct bcm_cfg80211 *cfg, struct net_device *dev, bool enable)
 {
 	u8 buf[WLC_IOCTL_SMLEN] = {0};
 	s32 ret;
 	wl_multink_config_t mlink = {0};
+	u8 multilink_val = FALSE;
 
 	/* Apply MLO config from connect context if chip supports it. */
 	if (!cfg->mlo.supported) {
 		return BCME_OK;
 	}
 
+	if (enable) {
+		/* use default multilink value for enable case */
+		multilink_val = cfg->mlo.default_multilink_val;
+	}
+
 	mlink.id = WL_MLO_CMD_MULTILINK_ACTIVE;
 	mlink.len = sizeof(u8);
-	mlink.val = enable;
+	mlink.val = multilink_val;
 
 	ret = wldev_iovar_setbuf(dev, "mlo", &mlink, sizeof(mlink),
 		buf, WLC_IOCTL_SMLEN, NULL);
@@ -8960,14 +9061,14 @@ wl_cfgvif_persta_multilink(struct bcm_cfg80211 *cfg, struct net_device *dev, u8 
 		WL_ERR(("[%s] mlo multilink active set error (%d)\n", dev->name, ret));
 	} else {
 		WL_INFORM_MEM(("[ML-MULTILINK][%s] set to %d\n",
-			dev->name, enable));
+			dev->name, multilink_val));
 	}
 
 	return ret;
 }
 
 s32
-wl_cfgvif_set_multi_link(struct bcm_cfg80211 *cfg, u8 enable)
+wl_cfgvif_set_multi_link(struct bcm_cfg80211 *cfg, bool enable)
 {
 	s32 ret = BCME_OK;
 	struct net_info *iter, *next;
@@ -8984,7 +9085,7 @@ wl_cfgvif_set_multi_link(struct bcm_cfg80211 *cfg, u8 enable)
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	for_each_ndev(cfg, iter, next) {
 		GCC_DIAGNOSTIC_POP();
-		if (iter->ndev && (iter->iftype == WL_IF_TYPE_STA)) {
+		if (iter->ndev && (IS_STA_IFACE(ndev_to_wdev(iter->ndev)))) {
 			ret = wl_cfgvif_persta_multilink(cfg, iter->ndev, enable);
 		}
 	}
@@ -9379,3 +9480,65 @@ wl_cfgvif_get_eht_features(struct net_device *dev, u32 *eht_feature_val)
 
 	return err;
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+s32
+wl_cfgvif_update_assoc_fail_status(struct bcm_cfg80211 *cfg, struct net_device *ndev,
+	const wl_event_msg_t *e)
+{
+	u32 event = ntoh32(e->event_type);
+	s32 status = ntoh32(e->status);
+	s32 reason = ntoh32(e->reason);
+	s32 auth_type = ntoh32(e->auth_type);
+	struct wl_security *sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
+	s32 assoc_status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+	s32 timeout_reason = 0;
+
+	if (!sec || (status == WLC_E_STATUS_SUCCESS)) {
+		WL_ERR(("invalid arg! status:%d\n", status));
+		return 0;
+	}
+
+	/* @status: Status code, %WLAN_STATUS_SUCCESS for successful connection, use
+	 * WLAN_STATUS_UNSPECIFIED_FAILURE if your device cannot give you
+	 * the real status code for failures. If this call is used to report a
+	 * failure due to a timeout (e.g., not receiving an Authentication frame
+	 * from the AP) instead of an explicit rejection by the AP, -1 is used to
+	 * indicate that this is a failure, but without a status code.
+	 * @timeout_reason is used to report the reason for the timeout in that
+	 * case.
+	 */
+	switch (event) {
+		case WLC_E_AUTH:
+			if ((status == WLC_E_STATUS_TIMEOUT) ||
+					(status == WLC_E_STATUS_NO_ACK)) {
+				WL_DBG_MEM(("AUTH timeout\n"));
+				assoc_status = -1;
+				timeout_reason = NL80211_TIMEOUT_AUTH;
+			} else if (reason) {
+				/* For WLC_E_AUTH e->reason carries the dot11 status */
+				assoc_status = reason;
+			}
+			break;
+		case WLC_E_ASSOC:
+			if ((status == WLC_E_STATUS_TIMEOUT) ||
+					(status == WLC_E_STATUS_NO_ACK)) {
+				WL_DBG_MEM(("ASSOC timeout\n"));
+				assoc_status = -1;
+				timeout_reason = NL80211_TIMEOUT_ASSOC;
+			} else if (auth_type) {
+				/* WLC_E_ASSOC e->auth_type carries dot11 assoc status */
+				assoc_status = e->auth_type;
+			}
+			break;
+		default:
+			break;
+	}
+
+	WL_DBG_MEM(("caching assoc_status: event %d"
+		"assoc_status %d to_reason %d\n", event, status, reason));
+	sec->cfg80211_assoc_status = assoc_status;
+	sec->cfg80211_timeout = timeout_reason;
+	return 0;
+}
+#endif /* LINUX_VER >= 5.4 */

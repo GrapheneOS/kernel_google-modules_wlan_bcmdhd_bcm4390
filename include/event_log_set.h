@@ -1,7 +1,7 @@
 /*
  * EVENT_LOG system definitions
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -335,11 +335,11 @@
 /* set 33: CHRE related logging */
 #define EVENT_LOG_SET_CHRE              (33u)
 #ifndef EVENT_LOG_SET_CHRE_NUM_BLOCKS
-#define EVENT_LOG_SET_CHRE_NUM_BLOCKS	(4u)
+#define EVENT_LOG_SET_CHRE_NUM_BLOCKS	(2u)
 #endif
 
 #ifndef EVENT_LOG_SET_CHRE_BLOCK_SIZE
-#define EVENT_LOG_SET_CHRE_BLOCK_SIZE	(EVENT_LOG_BLOCK_SIZE_1K)
+#define EVENT_LOG_SET_CHRE_BLOCK_SIZE	(EVENT_LOG_BLOCK_SIZE_512B)
 #endif
 
 /* set 34: CHRE chatty */

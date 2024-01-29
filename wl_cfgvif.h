@@ -1,7 +1,7 @@
 /*
  * Wifi Virtual Interface implementaion
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -294,9 +294,10 @@ wl_cfg80211_ml_ap_link_add(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev,
 extern bool wl_cfgvif_mlo_is_primary_link(struct bcm_cfg80211 *cfg, u8 ifidx, u8 bsscfgidx);
 #endif /* WL_MLO */
 
-#ifdef BCN_PROT_AP
-s32 wl_cfgvif_set_bcnprot_mode(struct net_device *ndev, struct bcm_cfg80211 *cfg, s32 bssidx);
-#endif
+#if defined(BCN_PROT_AP) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0))
+s32 wl_cfgvif_set_bcnprot_mode(struct net_device *ndev,
+	struct bcm_cfg80211 *cfg, s32 bssidx, u32 bcn_prot);
+#endif /* BCN_PROT_AP && (LINUX_VER >= 5,7) */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 void
@@ -314,8 +315,8 @@ s32 wl_cfgvif_get_channel(struct wiphy *wiphy,
 s32 wl_cfgvif_ml_link_update(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev,
 	const wl_event_msg_t *e, void *data, enum wl_mlo_link_update state);
 extern s32 wl_cfgvif_persta_multilink(struct bcm_cfg80211 *cfg,
-		struct net_device *dev, u8 enable);
-extern s32 wl_cfgvif_set_multi_link(struct bcm_cfg80211 *cfg, u8 enable);
+		struct net_device *dev, bool enable);
+extern s32 wl_cfgvif_set_multi_link(struct bcm_cfg80211 *cfg, bool enable);
 extern s32 wl_cfgvif_get_multilink_status(struct bcm_cfg80211 *cfg,
 		struct net_device *dev, u8 *status);
 bool wl_cfgvif_bssid_match_found(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev, u8 *mac_addr);
@@ -333,4 +334,9 @@ extern s32 wl_cfgvif_get_ml_scc_channel_array(struct bcm_cfg80211 *cfg,
 extern s32 wl_cfgvif_apply_default_keep_alive(struct net_device *ndev, struct bcm_cfg80211 *cfg);
 #endif /* KEEP_ALIVE && OEM_ANDROID */
 extern s32 wl_cfgvif_get_eht_features(struct net_device *dev, u32 *eht_feature_val);
+extern void wl_cfgvif_sta_multilink_config(struct bcm_cfg80211 *cfg, wl_assoc_state_t assoc_state);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+extern s32 wl_cfgvif_update_assoc_fail_status(struct bcm_cfg80211 *cfg,
+	struct net_device *ndev, const wl_event_msg_t *e);
+#endif /* LINUX_VER >= 5.4 */
 #endif /* _wl_cfgvif_h_ */

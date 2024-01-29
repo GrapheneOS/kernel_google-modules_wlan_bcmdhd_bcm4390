@@ -2,7 +2,7 @@
 * DHD Silicon Save Simulation Restore (SSSR)
 * dump module for PCIE
 *
-* Copyright (C) 2023, Broadcom.
+* Copyright (C) 2024, Broadcom.
 *
 *      Unless you and Broadcom execute a separate written software license
 * agreement governing use of this software, this software is licensed to you
@@ -78,7 +78,7 @@ uint sssr_enab = TRUE;
 uint fis_enab = TRUE;
 #else
 uint fis_enab = FALSE;
-#endif /* DHD_FIS_DUMP_ALWAYS */
+#endif /* DHD_FIS_DUMP */
 
 #ifdef DHD_COREDUMP
 extern dhd_coredump_t dhd_coredump_types[];
@@ -928,7 +928,6 @@ dhdpcie_arm_clear_clk_req(dhd_pub_t *dhd)
 				dhdpcie_bus_cfg_write_dword(bus, PCIE_CFG_SUBSYSTEM_CONTROL, 4,
 					(cfgval & ~PCIE_BARCOHERENTACCEN_MASK));
 			}
-			si_core_cflags(bus->sih, SICF_CPUHALT, SICF_CPUHALT);
 		}
 	}
 
@@ -951,8 +950,6 @@ dhdpcie_arm_resume_clk_req(dhd_pub_t *dhd)
 		ret = BCME_ERROR;
 		goto fail;
 	}
-
-	si_core_cflags(bus->sih, SICF_CPUHALT, 0);
 
 fail:
 	si_setcoreidx(bus->sih, save_idx);
@@ -2007,7 +2004,10 @@ dhdpcie_clear_pmu_debug_mode(dhd_pub_t *dhd)
 static int
 dhdpcie_fis_trigger(dhd_pub_t *dhd)
 {
-	uint32 FISCtrlStatus, FISTrigRsrcState, RsrcState, MinResourceMask;
+	uint32 FISCtrlStatus = 0;
+#if defined(FIS_WITH_CMN) || defined(FIS_WITHOUT_CMN)
+	uint32 FISTrigRsrcState, RsrcState, MinResourceMask;
+#endif /* FIS_WITH_CMN | FIS_WITHOUT_CMN */
 	uint32 cfg_status_cmd;
 	uint32 cfg_pmcsr;
 
@@ -2034,7 +2034,7 @@ dhdpcie_fis_trigger(dhd_pub_t *dhd)
 	/* Set fis_triggered flag to ignore link down callback from RC */
 	dhd->fis_triggered = TRUE;
 
-#ifdef OEM_ANDROID
+#ifdef FIS_WITH_CMN
 	/* for android platforms, since they support WL_REG_ON toggle,
 	 * trigger FIS with common subcore - which involves saving pcie
 	 * config space, toggle REG_ON and restoring pcie config space
@@ -2124,9 +2124,9 @@ dhdpcie_fis_trigger(dhd_pub_t *dhd)
 		" RsrcState=0x%x MinResourceMask=0x%x\n",
 		__FUNCTION__, FIS_DONE_DELAY, FISCtrlStatus, FISTrigRsrcState,
 		RsrcState, MinResourceMask));
-#endif /* OEM_ANDROID */
+#endif /* FIS_WITH_CMN */
 
-#ifndef OEM_ANDROID
+#ifdef FIS_WITHOUT_CMN
 	/* for non-android platforms, since they do not support
 	 * WL_REG_ON toggle, trigger FIS without common subcore
 	 * the PcieSaveEn bit in PMU FISCtrlStatus reg would be
@@ -2136,6 +2136,12 @@ dhdpcie_fis_trigger(dhd_pub_t *dhd)
 		DAR_FIS_CTRL(dhd->bus->sih->buscorerev), DAR_FIS_START_MASK, DAR_FIS_START_MASK);
 	/* wait for FIS done */
 	OSL_DELAY(FIS_DONE_DELAY);
+	/* clear the timeout interrupt in PCIE errlog register
+	 * before reading any register on backplane
+	 */
+	si_corereg(dhd->bus->sih, dhd->bus->sih->buscoreidx,
+		PCIE_REG_OFF(dar_errorlog), DAR_ERRLOG_MASK, DAR_ERRLOG_MASK);
+
 	FISCtrlStatus = PMU_REG(dhd->bus->sih, FISCtrlStatus, 0, 0);
 	FISTrigRsrcState = PMU_REG(dhd->bus->sih, FISTrigRsrcState, 0, 0);
 	RsrcState = PMU_REG(dhd->bus->sih, RsrcState, 0, 0);
@@ -2144,7 +2150,7 @@ dhdpcie_fis_trigger(dhd_pub_t *dhd)
 		" RsrcState=0x%x MinResourceMask=0x%x\n",
 		__FUNCTION__, FIS_DONE_DELAY, FISCtrlStatus, FISTrigRsrcState,
 		RsrcState, MinResourceMask));
-#endif /* !OEM_ANDROID */
+#endif /* FIS_WITHOUT_CMN */
 
 	if ((FISCtrlStatus & PMU_CLEAR_FIS_DONE_MASK) == 0) {
 		DHD_ERROR(("%s: FIS Done bit not set. exit\n", __FUNCTION__));
@@ -2163,6 +2169,19 @@ int
 dhd_bus_fis_trigger(dhd_pub_t *dhd)
 {
 	return dhdpcie_fis_trigger(dhd);
+}
+
+bool
+dhdpcie_set_collect_fis(dhd_bus_t *bus)
+{
+#if defined(DHD_FIS_DUMP) && (defined(FIS_WITH_CMN) || defined(FIS_WITHOUT_CMN))
+	if (CHIPTYPE(bus->sih->socitype) == SOCI_NCI) {
+		DHD_PRINT(("%s : Collect FIS dumps\n", __FUNCTION__));
+		bus->dhd->collect_fis = TRUE;
+		return TRUE;
+	}
+#endif /* DHD_FIS_DUMP */
+	return FALSE;
 }
 
 static int
@@ -2371,8 +2390,6 @@ dhdpcie_fis_dump(dhd_pub_t *dhd)
 	dhd->sssr_dump_collected = TRUE;
 	dhd_write_sssr_dump(dhd, SSSR_DUMP_MODE_FIS);
 
-	dhd->sssr_dump_mode = SSSR_DUMP_MODE_SSSR;
-
 	if (dhd->bus->link_state != DHD_PCIE_ALL_GOOD) {
 		/* reset link state and collect socram */
 		dhd->bus->link_state = DHD_PCIE_ALL_GOOD;
@@ -2523,8 +2540,8 @@ dhdpcie_set_pmu_fisctrlsts(struct dhd_bus *bus)
 		return;
 	}
 
-#ifdef OEM_ANDROID
-	/* for android platforms since reg on toggle support is present
+#ifdef FIS_WITH_CMN
+	/* for platforms where reg on toggle support is present
 	 * FIS with common subcore is collected, so set PcieSaveEn bit in
 	 * PMU FISCtrlStatus reg
 	 */
@@ -2533,10 +2550,10 @@ dhdpcie_set_pmu_fisctrlsts(struct dhd_bus *bus)
 	FISCtrlStatus = PMU_REG(bus->sih, FISCtrlStatus, 0, 0);
 	DHD_PRINT(("%s: reg on support present, set PMU FISCtrlStatus=0x%x \n",
 		__FUNCTION__, FISCtrlStatus));
-#endif /* OEM_ANDROID */
+#endif /* FIS_WITH_CMN */
 
-#ifndef OEM_ANDROID
-	/* for non android platforms since reg on toggle support is absent
+#ifdef FIS_WITHOUT_CMN
+	/* for platforms where reg on toggle support is absent
 	 * FIS without common subcore is collected, so reset PcieSaveEn bit in
 	 * PMU FISCtrlStatus reg
 	 */
@@ -2544,7 +2561,7 @@ dhdpcie_set_pmu_fisctrlsts(struct dhd_bus *bus)
 	FISCtrlStatus = PMU_REG(bus->sih, FISCtrlStatus, 0, 0);
 	DHD_PRINT(("%s: reg on not supported, set PMU FISCtrlStatus=0x%x \n",
 		__FUNCTION__, FISCtrlStatus));
-#endif /* !OEM_ANDROID */
+#endif /* FIS_WITHOUT_CMN */
 }
 
 int
@@ -4503,4 +4520,9 @@ dhd_write_sssr_dump(dhd_pub_t *dhdp, uint32 dump_mode)
 #endif /* !DHD_DUMP_FILE_WRITE_FROM_KERNEL */
 }
 
+bool
+dhd_is_fis_enabled(void)
+{
+	return fis_enab;
+}
 #endif /* DHD_SSSR_DUMP */

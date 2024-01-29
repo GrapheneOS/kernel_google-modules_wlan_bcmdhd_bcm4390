@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 Vendor Extension Code
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -2233,7 +2233,7 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 								tlv_size);
 							pdata += tlv_size;
 							plen -= tlv_size;
-							WL_INFORM_MEM(("copy LCI, len=%d\n",
+							WL_DBG_MEM(("copy LCI, len=%d\n",
 								tlv_size));
 						}
 					}
@@ -2248,7 +2248,7 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 								tlv_size);
 							pdata += tlv_size;
 							plen -= tlv_size;
-							WL_INFORM_MEM(("copy LCR, len=%d\n",
+							WL_DBG_MEM(("copy LCR, len=%d\n",
 								tlv_size));
 						}
 					}
@@ -2703,7 +2703,7 @@ wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev *wdev,
 							sizeof(rtt_target->cmn_tgt_info.channel));
 						break;
 					case RTT_ATTRIBUTE_TARGET_BW:
-						rtt_target->cmn_tgt_info.bw = nla_get_u8(iter);
+						rtt_target->cmn_tgt_info.bw = nla_get_u8(iter2);
 						break;
 					}
 
@@ -11069,7 +11069,11 @@ static int wl_cfgvendor_dbg_start_pkt_fate_monitoring(struct wiphy *wiphy,
 	dhd_pub_t *dhd_pub = cfg->pub;
 	int ret;
 
+#ifdef DHD_PKT_MON_DUAL_STA
+	ret = dhd_os_dbg_attach_pkt_monitor_dev(dhd_pub, wdev_to_ndev(wdev));
+#else
 	ret = dhd_os_dbg_attach_pkt_monitor(dhd_pub);
+#endif /* DHD_PKT_MON_DUAL_STA */
 	if (unlikely(ret)) {
 		WL_ERR(("failed to start pkt fate monitoring, ret=%d", ret));
 	}
@@ -11077,11 +11081,21 @@ static int wl_cfgvendor_dbg_start_pkt_fate_monitoring(struct wiphy *wiphy,
 	return ret;
 }
 
+#ifdef DHD_PKT_MON_DUAL_STA
+typedef int (*dbg_mon_get_pkts_t) (dhd_pub_t *dhdp, int ifidx,
+	void __user *user_buf, uint16 req_count, uint16 *resp_count);
+#else
 typedef int (*dbg_mon_get_pkts_t) (dhd_pub_t *dhdp, void __user *user_buf,
 	uint16 req_count, uint16 *resp_count);
+#endif /* DHD_PKT_MON_DUAL_STA */
 
+#ifdef DHD_PKT_MON_DUAL_STA
+static int __wl_cfgvendor_dbg_get_pkt_fates(struct wiphy *wiphy, struct wireless_dev *wdev,
+	const void *data, int len, dbg_mon_get_pkts_t dbg_mon_get_pkts)
+#else
 static int __wl_cfgvendor_dbg_get_pkt_fates(struct wiphy *wiphy,
 	const void *data, int len, dbg_mon_get_pkts_t dbg_mon_get_pkts)
+#endif /* DHD_PKT_MON_DUAL_STA */
 {
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	dhd_pub_t *dhd_pub = cfg->pub;
@@ -11090,6 +11104,23 @@ static int __wl_cfgvendor_dbg_get_pkt_fates(struct wiphy *wiphy,
 	void __user *user_buf = NULL;
 	uint16 req_count = 0, resp_count = 0;
 	int ret, tmp, type, mem_needed;
+#ifdef DHD_PKT_MON_DUAL_STA
+	struct net_device *ndev = wdev_to_ndev(wdev);
+	int ifidx;
+
+	if (!ndev) {
+		WL_ERR(("ndev is null\n"));
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	ifidx = dhd_net2idx(dhd_pub->info, ndev);
+	if (ifidx == DHD_BAD_IF || ifidx >= PKT_MON_IF_MAX) {
+		WL_ERR(("invalid ifidx:%d\n", ifidx));
+		ret = -EINVAL;
+		goto exit;
+	}
+#endif /* DHD_PKT_MON_DUAL_STA */
 
 	nla_for_each_attr(iter, data, len, tmp) {
 		type = nla_type(iter);
@@ -11114,7 +11145,11 @@ static int __wl_cfgvendor_dbg_get_pkt_fates(struct wiphy *wiphy,
 		goto exit;
 	}
 
+#ifdef DHD_PKT_MON_DUAL_STA
+	ret = dbg_mon_get_pkts(dhd_pub, ifidx, user_buf, req_count, &resp_count);
+#else
 	ret = dbg_mon_get_pkts(dhd_pub, user_buf, req_count, &resp_count);
+#endif /* DHD_PKT_MON_DUAL_STA */
 	if (unlikely(ret)) {
 		WL_ERR(("failed to get packets, ret:%d \n", ret));
 		goto exit;
@@ -11153,8 +11188,13 @@ static int wl_cfgvendor_dbg_get_tx_pkt_fates(struct wiphy *wiphy,
 {
 	int ret;
 
+#ifdef DHD_PKT_MON_DUAL_STA
+	ret = __wl_cfgvendor_dbg_get_pkt_fates(wiphy, wdev, data, len,
+			dhd_os_dbg_monitor_get_tx_pkts);
+#else
 	ret = __wl_cfgvendor_dbg_get_pkt_fates(wiphy, data, len,
 			dhd_os_dbg_monitor_get_tx_pkts);
+#endif /* DHD_PKT_MON_DUAL_STA */
 	if (unlikely(ret)) {
 		WL_ERR(("failed to get tx packets, ret:%d \n", ret));
 	}
@@ -11167,8 +11207,13 @@ static int wl_cfgvendor_dbg_get_rx_pkt_fates(struct wiphy *wiphy,
 {
 	int ret;
 
+#ifdef DHD_PKT_MON_DUAL_STA
+	ret = __wl_cfgvendor_dbg_get_pkt_fates(wiphy, wdev, data, len,
+			dhd_os_dbg_monitor_get_rx_pkts);
+#else
 	ret = __wl_cfgvendor_dbg_get_pkt_fates(wiphy, data, len,
 			dhd_os_dbg_monitor_get_rx_pkts);
+#endif /* DHD_PKT_MON_DUAL_STA */
 	if (unlikely(ret)) {
 		WL_ERR(("failed to get rx packets, ret:%d \n", ret));
 	}
@@ -13677,7 +13722,7 @@ void wl_cfgvendor_usable_channels_filter(struct bcm_cfg80211 *cfg, uint32 cur_ch
 	if (u_info->filter_mask & WIFI_USABLE_CHANNEL_FILTER_CELLULAR_COEXISTENCE) {
 		/*  Filter chanspecs that must be avoided (hard unsafe) due to cell coex */
 		mode = wl_cellavoid_mandatory_to_usable_channel_filter(cfg->cellavoid_info);
-		WL_DBG(("Filter coexistence chspec:%x mode:%d\n", cur_chspec, mode));
+		WL_DBG_MEM(("Filter coexistence chspec:%x mode:%d\n", cur_chspec, mode));
 		*mask &= (~mode);
 	}
 #endif /* WL_CELLULAR_CHAN_AVOID */
@@ -13795,7 +13840,7 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 						if (netinfo->mlinfo.links[i].link_idx == 0) {
 							chan_array[sta_band].is_primary = TRUE;
 						}
-						WL_INFORM_MEM(("sta_chspec:%x band:%d primary:%d\n",
+						WL_DBG_MEM(("sta_chspec:%x band:%d primary:%d\n",
 								sta_chanspec, sta_band,
 								chan_array[sta_band].is_primary));
 					}
@@ -14003,7 +14048,7 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 			cur_ch = &u_info->channels[i];
 			wl_cfgvendor_usable_channels_filter(cfg, cur_ch->chspec,
 				&cur_ch->iface_mode_mask, u_info, conn, chan_array, ap_chanspec);
-			WL_INFORM_MEM(("chanspec:%x freq:%u width:%u iface_mode_mask:%u\n",
+			WL_DBG_MEM(("chanspec:%x freq:%u width:%u iface_mode_mask:%u\n",
 				cur_ch->chspec, cur_ch->freq,
 				cur_ch->width, cur_ch->iface_mode_mask));
 		}

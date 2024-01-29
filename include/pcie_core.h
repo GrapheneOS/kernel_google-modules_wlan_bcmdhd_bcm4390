@@ -1,7 +1,7 @@
 /*
  * BCM43XX PCIE core hardware definitions.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -852,6 +852,9 @@ typedef volatile struct pcie_serdes_regs {
 
 #define DAR_FIS_START_SHIFT	0u
 #define DAR_FIS_START_MASK	(1u << DAR_FIS_START_SHIFT)
+
+#define DAR_ERRLOG_SHIFT	8u
+#define DAR_ERRLOG_MASK		(1u << DAR_ERRLOG_SHIFT)
 
 #define DAR_SEC_STATUS(rev)	PCIE_REG_OFF(dar_security_status)
 

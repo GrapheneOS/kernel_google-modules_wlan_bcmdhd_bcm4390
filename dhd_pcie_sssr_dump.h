@@ -2,7 +2,7 @@
 * DHD Silicon Save Simulation Restore (SSSR)
 * dump interface
 *
-* Copyright (C) 2023, Broadcom.
+* Copyright (C) 2024, Broadcom.
 *
 *      Unless you and Broadcom execute a separate written software license
 * agreement governing use of this software, this software is licensed to you
@@ -30,6 +30,7 @@ void dhdpcie_set_pmu_fisctrlsts(struct dhd_bus *bus);
 int dhd_bus_fis_trigger(dhd_pub_t *dhd);
 int dhd_bus_fis_dump(dhd_pub_t *dhd);
 bool dhd_bus_fis_fw_triggered_check(dhd_pub_t *dhd);
+bool dhdpcie_set_collect_fis(struct dhd_bus *bus);
 int dhdpcie_sssr_dump(dhd_pub_t *dhd);
 int dhd_append_sssr_tlv(uint8 *buf_dst, int type_idx, int buf_remain);
 
@@ -121,6 +122,7 @@ int dhd_sssr_dump_d11_buf_after(void *dhd_pub, const void *user_buf,
 int dhd_sssr_dump_dig_buf_after(void *dhd_pub, const void *user_buf,
 	uint32 len);
 
+bool dhd_is_fis_enabled(void);
 #endif /* DHD_SSSR_DUMP */
 
 #endif /* __DHD_PCIE_SSSR_DUMP_H__ */

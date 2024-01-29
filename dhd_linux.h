@@ -1,7 +1,7 @@
 /*
  * DHD Linux header file (dhd_linux exports for cfg80211 and other components)
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -102,7 +102,9 @@ enum coredump_types {
 #ifdef COEX_CPU
 	DHD_COREDUMP_TYPE_COEX_DUMP             = 12,
 #endif /* COEX_CPU */
-	DHD_COREDUMP_TYPE_MAX			= 13
+	DHD_COREDUMP_TYPE_SSSRDUMP_CMN		= 13,
+	DHD_COREDUMP_TYPE_SSSRDUMP_SRCB		= 14,
+	DHD_COREDUMP_TYPE_MAX			= 15
 };
 
 #ifdef DHD_SSSR_DUMP

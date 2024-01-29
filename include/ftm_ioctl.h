@@ -1,7 +1,7 @@
 /*
  * FTM module IOCTL structure definitions.
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -395,6 +395,7 @@ typedef enum {
 	WL_FTM_TLV_ID_AZ_COUNTERS_V1		= 525,	/* wl_ftm_az_counters_v1_t */
 	WL_FTM_TLV_ID_HAL_COUNTERS_V1		= 526,	/* wl_ftm_hal_counters_v1_t */
 	WL_FTM_TLV_ID_AZ_COUNTERS_V2		= 527,	/* wl_ftm_az_counters_v2_t */
+	WL_FTM_TLV_ID_AZ_RTT_RESULT_V2		= 528,	/* wl_ftm_az_rtt_result_v2_t */
 
 	/* debug tlvs can be added starting 1024 */
 	WL_FTM_TLV_ID_DEBUG_MASK		= 1024,
@@ -657,6 +658,32 @@ typedef struct wl_ftm_az_rtt_result_v1 {
 	uint16				sample_fmt;	/* format of rtt sample (TLV ID) */
 	uint8				rtt_samples[];	/* optional variable length fields */
 } wl_ftm_az_rtt_result_v1_t;
+
+/* WL_FTM_TLV_ID_AZ_RTT_RESULT_V2
+ * 11az RTT result from a session
+ */
+typedef struct wl_ftm_az_rtt_result_v2 {
+	wl_ftm_session_id_t		sid;
+	struct ether_addr		peer;
+	wl_ftm_az_rtt_result_flags_t	flags;
+	wl_ftm_status_t			status;		/* session status */
+	wl_ftm_session_state_t		state;		/* session state */
+	uint16				max_num_meas;	/* configured num of measurement */
+	uint16				num_meas;	/* num of measurement done */
+	uint16				num_rtt;	/* num of rtt */
+	uint32				rtt_mean;	/* mean RTT (in ps by default) */
+	uint32				rtt_sd;		/* standard deviation of RTT */
+	uint32				dist;		/* Distance (in cm unit by default) */
+	int8				rssi_mean[WL_RSSI_ANT_MAX];
+	wl_ftm_intvl_t			min_delta;	/* min delta bet meas for ntb ranging */
+	wl_ftm_intvl_t			max_delta;	/* min delta bet meas for ntb ranging */
+	uint8				i2r_ltf_rep;	/* initiator to responder ltf repetitions */
+	uint8				r2i_ltf_rep;	/* responder to initiator ltf repetitions */
+	uint16				num_sample;	/* number of rtt sample */
+	uint16				sample_fmt;	/* format of rtt sample (TLV ID) */
+	uint8				rtt_samples[];	/* optional variable length fields */
+} wl_ftm_az_rtt_result_v2_t;
+
 
 /* WL_FTM_TLV_ID_AZ_COUNTERS_V1
  * 11az ranging counters

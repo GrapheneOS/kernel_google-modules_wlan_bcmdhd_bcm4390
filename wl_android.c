@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Android related functions
  *
- * Copyright (C) 2023, Broadcom.
+ * Copyright (C) 2024, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -5546,6 +5546,7 @@ int wl_android_wifi_off(struct net_device *dev, bool force_off)
 {
 	int ret = 0;
 	bool wifi_on = FALSE;
+	dhd_pub_t *dhdp;
 
 	BCM_REFERENCE(wifi_on);
 
@@ -5554,6 +5555,8 @@ int wl_android_wifi_off(struct net_device *dev, bool force_off)
 		DHD_TRACE(("wl_android_wifi_off: dev is null\n"));
 		return -EINVAL;
 	}
+
+	dhdp = wl_cfg80211_get_dhdp(dev);
 
 #if defined(BCMPCIE) && defined(DHD_DEBUG_UART)
 	ret = dhd_debug_uart_is_running(dev);
@@ -5594,7 +5597,12 @@ int wl_android_wifi_off(struct net_device *dev, bool force_off)
 		dhd_net_bus_suspend(dev);
 #endif /* BCMSDIO */
 #endif /* BCMSDIO || BCMPCIE */
-		dhd_net_wifi_platform_set_power(dev, FALSE, WIFI_TURNOFF_DELAY);
+		if (dhdp->reg_on_through_init != TRUE) {
+			dhd_net_wifi_platform_set_power(dev, FALSE, WIFI_TURNOFF_DELAY);
+		} else {
+			DHD_PRINT(("%s() platform set power off is skipped due to init\n",
+				__FUNCTION__));
+		}
 #ifdef WBRC
 		wl2wbrc_wlan_off_finished();
 #endif /* WBRC */
