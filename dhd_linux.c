@@ -6566,12 +6566,16 @@ dhd_stop(struct net_device *net)
 	OSL_SMP_WMB();
 
 #ifdef DHD_COREDUMP
+	DHD_PRINT(("%s: check haldump in progress...\n", __FUNCTION__));
 	if (DHD_BUS_BUSY_CHECK_IN_HALDUMP(&dhd->pub)) {
 		DHD_ERROR(("%s: Cancel the triggerd HAL dump.\n", __FUNCTION__));
 		DHD_BUS_BUSY_CLEAR_IN_HALDUMP(&dhd->pub);
 	}
 	bitmask = ~(DHD_BUS_BUSY_IN_HALDUMP);
 #endif /* DHD_COREDUMP */
+
+	DHD_PRINT(("%s: check and wait(tmo=%ums) if bus is busy(state=0x%x)...\n", __FUNCTION__,
+		DHD_BUS_BUSY_TIMEOUT, dhd->pub.dhd_bus_busy_state));
 	timeleft = dhd_os_busbusy_wait_bitmask(&dhd->pub,
 			&dhd->pub.dhd_bus_busy_state,
 			bitmask, 0);
@@ -6580,6 +6584,8 @@ dhd_stop(struct net_device *net)
 				__FUNCTION__, timeleft, dhd->pub.dhd_bus_busy_state));
 	}
 
+	DHD_PRINT(("%s: ndev_op_sync mutex status = %d\n", __FUNCTION__,
+		mutex_is_locked(&dhd->pub.ndev_op_sync)));
 	mutex_lock(&dhd->pub.ndev_op_sync);
 	if (dhd->pub.up == 0) {
 		goto exit;
@@ -6766,6 +6772,7 @@ exit:
 				dhd_force_collect_socram_during_wifi_onoff(&dhd->pub);
 				dhd->pub.dongle_trap_during_wifi_onoff = 0;
 			}
+			DHD_PRINT(("%s: do wifi off...\n", __FUNCTION__));
 			wl_android_wifi_accel_off(net, dhd->wl_accel_force_reg_on);
 #else
 #if defined (BT_OVER_SDIO)
