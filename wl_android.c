@@ -5694,17 +5694,9 @@ wbrc2wl_wlan_on_request(void *dhd_pub)
 			dhd_net_wifi_platform_set_power(dev, TRUE, WIFI_TURNON_DELAY);
 			ret = dhd_net_bus_devreset(dev, FALSE);
 			if (!ret) {
-				uint32 val = 0;
-				/* Make wl up, so that minresmask is programmed */
-				DHD_PRINT(("%s: calling wl up\n", __FUNCTION__));
-				ret = wldev_ioctl_set(dev, WLC_UP, &val, sizeof(val));
-				if (unlikely(ret)) {
-					DHD_ERROR(("WLC_UP error (%d)\n", ret));
-				} else {
-					/* Keep the link in L2 */
-					DHD_PRINT(("%s: calling suspend\n", __FUNCTION__));
-					dhd_net_bus_suspend(dev);
-				}
+				/* Keep the link in L2 */
+				DHD_PRINT(("%s: calling suspend\n", __FUNCTION__));
+				dhd_net_bus_suspend(dev);
 				g_wifi_on = TRUE;
 				g_wifi_accel_on = TRUE;
 				/* Clear force reg on, so that

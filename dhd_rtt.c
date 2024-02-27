@@ -284,6 +284,9 @@ static int dhd_rtt_mc_az_ftm_config(dhd_pub_t *dhd, wl_proxd_session_id_t sessio
 #ifdef WL_NAN
 static void dhd_rtt_trigger_pending_targets_on_session_end(dhd_pub_t *dhd);
 #endif /* WL_NAN */
+#ifdef DHD_RTT_USE_FTM_RANGE
+static int dhd_rtt_stop_ranging(dhd_pub_t *dhd);
+#endif /* DHD_RTT_USE_FTM_RANGE */
 #endif /* WL_CFG80211 */
 static const int burst_duration_idx[]  = {0, 0, 1, 2, 4, 8, 16, 32, 64, 128, 0, 0};
 
@@ -3091,6 +3094,9 @@ dhd_rtt_stop(dhd_pub_t *dhd, struct ether_addr *mac_list, int mac_cnt)
 		if (delayed_work_pending(&rtt_status->proxd_timeout)) {
 			dhd_cancel_delayed_work(&rtt_status->proxd_timeout);
 		}
+#ifdef DHD_RTT_USE_FTM_RANGE
+		dhd_rtt_stop_ranging(dhd);
+#endif /* DHD_RTT_USE_FTM_RANGE */
 		dhd_rtt_delete_session(dhd, FTM_DEFAULT_SESSION);
 #ifdef WL_NAN
 		dhd_rtt_delete_nan_session(dhd);
@@ -3464,14 +3470,6 @@ dhd_rtt_set_ftm_config_param(ftm_config_param_info_t *ftm_params,
 }
 
 #ifdef FTM
-#define	FTM_FMT_BW_HE_20	0u
-#define	FTM_FMT_BW_HE_40	1u
-#define	FTM_FMT_BW_HE_80	2u
-#define FTM_FMT_BW_HE_80_80	3u
-#define	FTM_FMT_BW_HE_2RF_160	4u
-#define FTM_FMT_BW_HE_1RF_160	5u
-#define	FTM_FMT_BW_AUTO		255u
-
 static void
 dhd_rtt_set_mc_az_ftm_config_param(ftm_config_param_info_t *ftm_params,
 	int *ftm_param_cnt, rtt_mc_az_target_info_t *rtt_target, uint16 tlvid)
@@ -3664,14 +3662,14 @@ dhd_rtt_set_mc_az_ftm_config_param(ftm_config_param_info_t *ftm_params,
 			if (rtt_target->cmn_tgt_info.bw) {
 				/* TODO: define format bw macro in wlioct */
 				if (rtt_target->cmn_tgt_info.bw == WIFI_RTT_BW_20) {
-					ftm_params[*ftm_param_cnt].data8 = FTM_FMT_BW_HE_20;
+					ftm_params[*ftm_param_cnt].data8 = WL_FTM_FMT_BW_HE_20;
 				} else if (rtt_target->cmn_tgt_info.bw == WIFI_RTT_BW_40) {
-					ftm_params[*ftm_param_cnt].data8 = FTM_FMT_BW_HE_40;
+					ftm_params[*ftm_param_cnt].data8 = WL_FTM_FMT_BW_HE_40;
 				} else if (rtt_target->cmn_tgt_info.bw == WIFI_RTT_BW_80) {
-					ftm_params[*ftm_param_cnt].data8 = FTM_FMT_BW_HE_80;
+					ftm_params[*ftm_param_cnt].data8 = WL_FTM_FMT_BW_HE_80;
 				} else if (rtt_target->cmn_tgt_info.bw == WIFI_RTT_BW_160) {
 					/* firmware supports only 1RF LO */
-					ftm_params[*ftm_param_cnt].data8 = FTM_FMT_BW_HE_1RF_160;
+					ftm_params[*ftm_param_cnt].data8 = WL_FTM_FMT_BW_HE_1RF_160;
 				}
 				ftm_params[*ftm_param_cnt].tlvid = WL_FTM_TLV_ID_FORMAT_BW;
 				*ftm_param_cnt = *ftm_param_cnt + 1;
@@ -5369,6 +5367,41 @@ dhd_rtt_convert_az_results_to_host_v1(rtt_mc_az_result_t *rtt_result,
 }
 
 #define FTM_CM_TO_MM	10u
+/* Maps as per HOST enum */
+static const struct {
+	wl_ftm_ranging_format_bw_t	format_bw;
+	uint8				pkt_bw;
+} format_bw_to_pkt_bw[] = {
+	{WL_FTM_FMT_BW_HE_20,		WIFI_RTT_BW_20},
+	{WL_FTM_FMT_BW_HE_40,		WIFI_RTT_BW_40},
+	{WL_FTM_FMT_BW_HE_80,		WIFI_RTT_BW_80},
+	{WL_FTM_FMT_BW_HE_80_80,	WIFI_RTT_BW_160},
+	{WL_FTM_FMT_BW_HE_2RF_160,	WIFI_RTT_BW_160},
+	{WL_FTM_FMT_BW_HE_1RF_160,	WIFI_RTT_BW_160}
+};
+
+/* get pkt BW from from format_bw */
+uint16
+dhd_rtt_format_bw_to_pkt_bw(wl_ftm_ranging_format_bw_t format_bw)
+{
+	uint8 pkt_bw = WIFI_RTT_BW_UNSPECIFIED;
+	uint idx;
+
+	for (idx = 0; idx < ARRAYSIZE(format_bw_to_pkt_bw); idx++) {
+		if (format_bw == format_bw_to_pkt_bw[idx].format_bw) {
+			pkt_bw = format_bw_to_pkt_bw[idx].pkt_bw;
+			break;
+		}
+	}
+
+	if (pkt_bw == WIFI_RTT_BW_UNSPECIFIED) {
+		DHD_RTT_ERR(("Invalid format bw = %d \n", format_bw));
+	}
+
+	return pkt_bw;
+}
+
+#define BCM_INT8_MIN		(-128)
 static int
 dhd_rtt_convert_az_results_to_host_v2(rtt_mc_az_result_t *rtt_result,
 	const uint8 *p_data, uint16 tlvid, uint16 len)
@@ -5378,6 +5411,9 @@ dhd_rtt_convert_az_results_to_host_v2(rtt_mc_az_result_t *rtt_result,
 	wl_ftm_intvl_t min_delta, max_delta;
 	wl_ftm_status_t ftm_status;
 	int i;
+	chanspec_t chanspec;
+	int8 max_rssi = BCM_INT8_MIN;
+
 	p_data_info = (wl_ftm_az_rtt_result_v2_t *)p_data;
 	if (rtt_result->type == RTT_TWO_WAY_NTB) {
 		rtt_report->type = RTT_TWO_WAY_NTB;
@@ -5405,11 +5441,15 @@ dhd_rtt_convert_az_results_to_host_v2(rtt_mc_az_result_t *rtt_result,
 		ftm_status = RTT_STATUS_SUCCESS;
 	}
 	rtt_report->status = ftm_status;
-	rtt_report->rssi = 0;
+	/* Report maximum rssi of signal received */
 	for (i = 0; i < WL_RSSI_ANT_MAX; i++) {
-		rtt_report->rssi += p_data_info->rssi_mean[i];
+		if (p_data_info->rssi_mean[i] && (p_data_info->rssi_mean[i] > max_rssi)) {
+			max_rssi = p_data_info->rssi_mean[i];
+		}
 	}
-	rtt_report->rssi = rtt_report->rssi/WL_RSSI_ANT_MAX;
+
+	/* average rssi in 0.5 dB steps e.g. 143 implies -71.5 dB */
+	rtt_report->rssi = ABS((wl_proxd_rssi_t)max_rssi) * 2;
 	rtt_report->rtt = p_data_info->rtt_mean; /* rtt mean is in pico sec */
 	rtt_report->rtt_sd = p_data_info->rtt_sd;
 	/* distance comes in cm unit from fw. Framework expects distance in mm
@@ -5421,8 +5461,19 @@ dhd_rtt_convert_az_results_to_host_v2(rtt_mc_az_result_t *rtt_result,
 	rtt_result->u.az_result.rtt_detail.i2r_ltf_rep = p_data_info->i2r_ltf_rep;
 	rtt_result->u.az_result.rtt_detail.r2i_ltf_rep = p_data_info->r2i_ltf_rep;
 
-	DHD_RTT(("dhd_rtt_convert_az_results_to_host_v2 : distance = %d mm success_num = %d \n",
-			rtt_report->distance, rtt_report->success_num));
+	if (p_data_info->chanspec) {
+			chanspec = ltoh16_ua(&p_data_info->chanspec);
+#ifdef WL_CFG80211
+			rtt_result->frequency = wl_channel_to_frequency(wf_chspec_ctlchan(chanspec),
+				CHSPEC_BAND(chanspec));
+#endif /* WL_CFG80211 */
+	}
+	rtt_result->packet_bw = dhd_rtt_format_bw_to_pkt_bw(p_data_info->format_bw);
+
+	DHD_RTT(("dhd_rtt_convert_az_results_to_host_v2 : distance = %d mm success_num = %d "
+		"pkt_bw = %d format_bw = %d \n",
+			rtt_report->distance, rtt_report->success_num, rtt_result->packet_bw,
+			p_data_info->format_bw));
 	return BCME_OK;
 }
 #endif /* FTM */

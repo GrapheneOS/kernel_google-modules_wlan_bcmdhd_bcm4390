@@ -37,6 +37,8 @@
 #include <dngl_rtlv.h>
 #include <ewp.h>
 
+#define EXTENDED_PCIE_DEBUG_DUMP	/* Enable Extended pcie registers dump */
+
 /* defines */
 #define PCIE_SHARED_VERSION		PCIE_SHARED_VERSION_9
 
@@ -1218,4 +1220,8 @@ int dhdpcie_ewphw_get_initdumps(dhd_bus_t *bus);
 void dhd_bus_pcie_pwr_req(struct dhd_bus *bus);
 void dhd_bus_pcie_pwr_req_clear(struct dhd_bus *bus);
 
+#define PCIE_SUBSYS_CTRL_BPACCESS_ENABLE 0x800C0u
+#define PCIE_SUBSYS_CTRL_BPACCESS_DISABLE 0x80080u
+#define BP_INDACCESS_SHIFT (0x1 << 6)
+void dhdpcie_print_amni_regs(dhd_bus_t *bus);
 #endif /* dhd_pcie_h */

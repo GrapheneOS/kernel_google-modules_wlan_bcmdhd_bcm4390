@@ -2315,7 +2315,7 @@ typedef struct dhd_pktid_log {
 
 typedef void * dhd_pktid_log_handle_t; /* opaque handle to pktid log */
 
-#define	MAX_PKTID_LOG				(2048u)
+#define	MAX_PKTID_LOG				(4096u)
 /*
  * index timestamp pktaddr(pa) pktid size
  * index(5) + timestamp (<= 20) + dummy(4) + pa (<=11) + pktid (10) + size(7) +
@@ -6861,30 +6861,46 @@ BCMFASTPATH(dhd_prot_rxbuf_post)(dhd_pub_t *dhd, uint16 count, bool use_rsv_pkti
 		 * during rx flow control.
 		*/
 		p = dhd_rx_emerge_dequeue(dhd);
-		if ((p == NULL) &&
-			((p = PKTGET(dhd->osh, prot->rxbufpost_alloc_sz, FALSE)) == NULL)) {
-			dhd->rx_pktgetfail++;
-			DHD_ERROR_RLMT(("%s:%d: PKTGET for rxbuf failed, rx_pktget_fail :%lu\n",
-				__FUNCTION__, __LINE__, dhd->rx_pktgetfail));
-			/* Try to get pkt from Rx reserve pool if monitor mode is not enabled as
-			 * the buffer size for monitor mode is larger(4k) than normal rx pkt(1920)
-			 */
+		if (p == NULL) {
+			if ((p = PKTGET(dhd->osh, prot->rxbufpost_alloc_sz, FALSE)) == NULL) {
+				dhd->rx_pktgetfail++;
+				DHD_ERROR_RLMT(("%s:%d: PKTGET for rxbuf"
+					" failed, rx_pktget_fail :%lu\n",
+					__FUNCTION__, __LINE__,
+					dhd->rx_pktgetfail));
+				/* Try to get pkt from Rx reserve pool if monitor mode
+				 * is not enabled as the buffer size for monitor mode is
+				 * larger(4k) than normal rx pkt(1920)
+				 */
 #if defined(WL_MONITOR)
-			if (dhd_monitor_enabled(dhd, 0)) {
-				break;
-			} else
+				if (dhd_monitor_enabled(dhd, 0)) {
+					break;
+				} else
 #endif /* WL_MONITOR */
-			{
+				{
 #ifdef RX_PKT_POOL
-				if ((p = PKTGET_RX_POOL(dhd->osh, dhd->info,
-					prot->rxbufpost_alloc_sz, FALSE)) == NULL) {
-					dhd->rx_pktgetpool_fail++;
-					DHD_ERROR_RLMT(("%s:%d: PKTGET_RX_POOL for rxbuf failed, "
-						"rx_pktgetpool_fail : %lu\n",
-						__FUNCTION__, __LINE__, dhd->rx_pktgetpool_fail));
+					if ((p = PKTGET_RX_POOL(dhd->osh, dhd->info,
+						prot->rxbufpost_alloc_sz, FALSE)) == NULL) {
+						dhd->rx_pktgetpool_fail++;
+						DHD_ERROR_RLMT(("%s:%d: PKTGET_RX_POOL for"
+							" rxbuf failed, rx_pktgetpool_fail:%lu\n",
+							__FUNCTION__, __LINE__,
+							dhd->rx_pktgetpool_fail));
+						break;
+					}
+#endif /* RX_PKT_POOL */
+				}
+			} else {
+			/* Validate the PKTGET address */
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+				p = dhd_validate_packet_address(dhd, p);
+				if (p == NULL) {
+					DHD_LOG_MEM(("%s: rxbuf fail due to bad addr\n",
+						__FUNCTION__));
+					dhd->rx_pktgetfail++;
 					break;
 				}
-#endif /* RX_PKT_POOL */
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
 			}
 		}
 
@@ -10393,6 +10409,7 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 
 #if defined(DHD_MESH)
 		eh = (struct ether_header *)pktdata;
+		BCM_REFERENCE(eh);
 
 
 #endif /* defined(DHD_MESH) */

@@ -312,6 +312,8 @@ int bcm_unpack_xtlv_buf_to_mem(const uint8 *buf, int *buflen, xtlv_desc_t *items
 /* pack a set of tlvs into buffer using provided xtlv descriptors */
 int bcm_pack_xtlv_buf_from_mem(uint8 **buf, uint16 *buflen,
 	const xtlv_desc_t *items, bcm_xtlv_opts_t opts);
+int bcm_pack_xtlv_buf_from_mem_index(uint8 **buf, uint16 *buflen,
+	const xtlv_desc_t *items, bcm_xtlv_opts_t opts, uint16 *stopped_at);
 
 /* return data pointer and data length of a given id from xtlv buffer
  * data_len may be NULL

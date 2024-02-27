@@ -372,3 +372,16 @@ si_bpind_access(si_t *sih, uint32 addr_high, uint32 addr_low,
 
 	return ret_val;
 }
+
+#ifdef SOCI_NCI_BUS
+int si_get_amni_slave_cfg_cc_reg_addrs(si_t *sih, volatile uint32 **idm_errstatus_addr,
+	volatile uint32 **idm_intstatus_addr)
+{
+	if (CHIPTYPE(sih->socitype) == SOCI_NCI) {
+		return nci_get_amni_slave_cfg_cc_reg_addrs(sih, idm_errstatus_addr,
+			idm_intstatus_addr);
+	} else {
+		return -1;
+	}
+}
+#endif /* SOCI_NCI_BUS */

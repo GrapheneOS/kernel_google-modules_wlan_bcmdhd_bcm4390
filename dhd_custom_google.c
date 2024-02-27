@@ -1220,6 +1220,13 @@ dhd_plat_unregister_coredump(void)
 }
 #endif /* DHD_COREDUMP */
 
+int
+dhd_plat_get_wlan_reg_on_gpio(void)
+{
+	return gpio_is_valid(wlan_reg_on) ?
+		gpio_get_value(wlan_reg_on) : -1;
+}
+
 #ifndef BCMDHD_MODULAR
 /* Required only for Built-in DHD */
 device_initcall(dhd_wlan_init);

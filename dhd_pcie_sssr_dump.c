@@ -1762,6 +1762,8 @@ dhdpcie_sssr_dump(dhd_pub_t *dhd)
 		goto exit;
 	}
 
+	dhdpcie_print_amni_regs(bus);
+
 	DHD_PRINT(("%s: Before WL down (powerctl: pcie:0x%x chipc:0x%x) "
 		"PMU rctl:0x%x res_state:0x%x\n", __FUNCTION__,
 		si_corereg(sih, sih->buscoreidx,
@@ -1955,6 +1957,7 @@ dhdpcie_sssr_dump(dhd_pub_t *dhd)
 	dhd_write_sssr_dump(dhd, SSSR_DUMP_MODE_SSSR);
 	DHD_PRINT(("%s: sssr dump done\n", __FUNCTION__));
 
+	dhdpcie_print_amni_regs(bus);
 exit:
 	DHD_GENERAL_LOCK(bus->dhd, flags);
 	DHD_BUS_BUSY_CLEAR_IN_SSSR(bus->dhd);

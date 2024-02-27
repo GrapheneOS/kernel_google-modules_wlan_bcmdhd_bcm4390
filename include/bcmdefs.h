@@ -897,6 +897,19 @@ extern uint32 gFWID;
 	#define UDCC_ENAB() (FALSE)
 #endif /* UDCC */
 
+#ifdef URB_DBG_BUS /* URB DBG BUS enab macros  */
+	extern bool _urb_dbg_bus_enab;
+#if defined(ROM_ENAB_RUNTIME_CHECK) || !defined(DONGLEBUILD)
+	#define URB_DBG_BUS_ENAB() (_urb_dbg_bus_enab)
+#elif defined(URB_DBG_BUS_DISABLED)
+	#define URB_DBG_BUS_ENAB() (FALSE)
+#else
+	#define URB_DBG_BUS_ENAB() (TRUE)
+#endif
+#else
+	#define URB_DBG_BUS_ENAB() (FALSE)
+#endif /* URB_DBG_BUS */
+
 #ifdef URB_MON_GIANT_PKT /* URB Mon giant packet enab macro  */
 	extern bool _urb_giantpkt_enab;
 #if defined(ROM_ENAB_RUNTIME_CHECK) || !defined(DONGLEBUILD)

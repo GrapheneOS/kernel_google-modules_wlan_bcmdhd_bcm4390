@@ -6464,7 +6464,7 @@ typedef struct wl_tcp_keep_set {
 #define WL_APF_PROGRAM_TOTAL_LEN(apf_program)	\
 	(WL_APF_PROGRAM_FIXED_LEN + WL_APF_PROGRAM_LEN(apf_program))
 #ifndef WL_APF_PROGRAM_MAX_SIZE
-#define WL_APF_PROGRAM_MAX_SIZE (2u * 1024u)
+#define WL_APF_PROGRAM_MAX_SIZE (4u * 1024u)
 #endif /* WL_APF_PROGRAM_MAX_SIZE */
 
 /** IOVAR "pkt_filter_enable" parameter. */
@@ -8355,6 +8355,51 @@ typedef struct {
 	uint8 PAD;
 	sc_chanim_stats_v6_t sc_stats[];
 } wl_chanim_sc_stats_v6_t;
+
+#define WL_SC_CHANIM_STATS_V7	 7u
+
+typedef struct sc_chanim_stats_v7 {
+	uint32 stats_ms;                /* duration for which stats are collected, in ms */
+	chanspec_t chanspec;
+	uint16 pad;
+	uint32 sc_only_rx_dur;          /* rx only on sc, in ms */
+	uint32 sc_rx_mc_rx_dur;         /* Rx on SC when MC is active, in ms */
+	uint32 sc_rx_ac_rx_dur;         /* Rx on SC when AC is active, in ms */
+	uint32 sc_rx_mc_tx_dur;         /* sc rx with MC tx, in ms */
+	uint32 sc_rx_ac_bt_tx_dur;      /* sc rx with AC-BT tx, in ms */
+	uint32 sc_rx_bt_rx_dur;         /* sc rx when BT Main is active, in ms */
+	uint32 sc_btle_overlap_dur;     /* wlsc was awake and btsc le scan overlapped, in ms */
+	uint32 sc_btpage_overlap_dur;   /* wlsc was awake and btsc page scan overlapped, in ms */
+	uint32 ac_btle_blnk_dur;        /* wlauxtx blanked btsc le scan, in ms */
+	uint32 ac_btpage_blnk_dur;      /* wlauxtx blanked btsc page scan, in ms */
+	uint32 ac_btle_overlap_dur;     /* wlaux was awake and btsc le scan overlapped, in ms */
+	uint32 ac_btpage_overlap_dur;   /* wlaux was awake and btsc page scan overlapped, in ms */
+	uint32 timestamp;               /* Time when stats last updated */
+	uint32 sc_rx_5g_bt_rx_dur;      /* sc rx when 5G BT Main is active, in ms */
+	uint16 sc_5g_btrx_trans_cnt;    /* 5G BT RX transitions */
+	uint16 sc_fbc_trans_cnt;         /* Shared radio FBC transition count */
+	uint32 sc_rx_ac_bt_ded_mode_dur; /* Dedicated mode duration */
+} sc_chanim_stats_v7_t;
+
+typedef struct {
+	uint32 version;
+	uint32 length;
+	uint8 flags;	/* flags: to print the stats,
+			 * WL_CHANIM_COUNT_ONE ==> Query stats for Home channel,
+			 * WL_CHANIM_COUNT_ALL ==> Query stats for all channels
+			 */
+	uint8 id;	/* Module id, to know which module has sent the stats
+			 * SC_CHANIM_ID_SCAN ==> For SCAN
+			 * SC_CHANIM_ID_STA ==> For STA
+			 */
+	uint8 count;	/* o/p: Count of channels for which stats needs to be displayed.
+			 * This value is number of channels supported in particular locale when
+			 * flags is WL_CHANIM_COUNT_ALL, one when flag is
+			 * WL_CHANIM_COUNT_ONE
+			 */
+	uint8 PAD;
+	sc_chanim_stats_v7_t sc_stats[];
+} wl_chanim_sc_stats_v7_t;
 
 /* sc_chanim periodic ecounters structs for WL_IFSTATS_XTLV_SC_CHANIM_PERIODIC_STATS
  *  [similar to wl_chanim_sc_stats_vX_t, but constrained in size due to its known periodicity
@@ -19640,6 +19685,7 @@ enum {
 	WL_MLO_CMD_LINK_RECFG_REQ	= 0x1005u,	/* send a Link Reconfig request frame */
 	WL_MLO_CMD_EPCS_ENAB_REQ	= 0x1006u,	/* send a EPCS Pri Access Req Enab frame */
 	WL_MLO_CMD_EPCS_TEARDN		= 0x1007u,	/* send a EPCS Pri Access Teardown frame */
+	WL_MLO_CMD_MAX_CST		= 0x1008u,	/* send a MCST IE in the bcn frame */
 	WL_MLO_CMD_MLOSIM		= 0x2000u,	/* to set mlo simulation option */
 };
 
@@ -20751,7 +20797,9 @@ typedef wlc_bcn_prot_counters_v0_t wlc_bcn_prot_counters_t;
 #define WL_BCN_PROT_CONFIG_ALLOW_PROT_ONLY	0x00000001u	/* Allow join/roam to only Beacon
 								* protection capable AP
 								*/
-
+#define WL_BCN_PROT_CONFIG_ALLOW_WIFI7_AP_ONLY	0x00000002u	/* Allow Beacon protection only for
+								* connections with WiFi7 APs
+								*/
 
 /* otpread command */
 #define WL_OTPREAD_VER 1
@@ -22533,7 +22581,9 @@ enum wl_rmc_report_xtlv_id {
 	WL_RMC_RPT_XTLV_CANDIDATE_INFO		= 0x2,
 	WL_RMC_RPT_XTLV_USER_CACHE_INFO		= 0x3,
 	WL_RMC_RPT_XTLV_CANDIDATE_INFO_V2	= 0x4,
-	WL_RMC_RPT_XTLV_USER_CACHE_INFO_V2	= 0x5
+	WL_RMC_RPT_XTLV_USER_CACHE_INFO_V2	= 0x5,
+	WL_RMC_RPT_XTLV_CANDIDATE_INFO_V3	= 0x6,
+	WL_RMC_RPT_XTLV_USER_CACHE_INFO_V3	= 0x7
 };
 
 /* WL_RMC_RPT_XTLV_BSS_INFO */
@@ -22562,6 +22612,22 @@ typedef struct {
 	uint16 bss_load;        /* BSS load */
 	struct ether_addr bssid; /* BSSID */
 } rmc_candidate_info_v2_t;
+
+#define MAX_NUM_NPLINKS_V3	2u /* Max number of Non Preferred Links */
+/* WL_RMC_RPT_XTLV_CANDIDATE_INFO_V3 */
+typedef struct {
+	int16 rssi;             /* last seen rssi */
+	chanspec_t ctl_channel; /* chanspec of preferred link */
+	uint32 time_last_seen;  /* delta time (in ms) between cur time and last seen timestamp */
+	uint16 bss_load;        /* BSS load of the preferred link */
+	struct ether_addr bssid;	/* BSSID of the preferred link */
+	struct ether_addr mld_addr;	/* MLD BSSID */
+	/* Account other linked AP chanspecs in case of MLO
+	* Already one of the link is updated in ctl_channel.
+	*/
+	chanspec_t linked_chnls[MAX_NUM_NPLINKS_V3];
+	uint8 reserved[2];	/* padding to get 4 bytes alignment after unpacking */
+} rmc_candidate_info_v3_t;
 
 enum wl_filter_ie_options {
 	WL_FILTER_IE_CLEAR		= 0,	/* allow  element id in packet.For suboption */
@@ -25966,6 +26032,31 @@ typedef struct wl_dtpc_cfg_headroom {
 	rate_headroom_t headrooms[];
 } wl_dtpc_cfg_headroom_t;
 
+#define WL_SBSS_RSPEC_VERSION_1	1
+
+typedef struct wl_scb_rspec_info {
+	struct ether_addr	ea;
+	uint8			num_of_rspecs;
+	uint8			chspecs_and_rspecs[];
+} wl_scb_rspec_info_v1_t;
+
+typedef struct wl_bsscfg_rspec_info {
+	struct ether_addr	BSSID;
+	uint8			num_scb_rspecs;
+	uint8			PAD[1];
+	bsscfg_subtype_t	subtype;
+	ratespec_t		rspec;
+	uint8			scb_rspecs_info[];
+} wl_bsscfg_rspec_info_v1_t;
+
+typedef struct wl_sbss_rspec_info {
+	uint16	version;
+	uint16	len;
+	uint8	PAD[1];
+	uint8	num_bsscfg_rspecs;
+	uint8	bsscfg_rspecs_info[];
+} wl_sbss_rspec_info_v1_t;
+
 /* Version for IOVAR 'cellavoid' */
 #define WL_CELL_AVOID_IOV_VERSION_1		1u
 /* Version for IOVAR 'cellavoid' subcmd */
@@ -27036,6 +27127,8 @@ enum wl_platcfg_cmd_id {
 	WL_PLATCFG_CMD_DLOAD_STATUS	= 2u,
 	WL_PLATCFG_CMD_BLOB_VER		= 3u,
 	WL_PLATCFG_CMD_DUMP_DATA	= 4u,
+	WL_PLATCFG_CMD_BLOB_VER_V2	= 5u,
+	WL_PLATCFG_CMD_DUMP_DATA_V2	= 6u,
 	WL_PLATCFG_CMD_LAST
 };
 
@@ -27044,6 +27137,10 @@ enum wl_platcfg_tlv_id {
 	WL_PLATCFG_XTLV_SEG_TITLE	= 0u,
 	WL_PLATCFG_XTLV_SEG_CREATION	= 1u,
 	WL_PLATCFG_XTLV_DUMP_DATA	= 2u,
+	WL_PLATCFG_XTLV_SEG_METADATA	= 3u,
+
+	/* blob data dump tlvs */
+	WL_PLATCFG_XTLV_DUMP_ANTGAIN    = 40u,
 	WL_PLATCFG_XTLV_LAST
 };
 
@@ -27054,6 +27151,7 @@ typedef struct wl_platcfg_ver {
 } wl_platcfg_ver_t;
 
 /* tracks current module command version */
+#define WL_PLATCFG_CMD_VER_V2	2u
 #define WL_PLATCFG_CMD_VER_V1	1u
 
 /* WL_PLATCFG_CMD_DLOAD */
@@ -27085,6 +27183,22 @@ enum {
 	WL_PLATCFG_SEGTYPE_LAST
 };
 
+/* WL_PLATCFG_CMD_BLOB_VER_V2 */
+typedef struct wl_platcfg_blobver_v2 {
+	uint16	flags;		/* flags */
+	uint8	n_metadata;	/* number of segment metadata tlvs */
+	uint8	pad;
+	uint8	metadata[];	/* segment metadata tlvs */
+} wl_platcfg_blobver_v2_t;
+
+typedef struct wl_platcfg_seg_metadata_v2 {
+	uint8	type;		/* platcfg segment type */
+	uint8	format;		/* segment bin format version */
+	uint8	n_tlv;		/* number of metadata tlvs */
+	uint8	pad;
+	uint8	tlv[];		/* metadata tlvs */
+} wl_platcfg_seg_metadata_v2_t;
+
 /* WL_PLATCFG_CMD_BLOB_VER */
 typedef struct wl_platcfg_seg_ver {
 	uint8	type;		/* platcfg segment type */
@@ -27099,6 +27213,33 @@ typedef struct wl_platcfg_blob_ver {
 	uint8	pad;
 	uint8	ver[];		/* list of wl_platcfg_seg_ver_t */
 } wl_platcfg_blob_ver_t;
+
+/* WL_PLATCFG_CMD_DUMP_DATA_V2 */
+typedef struct wl_platcfg_dump_data_v2 {
+	uint16	flags;		/* flags */
+	uint8	n_seg;		/* number of segment dumps */
+	uint8	pad;
+	uint8	seg[];		/* segment dumps in bcm_xtlv_t */
+} wl_platcfg_dump_v2_t;
+
+typedef struct wl_antgain6g_datalist_v2 {
+	uint8	n_antg;		/* number of antenna gain sets */
+	uint8	pad[3];
+	uint8	antg[];		/* list of wl_antgain6g_data_t */
+} wl_antgain6g_datalist_v2_t;
+
+#define WL_ANTG_NUM_ANTS	2u
+typedef struct wl_antgain6g_data_v2 {
+	uint16  start_freq;	/* in MHz */
+	uint16  end_freq;	/* in MHz */
+	int16   corr_gain;	/* directional gain of correlated signals used by FW,
+				 * scaled to 100x to avoid float
+				 */
+	int16	uncorr_gain;	/* same definition as corr_gain, but for
+				 * non-correlated signals
+				 */
+	int16	ag_val[WL_ANTG_NUM_ANTS]; /* individual antenna gains */
+} wl_antgain6g_data_v2_t;
 
 /* WL_PLATCFG_XTLV_DUMP_DATA */
 typedef struct wl_platcfg_dump_data {

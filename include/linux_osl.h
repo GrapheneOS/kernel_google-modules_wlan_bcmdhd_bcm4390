@@ -973,7 +973,7 @@ typedef struct timer_list_compat timer_list_compat_t;
 
 typedef struct osl_timer osl_timer_t;
 
-extern void *osl_timer_get_ctx(osl_timer_t *t);
+extern void *osl_timer_get_ctx(void *arg);
 
 typedef void (*linux_timer_fn)(ulong arg);
 

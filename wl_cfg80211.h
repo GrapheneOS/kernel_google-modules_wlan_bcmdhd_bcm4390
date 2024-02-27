@@ -44,6 +44,7 @@
 #include <dhd_debug.h>
 #endif
 #endif /* BCMDONGLEHOST */
+#include <fils.h>
 
 /* WL FILS IOV API version */
 #define WL_FILS_IOV_VERSION WL_FILS_IOV_VERSION_1_1
@@ -807,13 +808,13 @@ do {									\
 #define WL_CHANNEL_SYNC_RETRY	5
 #define WL_INVALID		-1
 
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 #ifdef OEM_ANDROID
 #define WL_ROAM_TIMEOUT_MS	3000 /* roam success/fail would pre-empt the timer */
 #else
 #define WL_ROAM_TIMEOUT_MS	1000 /* Roam timeout */
 #endif /* OEM_ANDROID */
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 
 /* Bring down SCB Timeout to 20secs from 60secs default */
 #ifndef WL_SCB_TIMEOUT
@@ -898,43 +899,42 @@ do {									\
 #define NL80211_FEATURE_FW_4WAY_HANDSHAKE (1<<31)
 
 /* SCAN_SUPPRESS timer values in ms */
-#define WL_SCAN_SUPPRESS_TIMEOUT 31000 /* default Framwork DHCP timeout is 30 sec */
-#define WL_SCAN_SUPPRESS_RETRY 3000
+#define WL_SCAN_SUPPRESS_TIMEOUT          31000u /* default Framwork DHCP timeout is 30 sec */
+#define WL_SCAN_SUPPRESS_RETRY            3000u
 
-#define WL_PM_ENABLE_TIMEOUT 10000
+#define WL_PM_ENABLE_TIMEOUT              10000u
+
+/* max retries for generating non-duplicate macaddr */
+#define WL_RAND_MAC_RETRIES               5u
 
 /* cfg80211 wowlan definitions */
-#define WL_WOWLAN_MAX_PATTERNS			8
-#define WL_WOWLAN_MIN_PATTERN_LEN		1
-#define WL_WOWLAN_MAX_PATTERN_LEN		255
-#define WL_WOWLAN_PKT_FILTER_ID_FIRST	201
-#define WL_WOWLAN_PKT_FILTER_ID_LAST	(WL_WOWLAN_PKT_FILTER_ID_FIRST + \
+#define WL_WOWLAN_MAX_PATTERNS            8u
+#define WL_WOWLAN_MIN_PATTERN_LEN         1u
+#define WL_WOWLAN_MAX_PATTERN_LEN         255u
+#define WL_WOWLAN_PKT_FILTER_ID_FIRST     201u
+#define WL_WOWLAN_PKT_FILTER_ID_LAST    (WL_WOWLAN_PKT_FILTER_ID_FIRST + \
 									WL_WOWLAN_MAX_PATTERNS - 1)
 #ifdef WLAIBSS
-#define IBSS_COALESCE_DEFAULT 0
-#define IBSS_INITIAL_SCAN_ALLOWED_DEFAULT 0
+#define IBSS_COALESCE_DEFAULT             0u
+#define IBSS_INITIAL_SCAN_ALLOWED_DEFAULT 0u
 #else	/* WLAIBSS */
-#define IBSS_COALESCE_DEFAULT 1
-#define IBSS_INITIAL_SCAN_ALLOWED_DEFAULT 1
+#define IBSS_COALESCE_DEFAULT             1u
+#define IBSS_INITIAL_SCAN_ALLOWED_DEFAULT 1u
 #endif	/* WLAIBSS */
 
 #ifdef WLTDLS
 #define TDLS_TUNNELED_PRB_REQ	"\x7f\x50\x6f\x9a\04"
 #define TDLS_TUNNELED_PRB_RESP	"\x7f\x50\x6f\x9a\05"
-#define TDLS_MAX_IFACE_FOR_ENABLE 1
+#define TDLS_MAX_IFACE_FOR_ENABLE         1u
 #endif /* WLTDLS */
 
 #ifdef WLAIBSS
 /* Custom AIBSS beacon parameters */
-#define AIBSS_INITIAL_MIN_BCN_DUR	500
-#define AIBSS_MIN_BCN_DUR		5000
-#define AIBSS_BCN_FLOOD_DUR		5000
-#define AIBSS_PEER_FREE			3
+#define AIBSS_INITIAL_MIN_BCN_DUR         500u
+#define AIBSS_MIN_BCN_DUR                 5000u
+#define AIBSS_BCN_FLOOD_DUR               5000u
+#define AIBSS_PEER_FREE                   3u
 #endif /* WLAIBSS */
-
-#ifndef FILS_INDICATION_IE_TAG_FIXED_LEN
-#define FILS_INDICATION_IE_TAG_FIXED_LEN		2
-#endif
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 14, 0))
 #define IS_RADAR_CHAN(flags) (flags & (IEEE80211_CHAN_RADAR | IEEE80211_CHAN_PASSIVE_SCAN))
@@ -2297,9 +2297,9 @@ struct bcm_cfg80211 {
 #if defined(SUPPORT_RANDOM_MAC_SCAN)
 	bool random_mac_enabled;
 #endif /* SUPPORT_RANDOM_MAC_SCAN */
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	timer_list_compat_t roam_timeout;   /* Timer for catch roam timeout */
-#endif
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 #ifndef DUAL_ESCAN_RESULT_BUFFER
 	uint16 escan_sync_id_cntr;
 #endif

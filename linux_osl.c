@@ -2068,10 +2068,13 @@ osl_timer_main(ulong data)
 	}
 }
 
+/* In OSL timer callback API contxt is already passed as an arg,
+ * there is nothing to derive so just reusing the same.
+ */
 void *
-osl_timer_get_ctx(osl_timer_t *t)
+osl_timer_get_ctx(void *arg)
 {
-	return (t->arg);
+	return (arg);
 }
 
 /* timer apis */

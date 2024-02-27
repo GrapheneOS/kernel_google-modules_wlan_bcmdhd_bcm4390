@@ -325,7 +325,10 @@ typedef union bcm_event_msg_u {
 
 #define WLC_E_CSA_IGNORED		211	/* CSA IE is ignored */
 #define WLC_E_EDS_EVENT			212
-#define WLC_E_LAST			213	/* highest val + 1 for range checking */
+#define WLC_E_ICM			213	/* ICM: Intelligent Connection
+						 * Management has kicked in
+						 */
+#define WLC_E_LAST			214	/* highest val + 1 for range checking */
 
 
 /* define an API for getting the string name of an event */
@@ -1806,7 +1809,9 @@ typedef enum wl_mlo_link_info_opcode {
 	WL_MLO_LINK_INFO_OPCODE_ADD		= 1,	/* MLO links addition */
 	WL_MLO_LINK_INFO_OPCODE_DEL		= 2,	/* MLO links deletion */
 	WL_MLO_LINK_INFO_OPCODE_UPDATE		= 3,	/* Asynchronous Upate of MLO links */
-	WL_MLO_LINK_INFO_OPCODE_PREF_BAND	= 4	/* MLO preferred band */
+	WL_MLO_LINK_INFO_OPCODE_PREF_BAND	= 4,	/* MLO preferred band */
+	WL_MLO_LINK_INFO_OPCODE_RECONFIG_ADD	= 5,	/* Ap reconfig link addition */
+	WL_MLO_LINK_INFO_OPCODE_RECONFIG_DEL	= 6,	/* Ap reconfig link deletion */
 } wl_mlo_link_info_opcode_t;
 
 typedef enum wl_mlo_link_info_role {
@@ -1837,6 +1842,27 @@ typedef struct wl_mlo_link_info_event_v1 {
 	uint8				PAD[2];
 	wl_mlo_per_link_info_v1_t	link_info[];	    /* per link information */
 } wl_mlo_link_info_event_v1_t;
+
+/* =======ICM : Intelligent Connection Management ======== */
+/* Reason for sending ICM event */
+typedef enum wl_icm_reason {
+	WLC_E_ICM_REASON_SINGLE_LINK	= 1u,	/* Downgrade to single link */
+	WLC_E_ICM_REASON_DUAL_LINK	= 2u,	/* Downgrade to two link */
+} wl_icm_reason_t;
+
+
+/* ICM information (WLC_E_ICM) event data */
+#define WL_ICM_EVENT_VERSION_1	(1u)
+
+/* ICM information event structure */
+typedef struct wl_icm_event_v1 {
+	uint16			version;	/* structure version */
+	uint16			length;		/* length of this structure */
+	uint32			assoc_status;	/* Assoc reject status */
+	uint8			reason;		/* Reason for ICM */
+	uint8			PAD[3];
+
+} wl_icm_event_v1_t;
 
 /* ===== C2C event definitions ===== */
 #define C2C_EVENT_BUFFER_SIZE		1024u

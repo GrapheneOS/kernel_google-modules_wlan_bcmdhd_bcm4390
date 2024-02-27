@@ -65,12 +65,6 @@
 	((RADIO_PWRSAVE_MAJOR_VER << RADIO_PWRSAVE_MAJOR_VER_SHIFT)| RADIO_PWRSAVE_MINOR_VER)
 #endif /* SUPPORT_AP_RADIO_PWRSAVE */
 
-#ifdef WLTDLS
-#define TDLS_TUNNELED_PRB_REQ	"\x7f\x50\x6f\x9a\04"
-#define TDLS_TUNNELED_PRB_RESP	"\x7f\x50\x6f\x9a\05"
-#define TDLS_MAX_IFACE_FOR_ENABLE 1
-#endif /* WLTDLS */
-
 /* HE flag defines */
 #define WL_HE_FEATURES_HE_AP		0x8
 #define WL_HE_FEATURES_HE_P2P		0x20
@@ -132,11 +126,6 @@ extern s32 wl_cfg80211_handle_if_role_conflict(struct bcm_cfg80211 *cfg, wl_ifty
 #endif /* WL_IFACE_MGMT */
 
 extern s32 wl_get_vif_macaddr(struct bcm_cfg80211 *cfg, u16 wl_iftype, u8 *mac_addr);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0))
-extern s32 wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, const u8 *mac_addr, u16 wl_iftype);
-#else
-extern s32 wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, u8 *mac_addr, u16 wl_iftype);
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0) */
 extern s32 wl_cfgvif_del_if(struct bcm_cfg80211 *cfg, struct net_device *primary_ndev,
 	struct wireless_dev *wdev, char *name);
 
@@ -339,4 +328,7 @@ extern void wl_cfgvif_sta_multilink_config(struct bcm_cfg80211 *cfg, wl_assoc_st
 extern s32 wl_cfgvif_update_assoc_fail_status(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev, const wl_event_msg_t *e);
 #endif /* LINUX_VER >= 5.4 */
+extern s32 wl_cfgvif_interface_ops(struct bcm_cfg80211 *cfg,
+	struct net_device *ndev, s32 bsscfg_idx,
+	wl_iftype_t iftype, s32 del, u8 *addr);
 #endif /* _wl_cfgvif_h_ */
