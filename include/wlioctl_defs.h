@@ -2666,7 +2666,9 @@ enum {
 	WL_REINIT_RC_LAST,	/* DONOT use this any more, kept for legacy reasons */
 	WL_REINIT_RC_RADIO_CRASH	  = 55,
 	WL_REINIT_RC_BM_IDLE_FAIL_TO	  = 56, /* BM idle fail timeout */
-	WL_REINIT_RC_URB_CBM_ERROR	  = 57, /* URB CBM error. */
+	WL_REINIT_RC_URB_CBM_ERROR	  = 57, /* URB CBM error */
+	WL_REINIT_RC_TXE_SHARED_ERR	  = 58, /* TXE shared error */
+	WL_REINIT_RC_TXDMA_ERR		  = 59, /* Tx DMA errors */
 	WL_REINIT_RC_SUPPORTED_LAST	/* Use for app ONLY, DONOT use this in wlc code.
 					 * For wlc, use WL_REINIT_RC_VERSIONED_LAST
 					 */
@@ -2705,7 +2707,7 @@ enum {
 #define WLC_WITH_XTLV_CNT
 
 /* Number of xtlv info as required to calculate subcounter offsets */
-#define WL_CNT_XTLV_ID_NUM	14
+#define WL_CNT_XTLV_ID_NUM	15
 #define WL_TLV_IOV_VERSION_1	1u
 #define WL_TLV_IOV_VERSION_2	2u
 
@@ -2769,6 +2771,7 @@ enum wl_cnt_xtlv_id {
 	WL_CNT_XTLV_SLIM_SCAN_STATS = 0x100d,		/* Slim Scan stats */
 	WL_CNT_XTLV_DATA_BW_STATS = 0x100e,		/* corerev >= 89 DataBW stats */
 	WL_CNT_XTLV_MACST_TX_V4 = 0x100f,		/* corerev >= 88 ucode macstats V4 - tx */
+	WL_CNT_XTLV_MULTI_SCAN_STATS = 0x1010,		/* Multi Scan stats */
 	/* XLTVs in this gap are available for use */
 	/* scan aux core related additional counters */
 	WL_CNT_XTLV_SCANAUX_UCODE_V1 = 0x1012,
@@ -2975,6 +2978,9 @@ enum wl_ifstats_xtlv_id {
 	/* missed dtim eCounter */
 	WL_STATS_XTLV_MISSED_DTIM_COUNTER = 0x10D,
 
+	/* GCR-UR ecounters */
+	WL_STATS_XTLV_GCR_UR_ECOUNTERS = 0x10E,
+
 	/* Per-slice information
 	 * Per-interface reporting could also include slice specific data
 	 */
@@ -3067,6 +3073,22 @@ enum wl_ifstats_xtlv_id {
 	WL_STATS_XTLV_NDP_SESSION_STATUS = 0x602,
 	/* NAN disc frame status ecounters */
 	WL_STATS_XTLV_NAN_DISC_FRM_STATUS = 0x603
+};
+
+/* Sub-XTLV IDs for GCR-UR stats */
+enum wl_gcr_ur_xtlv_id {
+	/* Generix RX info */
+	WL_XTLV_GCR_UR_RX_INFO = 0x1,
+	/* RSSI histogram of received AMPDUs */
+	WL_XTLV_GCR_UR_RX_RSSI = 0x2,
+	/* SNR histogram of received AMPDUs */
+	WL_XTLV_GCR_UR_RX_SNR = 0x3,
+	/* MCS histogram of received AMPDUs */
+	WL_XTLV_GCR_UR_RX_MCS = 0x4,
+	/* NSS histogram of received AMPDUs */
+	WL_XTLV_GCR_UR_RX_NSS = 0x5,
+	/* BW histogram of received AMPDUs */
+	WL_XTLV_GCR_UR_RX_BW = 0x6
 };
 
 /* CAPEXT WL partition */

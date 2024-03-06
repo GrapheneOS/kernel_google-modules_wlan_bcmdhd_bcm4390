@@ -1692,6 +1692,7 @@ do_dhd_log_dump(dhd_pub_t *dhdp, log_dump_type_t *type)
 #endif /* DHD_DUMP_PCIE_RINGS */
 
 #ifdef DHD_MAP_PKTID_LOGGING
+	dhdp->enable_pktid_log_dump = TRUE;
 	/* dump pktid data for dma map */
 	len = dhd_get_pktid_map_logging_len(NULL, dhdp, TRUE);
 	if (len) {
@@ -2244,6 +2245,12 @@ dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd)
 
 	if (!dhdp) {
 		DHD_ERROR(("dhdp is NULL !\n"));
+		goto exit;
+	}
+
+	if (dhdp->memdump_type != DUMP_TYPE_CLEAR) {
+		DHD_ERROR(("%s: memdump_type=%d in progress, abort DUMP_TYPE_BY_SYSDUMP\n",
+			__FUNCTION__, dhdp->memdump_type));
 		goto exit;
 	}
 

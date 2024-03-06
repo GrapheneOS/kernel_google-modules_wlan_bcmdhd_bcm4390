@@ -287,7 +287,8 @@ typedef uint32 ratespec_bw_t;
 #define EHT_RSPEC(mcs, nss)	(WL_RSPEC_ENCODE_EHT | \
 				 (((nss) << WL_RSPEC_EHT_NSS_SHIFT) & WL_RSPEC_EHT_NSS_MASK) | \
 				 ((mcs) & WL_RSPEC_EHT_MCS_MASK))
-
+/* EHT Invalid rspec for non-last MPDU of an AMPDU */
+#define EHT_INVRSPEC	EHT_RSPEC(0xf, 0xf)
 
 #define LEGACY_RSPEC_DUP(rate, bw)	(WL_RSPEC_ENCODE_RATE | bw | \
 					((rate) & WL_RSPEC_LEGACY_RATE_MASK))

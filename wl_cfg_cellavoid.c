@@ -148,6 +148,36 @@ static void wl_cellavoid_do_csa_work(struct work_struct *work);
 static void wl_cellavoid_free_csa_info_list(wl_cellavoid_info_t *cellavoid_info);
 static int wl_cellavoid_set_cell_channels(struct bcm_cfg80211 *cfg, wl_cellavoid_param_t *param);
 
+bool
+wl_cellavoid_supported(struct bcm_cfg80211 *cfg)
+{
+	s32 err;
+	u8 buf_param[WLC_IOCTL_SMLEN] = {0};
+	u8 buf_resp[WLC_IOCTL_SMLEN] = {0};
+	bcm_iov_buf_t *iov_buf = (bcm_iov_buf_t *)buf_param;
+	bcm_iov_buf_t *iov_resp = NULL;
+	uint16 version = 0;
+
+	iov_buf->id = htod16(WL_CELL_AVOID_SUBCMD_VER);
+
+	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "cellavoid",
+			iov_buf, sizeof(bcm_iov_buf_t), buf_resp, WLC_IOCTL_SMLEN, NULL);
+	if (err == BCME_UNSUPPORTED) {
+		WL_ERR(("get ver failed, err %d\n", err));
+		return FALSE;
+	}
+	iov_resp = (bcm_iov_buf_t *)buf_resp;
+	version = *(uint16 *)iov_resp->data;
+	if (version != WL_CELL_AVOID_IOV_VERSION_1) {
+		WL_ERR(("version mismatch, version present:%d expected %d\n",
+				version, WL_CELL_AVOID_IOV_VERSION_1));
+		return FALSE;
+	}
+
+	WL_INFORM_MEM(("ver %d\n", version));
+	return TRUE;
+}
+
 /* Initialize context */
 int
 wl_cellavoid_init(struct bcm_cfg80211 *cfg)
@@ -307,6 +337,10 @@ wl_cellavoid_free_csa_info(void *cai, struct net_device *ndev)
 	wl_cellavoid_csa_info_t *csa_info, *next;
 	wl_cellavoid_info_t *cellavoid_info = cai;
 
+	if (!cellavoid_info) {
+		return;
+	}
+
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	list_for_each_entry_safe(csa_info, next, &cellavoid_info->csa_info_list, list) {
 		GCC_DIAGNOSTIC_POP();
@@ -383,6 +417,9 @@ wl_cellavoid_do_csa_work(struct work_struct *work)
 	GCC_DIAGNOSTIC_POP();
 
 	cellavoid_info = cfg->cellavoid_info;
+	if (!cellavoid_info) {
+		return;
+	}
 
 	mutex_lock(&cellavoid_info->sync);
 

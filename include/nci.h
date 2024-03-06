@@ -110,5 +110,7 @@ void nci_update_backplane_timeouts(const si_t *sih, bool enable, uint32 idm_time
 uint32 nci_get_coreaddr(const si_t *sih, uint coreidx);
 bool nci_is_backplane_logs_enabled(void);
 uint32 nci_get_curmap(struct nci_info *nci_info, uint coreidx);
+int nci_get_amni_slave_cfg_cc_reg_addrs(si_t *sih, volatile uint32 **idm_errstatus_addr,
+	volatile uint32 **idm_intstatus_addr);
 #endif /* SOCI_NCI_BUS */
 #endif /* _NCI_H */

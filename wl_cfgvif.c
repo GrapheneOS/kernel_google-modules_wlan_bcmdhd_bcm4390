@@ -130,6 +130,9 @@
 _Pragma("GCC diagnostic pop")
 #endif
 
+uint disable_ap_macrand = false;
+module_param(disable_ap_macrand, uint, 0660);
+
 /* SoftAP related parameters */
 #define DEFAULT_2G_SOFTAP_CHANNEL	1
 #define DEFAULT_2G_SOFTAP_CHANSPEC	0x1001
@@ -247,6 +250,9 @@ wl_cfgvif_del_if(struct bcm_cfg80211 *cfg, struct net_device *primary_ndev,
 	struct wireless_dev *wdev, char *ifname)
 {
 	int ret = BCME_OK;
+	struct net_info *iter, *next;
+	bool active_iface = FALSE;
+
 	mutex_lock(&cfg->if_sync);
 	ret = _wl_cfg80211_del_if(cfg, primary_ndev, wdev, ifname);
 	mutex_unlock(&cfg->if_sync);
@@ -254,13 +260,32 @@ wl_cfgvif_del_if(struct bcm_cfg80211 *cfg, struct net_device *primary_ndev,
 	if ((cfg->vif_count == 0) && primary_ndev &&
 		!(primary_ndev->flags & IFF_UP) &&
 		!(IS_CFG80211_STATIC_IF_ACTIVE(cfg)) &&
+#ifdef WL_NAN
+		(wl_cfgnan_is_enabled(cfg) == FALSE) &&
+#endif /* WL_NAN */
 		(wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_AP) == 0) &&
 		(wl_cfgvif_get_iftype_count(cfg, WL_IF_TYPE_STA) == 0)) {
 		/* DHD cleanup in case wlan0 down was already called but was not
 		* done due to a virtual interface still running
 		*/
-		WL_INFORM(("Calling dhd_stop for DHD cleanup as all interfaces are down\n"));
-		dhd_stop(primary_ndev);
+
+		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+		for_each_ndev(cfg, iter, next) {
+			GCC_DIAGNOSTIC_POP();
+			if (iter->ndev) {
+				WL_DBG_MEM(("iface:%s present. flags:0x%x\n",
+					iter->ndev->name, iter->ndev->flags));
+				if (iter->ndev->flags & IFF_UP) {
+					WL_DBG_MEM(("%s: interface active\n", iter->ndev->name));
+					active_iface = TRUE;
+				}
+			}
+		}
+
+		if (active_iface == FALSE) {
+			WL_INFORM(("Calling dhd_stop as all interfaces are down\n"));
+			dhd_stop(primary_ndev);
+		}
 	}
 
 	return ret;
@@ -927,84 +952,51 @@ wl_cfg80211_handle_if_role_conflict(struct bcm_cfg80211 *cfg,
 }
 #endif /* WL_IFACE_MGMT */
 
-s32
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0))
-wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, const u8 *mac_addr, u16 wl_iftype)
-#else
-wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, u8 *mac_addr, u16 wl_iftype)
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0) */
+static bool
+wl_dup_mac_exists(struct bcm_cfg80211 *cfg, u8 *mac_addr)
 {
-	struct net_device *ndev =  bcmcfg_to_prmry_ndev(cfg);
-	u16 org_toggle_bytes;
-	u16 cur_toggle_bytes;
-	u16 toggled_bit;
+	struct net_info *iter, *next;
+	struct ether_addr *p2p_dev_addr = wl_to_p2p_bss_macaddr(cfg, P2PAPI_BSSCFG_DEVICE);
 
-	if (!ndev || !mac_addr || ETHER_ISNULLADDR(mac_addr)) {
-		return -EINVAL;
-	}
-	WL_DBG(("%s:Mac addr" MACDBG "\n",
-			__FUNCTION__, MAC2STRDBG(mac_addr)));
-
-#if defined (SPECIFIC_MAC_GEN_SCHEME)
-	if ((wl_iftype == WL_IF_TYPE_P2P_DISC) ||
-		(wl_iftype == WL_IF_TYPE_P2P_GO) || (wl_iftype == WL_IF_TYPE_P2P_GC)) {
-		/* Avoid invoking release mac addr code for interfaces using
-		 * fixed mac addr.
-		 */
-		return BCME_OK;
-	}
-#else
-	if (wl_iftype == WL_IF_TYPE_P2P_DISC) {
-		return BCME_OK;
-	}
-#endif /* SPECIFIC_MAC_GEN_SCHEME */
-
-#ifdef WL_NAN
-	if (!((cfg->nancfg->mac_rand) && (wl_iftype == WL_IF_TYPE_NAN)))
-#endif /* WL_NAN */
-	{
-		/* Fetch last two bytes of mac address */
-		GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
-		org_toggle_bytes = ntoh16(*((u16 *)&ndev->dev_addr[4]));
-		cur_toggle_bytes = ntoh16(*((u16 *)&mac_addr[4]));
+	WL_DBG(("Enter\n"));
+	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
+	for_each_ndev(cfg, iter, next) {
 		GCC_DIAGNOSTIC_POP();
-
-		toggled_bit = (org_toggle_bytes ^ cur_toggle_bytes);
-		WL_DBG(("org_toggle_bytes:%04X cur_toggle_bytes:%04X\n",
-			org_toggle_bytes, cur_toggle_bytes));
-		if (toggled_bit & cfg->vif_macaddr_mask) {
-			/* This toggled_bit is marked in the used mac addr
-			 * mask. Clear it.
-			 */
-			cfg->vif_macaddr_mask &= ~toggled_bit;
-			WL_INFORM(("MAC address - " MACDBG " released. toggled_bit:%04X"
-				" vif_mask:%04X\n",
-				MAC2STRDBG(mac_addr), toggled_bit, cfg->vif_macaddr_mask));
-		} else {
-			WL_ERR(("MAC address - " MACDBG " not found in the used list."
-				" toggled_bit:%04x vif_mask:%04x\n", MAC2STRDBG(mac_addr),
-				toggled_bit, cfg->vif_macaddr_mask));
-			return -EINVAL;
+		if (iter->ndev &&
+			!memcmp(mac_addr, iter->ndev->dev_addr, ETH_ALEN)) {
+			WL_INFORM_MEM(("duplicate mac " MACDBG " exists for iface:%s\n",
+				MAC2STRDBG(mac_addr), iter->ndev->name));
+			return TRUE;
 		}
 	}
 
-	return BCME_OK;
+	/* check for netless interfaces like p2p, NAN NMI */
+	if (p2p_dev_addr &&
+		!memcmp(mac_addr, p2p_dev_addr, ETH_ALEN)) {
+		WL_INFORM_MEM(("duplicate mac " MACDBG " present for p2p disc\n",
+				MAC2STRDBG(mac_addr)));
+		return TRUE;
+	}
+
+#ifdef WL_NAN
+	if (cfg->nancfg &&
+		!memcmp(mac_addr, cfg->nancfg->nan_nmi_mac, ETH_ALEN)) {
+		WL_INFORM_MEM(("duplicate mac " MACDBG " present for NAN NMI\n",
+				MAC2STRDBG(mac_addr)));
+		return TRUE;
+	}
+#endif /* WL_NAN */
+
+	return FALSE;
 }
 
 s32
 wl_get_vif_macaddr(struct bcm_cfg80211 *cfg, u16 wl_iftype, u8 *mac_addr)
 {
 	struct ether_addr *p2p_dev_addr = wl_to_p2p_bss_macaddr(cfg, P2PAPI_BSSCFG_DEVICE);
-	struct net_device *ndev =  bcmcfg_to_prmry_ndev(cfg);
-	u16 toggle_mask;
-	u16 toggle_bit;
-	u16 toggle_bytes;
-	u16 used;
-	u32 offset = 0;
-	/* Toggle mask starts from MSB of second last byte */
-	u16 mask = 0x8000;
 	int i = 0;
 	bool rand_mac = false;
+	struct net_device *ndev = bcmcfg_to_prmry_ndev(cfg);
 
 	BCM_REFERENCE(i);
 	BCM_REFERENCE(rand_mac);
@@ -1012,92 +1004,57 @@ wl_get_vif_macaddr(struct bcm_cfg80211 *cfg, u16 wl_iftype, u8 *mac_addr)
 		return -EINVAL;
 	}
 
-#ifdef WL_NAN
-	rand_mac = cfg->nancfg->mac_rand;
-	if (wl_iftype == WL_IF_TYPE_NAN && rand_mac) {
-		/* ensure nmi != ndi */
-		do {
-			RANDOM_BYTES(mac_addr, ETHER_ADDR_LEN);
-			/* restore mcast and local admin bits to 0 and 1 */
-			ETHER_SET_UNICAST(mac_addr);
-			ETHER_SET_LOCALADDR(mac_addr);
-			i++;
-			if (i == NAN_RAND_MAC_RETRIES) {
-				break;
-			}
-		} while (eacmp(cfg->nancfg->nan_nmi_mac, mac_addr) == 0);
-
-		if (i == NAN_RAND_MAC_RETRIES) {
-			if (eacmp(cfg->nancfg->nan_nmi_mac, mac_addr) == 0) {
-				WL_ERR(("\nCouldn't generate rand NDI which != NMI\n"));
-				return BCME_NORESOURCE;
-			}
+	if (disable_ap_macrand && (wl_iftype == WL_IF_TYPE_AP)) {
+		eacopy(ndev->dev_addr, mac_addr);
+		ETHER_SET_UNICAST(mac_addr);
+		ETHER_SET_LOCALADDR(mac_addr);
+		/* if there is already a softap running, toggle one more bit */
+		if (DHD_OPMODE_SUPPORTED(cfg->pub, DHD_FLAG_HOSTAP_MODE)) {
+			WL_INFORM_MEM(("secondary AP case\n"));
+			mac_addr[4] ^= 0x80;
 		}
-		return BCME_OK;
+		WL_INFORM_MEM(("AP macrand disabled case\n"));
+		goto exit;
 	}
-#endif /* WL_NAN */
 
 	if ((wl_iftype == WL_IF_TYPE_P2P_DISC) && p2p_dev_addr &&
 		ETHER_IS_LOCALADDR(p2p_dev_addr)) {
 		/* If mac address is already generated return the mac */
-		(void)memcpy_s(mac_addr, ETH_ALEN, p2p_dev_addr->octet, ETH_ALEN);
-		return BCME_OK;
+		eacopy(&p2p_dev_addr->octet, mac_addr);
+		goto exit;
 	}
-	(void)memcpy_s(mac_addr, ETH_ALEN, ndev->dev_addr, ETH_ALEN);
-/*
- * VIF MAC address managment
- * P2P Device addres: Primary MAC with locally admin. bit set
- * P2P Group address/NAN NMI/Softap/NAN DPI: Primary MAC addr
- *    with local admin bit set and one additional bit toggled.
- * cfg->vif_macaddr_mask will hold the info regarding the mac address
- * released. Ensure to call wl_release_vif_macaddress to free up
- * the mac address.
- */
-#if defined (SPECIFIC_MAC_GEN_SCHEME)
-	if (wl_iftype == WL_IF_TYPE_P2P_DISC) {
-		mac_addr[0] |= 0x02;
-	} else if ((wl_iftype == WL_IF_TYPE_P2P_GO) || (wl_iftype == WL_IF_TYPE_P2P_GC)) {
-		mac_addr[0] |= 0x02;
-		mac_addr[4] ^= 0x80;
-	}
-#else
-	if (wl_iftype == WL_IF_TYPE_P2P_DISC) {
-		mac_addr[0] |= 0x02;
-	}
-#endif /* SEPCIFIC_MAC_GEN_SCHEME */
-	else {
-		/* For locally administered mac addresses, we keep the
-		 * OUI part constant and just work on the last two bytes.
-		 */
-		mac_addr[0] |= 0x02;
-		toggle_mask = cfg->vif_macaddr_mask;
-		toggle_bytes = ntoh16(*((u16 *)&mac_addr[4]));
-		do {
-			used = toggle_mask & mask;
-			if (!used) {
-				/* Use this bit position */
-				toggle_bit = mask >> offset;
-				toggle_bytes ^= toggle_bit;
-				cfg->vif_macaddr_mask |= toggle_bit;
-				WL_DBG(("toggle_bit:%04X toggle_bytes:%04X toggle_mask:%04X\n",
-					toggle_bit, toggle_bytes, cfg->vif_macaddr_mask));
-				/* Macaddress are stored in network order */
-				mac_addr[5] = *((u8 *)&toggle_bytes);
-				mac_addr[4] = *(((u8 *)&toggle_bytes + 1));
-				break;
-			}
 
-			/* Shift by one */
-			toggle_mask = toggle_mask << 0x1;
-			offset++;
-			if (offset > MAX_VIF_OFFSET) {
-				/* We have used up all macaddresses. Something wrong! */
-				WL_ERR(("Entire range of macaddress used up.\n"));
-				ASSERT(0);
-				break;
-			}
-		} while (true);
+#ifdef WL_NAN
+	if (wl_iftype == WL_IF_TYPE_NAN_NMI &&
+		!cfg->nancfg->mac_rand && !ETHER_IS_LOCALADDR(ndev->dev_addr)) {
+		/* if randmac not enforced and default I/F is not randomised,
+		 * use primary mac with local admin bit set
+		 */
+		eacopy(ndev->dev_addr, mac_addr);
+		ETHER_SET_UNICAST(mac_addr);
+		ETHER_SET_LOCALADDR(mac_addr);
+		WL_DBG(("Derive NMI from primary mac:" MACDBG "\n", MAC2STRDBG(ndev->dev_addr)));
+		goto exit;
 	}
+#endif /* WL_NAN */
+
+	do {
+		RANDOM_BYTES(mac_addr, ETHER_ADDR_LEN);
+		/* restore mcast and local admin bits to 0 and 1 */
+		ETHER_SET_UNICAST(mac_addr);
+		ETHER_SET_LOCALADDR(mac_addr);
+		i++;
+		if (i == WL_RAND_MAC_RETRIES) {
+			break;
+		}
+	} while (wl_dup_mac_exists(cfg, mac_addr));
+
+	if (i == WL_RAND_MAC_RETRIES) {
+		WL_ERR(("Couldn't generate unique macaddr\n"));
+		return BCME_NORESOURCE;
+	}
+
+exit:
 	WL_INFORM_MEM(("Get virtual I/F mac addr: "MACDBG"\n", MAC2STRDBG(mac_addr)));
 	return BCME_OK;
 }
@@ -1604,8 +1561,8 @@ wl_cfg80211_cleanup_virtual_ifaces(struct bcm_cfg80211 *cfg, bool rtnl_lock_reqd
 			if (!IS_CFG80211_STATIC_IF(cfg, iter->ndev))
 #endif /* WL_STATIC_IF */
 			{
-				dev_close(iter->ndev);
 				WL_INFORM(("Cleaning up iface:%s \n", iter->ndev->name));
+				dev_close(iter->ndev);
 #if defined(WLAN_ACCEL_BOOT)
 				/* Trigger force reg_on to ensure clean up of virtual interface
 				* states in FW for any residual interface states, casued due to
@@ -2304,6 +2261,15 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 #endif /* WL_UNII4_CHAN */
 			}
 		}
+	} else {
+		WL_DBG_MEM(("Non concurrency case chanspec 0x%x\n", chspec));
+		if ((CHSPEC_IS6G(chspec) && wl_is_6g_restricted(cfg, chspec)) ||
+			(CHSPEC_IS5G(chspec) && wl_is_5g_restricted(cfg, chspec)) ||
+			(CHSPEC_IS2G(chspec) && wl_is_2g_restricted(cfg, chspec))) {
+			err = BCME_BADCHAN;
+			WL_ERR(("Restricted chanspec 0x%x, failing softAP\n", chspec));
+			return err;
+		}
 	}
 
 	err = wl_get_bandwidth_cap(dev, CHSPEC_BAND(chspec), &bw);
@@ -2334,7 +2300,7 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	}
 
 #ifdef WL_CELLULAR_CHAN_AVOID
-	if (!CHSPEC_IS6G(chspec)) {
+	if (!CHSPEC_IS6G(chspec) && cfg->cellavoid_info) {
 		wl_cellavoid_sync_lock(cfg);
 		cur_chspec =
 			wl_cellavoid_find_widechspec_fromchspec(cfg->cellavoid_info, chspec, dev);
@@ -9415,7 +9381,8 @@ wl_cfgvif_apply_default_keep_alive(struct net_device *ndev, struct bcm_cfg80211 
 	 * dongle shall reject a mkeep_alive request.
 	 */
 	if (!IS_STA_IFACE(ndev_to_wdev(ndev))) {
-		return res;
+		WL_ERR(("%s not a STA interface\n", ndev->name));
+		return BCME_ERROR;
 	}
 
 	/* Request the specified ID */
@@ -9542,3 +9509,132 @@ wl_cfgvif_update_assoc_fail_status(struct bcm_cfg80211 *cfg, struct net_device *
 	return 0;
 }
 #endif /* LINUX_VER >= 5.4 */
+
+s32
+wl_cfgvif_to_fw_iftype(wl_iftype_t iftype)
+{
+	s32 ret = BCME_ERROR;
+
+	switch (iftype) {
+		case WL_IF_TYPE_AP:
+			ret = WL_INTERFACE_TYPE_AP;
+			break;
+		case WL_IF_TYPE_STA:
+			ret = WL_INTERFACE_TYPE_STA;
+			break;
+		case WL_IF_TYPE_NAN_NMI:
+		case WL_IF_TYPE_NAN:
+			ret = WL_INTERFACE_TYPE_NAN;
+			break;
+		case WL_IF_TYPE_P2P_DISC:
+			ret = WL_INTERFACE_TYPE_P2P_DISC;
+			break;
+		case WL_IF_TYPE_P2P_GO:
+			ret = WL_INTERFACE_TYPE_P2P_GO;
+			break;
+		case WL_IF_TYPE_P2P_GC:
+			ret = WL_INTERFACE_TYPE_P2P_GC;
+			break;
+
+
+		default:
+			WL_ERR(("Unsupported type:%d \n", iftype));
+			ret = -EINVAL;
+			break;
+	}
+	return ret;
+}
+
+s32
+wl_cfgvif_interface_ops(struct bcm_cfg80211 *cfg,
+	struct net_device *ndev, s32 bsscfg_idx,
+	wl_iftype_t cfg_iftype, s32 del, u8 *addr)
+{
+	s32 ret;
+	struct wl_interface_create_v2 iface;
+	wl_interface_create_v3_t iface_v3;
+	struct wl_interface_info_v1 *info;
+	wl_interface_info_v2_t *info_v2;
+	uint32 ifflags = 0;
+	bool use_iface_info_v2 = false;
+	u8 ioctl_buf[WLC_IOCTL_SMLEN];
+	s32 iftype;
+
+	if (del) {
+		ret = wldev_iovar_setbuf(ndev, "interface_remove",
+			NULL, 0, ioctl_buf, sizeof(ioctl_buf), NULL);
+		if (unlikely(ret))
+			WL_ERR(("Interface remove failed!! ret %d\n", ret));
+		return ret;
+	}
+
+	/* Interface create */
+	bzero(&iface, sizeof(iface));
+	/*
+	 * flags field is still used along with iftype inorder to support the old version of the
+	 * FW work with the latest app changes.
+	 */
+
+	iftype = wl_cfgvif_to_fw_iftype(cfg_iftype);
+	if (iftype < 0) {
+		return -ENOTSUPP;
+	}
+
+	if (addr) {
+		ifflags |= WL_INTERFACE_MAC_USE;
+		WL_INFORM_MEM(("use macaddr:" MACDBG " for i/f create\n",
+			MAC2STRDBG(addr)));
+	}
+
+	/* Pass ver = 0 for fetching the interface_create iovar version */
+	ret = wldev_iovar_getbuf(ndev, "interface_create",
+		&iface, sizeof(struct wl_interface_create_v2),
+		ioctl_buf, sizeof(ioctl_buf), NULL);
+	if (ret == BCME_UNSUPPORTED) {
+		WL_ERR(("interface_create iovar not supported\n"));
+		return ret;
+	} else if ((ret == 0) && *((uint32 *)ioctl_buf) == WL_INTERFACE_CREATE_VER_3) {
+		WL_DBG(("interface_create version 3. flags:0x%x \n", ifflags));
+		use_iface_info_v2 = true;
+		bzero(&iface_v3, sizeof(wl_interface_create_v3_t));
+		iface_v3.ver = WL_INTERFACE_CREATE_VER_3;
+		iface_v3.iftype = iftype;
+		iface_v3.flags = ifflags;
+		if (addr) {
+			memcpy(&iface_v3.mac_addr.octet, addr, ETH_ALEN);
+		}
+		ret = wldev_iovar_getbuf(ndev, "interface_create",
+			&iface_v3, sizeof(wl_interface_create_v3_t),
+			ioctl_buf, sizeof(ioctl_buf), NULL);
+	} else {
+		/* On any other error, attempt with iovar version 2 */
+		WL_DBG(("interface_create version 2. get_ver:%d ifflags:0x%x\n", ret, ifflags));
+		iface.ver = WL_INTERFACE_CREATE_VER_2;
+		iface.iftype = iftype;
+		iface.flags = ifflags;
+		if (addr) {
+			memcpy(&iface.mac_addr.octet, addr, ETH_ALEN);
+		}
+		ret = wldev_iovar_getbuf(ndev, "interface_create",
+			&iface, sizeof(struct wl_interface_create_v2),
+			ioctl_buf, sizeof(ioctl_buf), NULL);
+	}
+
+	if (unlikely(ret)) {
+		WL_ERR(("Interface create failed!! ret %d\n", ret));
+		return ret;
+	}
+
+	/* success case */
+	if (use_iface_info_v2 == true) {
+		info_v2 = (wl_interface_info_v2_t *)ioctl_buf;
+		ret = info_v2->bsscfgidx;
+	} else {
+		/* Use v1 struct */
+		info = (struct wl_interface_info_v1 *)ioctl_buf;
+		ret = info->bsscfgidx;
+	}
+
+	WL_DBG(("wl interface create success!! bssidx:%d \n", ret));
+	return ret;
+}

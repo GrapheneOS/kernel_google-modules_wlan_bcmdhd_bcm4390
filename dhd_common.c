@@ -1392,6 +1392,12 @@ dhd_dump_txrx_stats(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	bcm_bprintf(strbuf, "tx_cso_cnt %lu tx_nocso_cnt %lu\n",
 	            dhdp->tx_cso_cnt, dhdp->tx_nocso_cnt);
 #endif
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+	bcm_bprintf(strbuf, "badaddr_pkt_cnt %lu "
+		"badaddr_pkt_copy_fail_cnt %lu\n",
+		dhdp->badaddr_pkt_cnt, dhdp->badaddr_pkt_copy_fail_cnt);
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
+
 	/* ----------------------------------------------------- */
 
 	/* RX Stats -- add any Rx counters in this section only */
@@ -2862,6 +2868,10 @@ dhd_doiovar(dhd_pub_t *dhd_pub, int ifidx, const bcm_iovar_t *vi, uint32 actioni
 #ifdef RX_CSO
 		dhd_pub->rx_cso_cnt = dhd_pub->rx_nocso_cnt = 0;
 #endif /* RX_CSO */
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+		dhd_pub->badaddr_pkt_cnt = 0;
+		dhd_pub->badaddr_pkt_copy_fail_cnt = 0;
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
 		dhd_clear_if_stats(dhd_pub);
 		bzero(&dhd_pub->dstats, sizeof(dhd_pub->dstats));
 		dhd_bus_clearcounts(dhd_pub);
@@ -5585,6 +5595,14 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 			break;
 		}
 #endif /* WL_MLO */
+	case WLC_E_ICM:
+		if (datalen >= sizeof(wl_icm_event_v1_t)) {
+			wl_icm_event_v1_t *info = (wl_icm_event_v1_t *)event_data;
+			DHD_EVENT(("MACEVENT: %s %d, ver:%d reason:%d assoc_status:%d "
+				"ifidx:%d cfgidx:%d\n", event_name, event_type, info->version,
+				(int)info->reason, (int)info->assoc_status, ifidx, bsscfgidx));
+		}
+		break;
 	default:
 		DHD_INFO(("MACEVENT: %s %d, MAC %s, status %d, reason %d, auth %d\n",
 		       event_name, event_type, eabuf, (int)status, (int)reason,
@@ -8314,7 +8332,7 @@ err:
 
 int
 dhd_download_2_dongle(dhd_pub_t	*dhd, char *iovar, uint16 flag, uint16 dload_type,
-	unsigned char *dload_buf, int len)
+	unsigned char *dload_buf, int len, int ifidx)
 {
 	struct wl_dload_data *dload_ptr = (struct wl_dload_data *)dload_buf;
 	int err = 0;
@@ -8340,24 +8358,38 @@ dhd_download_2_dongle(dhd_pub_t	*dhd, char *iovar, uint16 flag, uint16 dload_typ
 	}
 
 	err = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovar_buf,
-			iovar_len, IOV_SET, 0);
+			iovar_len, IOV_SET, ifidx);
 
 	return err;
 }
 
+/*
+ * dhd_download_blob - downloads multiple segments of iovar buffer
+ * to the fw, useful for iovars having bufsize > MSGBUF_IOCTL_MAX_RQSTLEN
+ * NOTE:- This function should not be called with dhd_os_proto_block
+ * already taken !! Because this will internally call dhd_download_2_dongle,
+ * which in turn calls dhd_wl_ioctl_cmd that again tries to acquire
+ * dhd_os_proto_block, leading to a hang.
+ */
 int
 dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
-		uint32 len, char *iovar)
+	uint32 len, char *iovar, int ifidx)
 
 {
 	int chunk_len;
-#if !defined(__linux__) || defined(DHD_LINUX_STD_FW_API)
 	int cumulative_len = 0;
-#endif /* !__linux__ || DHD_LINUX_STD_FW_API */
 	int size2alloc;
-	unsigned char *new_buf;
+	unsigned char *new_buf = NULL;
 	int err = 0, data_offset;
 	uint16 dl_flag = DL_BEGIN;
+	uint16 dl_type = DL_TYPE_CLM;
+	bool split_iovar = FALSE;
+
+	if (iovar && strncmp(iovar, "txcapload", 9) != 0 &&
+		strncmp(iovar, "clmload", 7) != 0) {
+		split_iovar = TRUE;
+		dl_type = DL_TYPE_DRRBLOB;
+	}
 
 	data_offset = OFFSETOF(wl_dload_data_t, data);
 	size2alloc = data_offset + MAX_CHUNK_LEN;
@@ -8365,46 +8397,70 @@ dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
 
 	if ((new_buf = (unsigned char *)MALLOCZ(dhd->osh, size2alloc)) != NULL) {
 		do {
+			if (split_iovar) {
+				/* there is no file handling in split iovar case */
+				if (len >= MAX_CHUNK_LEN) {
+					chunk_len = MAX_CHUNK_LEN;
+				} else {
+					chunk_len = len;
+				}
+				err = memcpy_s(new_buf + data_offset, MAX_CHUNK_LEN,
+					buf + cumulative_len, chunk_len);
+				if (err) {
+					DHD_ERROR(("%s: failed to copy chunk at len %u !\n",
+						__FUNCTION__, cumulative_len));
+					err = BCME_ERROR;
+					goto exit;
+				}
+				cumulative_len += chunk_len;
+			} else {
 #if !defined(__linux__) || defined(DHD_LINUX_STD_FW_API)
-			if (len >= MAX_CHUNK_LEN)
-				chunk_len = MAX_CHUNK_LEN;
-			else
-				chunk_len = len;
-
-			memcpy(new_buf + data_offset, buf + cumulative_len, chunk_len);
-			cumulative_len += chunk_len;
+				if (len >= MAX_CHUNK_LEN) {
+					chunk_len = MAX_CHUNK_LEN;
+				} else {
+					chunk_len = len;
+				}
+				err = memcpy_s(new_buf + data_offset, MAX_CHUNK_LEN,
+					buf + cumulative_len, chunk_len);
+				if (err) {
+					DHD_ERROR(("%s: failed to copy chunk at len %u !\n",
+						__FUNCTION__, cumulative_len));
+					err = BCME_ERROR;
+					goto exit;
+				}
+				cumulative_len += chunk_len;
 #else
-			chunk_len = dhd_os_get_image_block((char *)(new_buf + data_offset),
-				MAX_CHUNK_LEN, buf);
-			if (chunk_len < 0) {
-				DHD_ERROR(("%s: dhd_os_get_image_block failed (%d)\n",
-					__FUNCTION__, chunk_len));
-				err = BCME_ERROR;
-				goto exit;
-			}
+				chunk_len = dhd_os_get_image_block((char *)(new_buf + data_offset),
+					MAX_CHUNK_LEN, buf);
+				if (chunk_len < 0) {
+					DHD_ERROR(("%s: dhd_os_get_image_block failed (%d)\n",
+						__FUNCTION__, chunk_len));
+					err = BCME_ERROR;
+					goto exit;
+				}
 #endif /* !__linux__ || DHD_LINUX_STD_FW_API */
-			if (len - chunk_len == 0)
+			}
+			if (len - chunk_len == 0) {
 				dl_flag |= DL_END;
+			}
 
-			err = dhd_download_2_dongle(dhd, iovar, dl_flag, DL_TYPE_CLM,
-				new_buf, data_offset + chunk_len);
+			err = dhd_download_2_dongle(dhd, iovar, dl_flag, dl_type,
+				new_buf, data_offset + chunk_len, ifidx);
 
 			dl_flag &= ~DL_BEGIN;
 
 			len = len - chunk_len;
 		} while ((len > 0) && (err == 0));
-#if !defined(__linux__) || defined(DHD_LINUX_STD_FW_API)
-		MFREE(dhd->osh, new_buf, size2alloc);
-#endif /* !__linux__ || DHD_LINUX_STD_FW_API */
 	} else {
+		DHD_ERROR(("%s: Unable to alloc %u bytes of mem!\n", __FUNCTION__,
+			size2alloc));
 		err = BCME_NOMEM;
 	}
-#if defined(__linux__) && !defined(DHD_LINUX_STD_FW_API)
+
 exit:
 	if (new_buf) {
 		MFREE(dhd->osh, new_buf, size2alloc);
 	}
-#endif /* __linux__ && !DHD_LINUX_STD_FW_API */
 	return err;
 }
 
@@ -8464,7 +8520,7 @@ dhd_download_blob_cached(dhd_pub_t *dhd, char *file_path,
 		}
 
 		ret = dhd_download_2_dongle(dhd, iovar, dl_flag, DL_TYPE_CLM,
-			dnld_buf, data_offset + chunk_len);
+			dnld_buf, data_offset + chunk_len, 0);
 
 		dl_flag &= ~DL_BEGIN;
 		len = len - chunk_len;
@@ -8664,7 +8720,7 @@ dhd_apply_default_txcap(dhd_pub_t  *dhd, char *txcappath)
 	if ((len > 0) && (len < MAX_TXCAP_BUF_SIZE) && memblock) {
 		/* Found blob file. Download the file */
 		DHD_TRACE(("txcap file download from %s \n", txcap_blob_path));
-		err = dhd_download_blob(dhd, (unsigned char*)memblock, len, "txcapload");
+		err = dhd_download_blob(dhd, (unsigned char*)memblock, len, "txcapload", 0);
 		if (err) {
 			DHD_ERROR(("%s: TXCAP download failed err=%d\n", __FUNCTION__, err));
 			/* Retrieve clmload_status and print */
@@ -8834,7 +8890,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 
 		/* Found blob file. Download the file */
 		DHD_TRACE(("clm file download from %s \n", clm_blob_path));
-		err = dhd_download_blob(dhd, (unsigned char*)memblock, len, "clmload");
+		err = dhd_download_blob(dhd, (unsigned char*)memblock, len, "clmload", 0);
 		if (err) {
 			DHD_ERROR(("%s: CLM download failed err=%d\n", __FUNCTION__, err));
 			/* Retrieve clmload_status and print */

@@ -580,6 +580,34 @@ bcm_pack_xtlv_buf_from_mem(uint8 **tlv_buf, uint16 *buflen, const xtlv_desc_t *i
 }
 
 /*
+ * pack xtlv according to xtlv_desc_t and return the idx where buffer ran out
+ */
+int
+bcm_pack_xtlv_buf_from_mem_index(uint8 **tlv_buf, uint16 *buflen, const xtlv_desc_t *items,
+        bcm_xtlv_opts_t opts, uint16 *stopped_at)
+{
+	int res = BCME_OK;
+	uint8 *ptlv = *tlv_buf;
+	uint16 idx = 0;
+
+	while (items->type != 0) {
+		if (items->len && items->ptr) {
+			res = bcm_pack_xtlv_entry(&ptlv, buflen, items->type,
+				items->len, items->ptr, opts);
+			if (res != BCME_OK) {
+				*stopped_at = idx;
+				break;
+			}
+		}
+		idx++;
+		items++;
+	}
+
+	*tlv_buf = ptlv; /* update the external pointer */
+	return res;
+}
+
+/*
  *  unpack xtlv buffer to memory according to xtlv_desc_t
  *
  */

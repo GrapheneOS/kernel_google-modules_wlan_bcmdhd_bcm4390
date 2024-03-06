@@ -1725,6 +1725,9 @@ pktpool_t *pktpool_shared = NULL;
 pktpool_t *pktpool_shared_lfrag = NULL;
 pktpool_t *pktpool_shared_alfrag = NULL;
 pktpool_t *pktpool_shared_alfrag_data = NULL;
+#ifdef BCM_ALFRAG_MDATA
+pktpool_t *pktpool_shared_alfrag_mdata = NULL;
+#endif /* BCM_ALFRAG_MDATA */
 #endif /* BCMFRAGPOOL */
 
 #ifdef BCMRESVFRAGPOOL
@@ -1813,6 +1816,14 @@ BCMATTACHFN(hnd_pktpool_init)(osl_t *osh)
 		err = BCME_NOMEM;
 		goto error;
 	}
+#ifdef BCM_ALFRAG_MDATA
+	pktpool_shared_alfrag_mdata = MALLOCZ(osh, sizeof(pktpool_t));
+	if (pktpool_shared_alfrag_mdata == NULL) {
+		ASSERT(0);
+		err = BCME_NOMEM;
+		goto error;
+	}
+#endif /* BCM_ALFRAG_MDATA */
 #endif /* BCMCTFRAGPOOL */
 
 #if defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)
@@ -1892,6 +1903,16 @@ BCMATTACHFN(hnd_pktpool_init)(osl_t *osh)
 		goto error;
 	}
 	pktpool_setmaxlen(pktpool_shared_alfrag_data, SHARED_ALFRAG_DATA_POOL_LEN);
+#ifdef BCM_ALFRAG_MDATA
+	n = 0;
+	if ((err = pktpool_init(osh, pktpool_shared_alfrag_mdata, &n, TXPKTALFRAG_MDATA_BUFSZ, TRUE,
+			lbuf_alfrag_data, FALSE, 0, SHARED_ALFRAG_MDATA_POOL_LEN >> 3))
+			!= BCME_OK) {
+		ASSERT(0);
+		goto error;
+	}
+	pktpool_setmaxlen(pktpool_shared_alfrag_mdata, SHARED_ALFRAG_MDATA_POOL_LEN);
+#endif /* BCM_ALFRAG_MDATA */
 
 #endif /* BCMCTFRAGPOOL */
 
@@ -2046,6 +2067,16 @@ BCMATTACHFN(hnd_pktpool_deinit)(osl_t *osh)
 		hnd_free(pktpool_shared_alfrag_data);
 		pktpool_shared_alfrag_data = (pktpool_t *)NULL;
 	}
+#ifdef BCM_ALFRAG_MDATA
+	if (pktpool_shared_alfrag_mdata != NULL) {
+		if (pktpool_shared_alfrag_mdata->inited) {
+			pktpool_deinit(osh, pktpool_shared_alfrag_mdata);
+		}
+
+		hnd_free(pktpool_shared_alfrag_mdata);
+		pktpool_shared_alfrag_mdata = (pktpool_t *)NULL;
+	}
+#endif /* BCM_ALFRAG_MDATA */
 #endif /* BCMFRAGPOOL */
 
 #if defined(BCMRESVFRAGPOOL) && !defined(BCMRESVFRAGPOOL_DISABLED)
@@ -2116,6 +2147,11 @@ hnd_pktpool_refill(bool minimal)
 	if (POOL_ENAB(pktpool_shared_alfrag_data)) {
 		pktpool_fill(pktpool_osh, pktpool_shared_alfrag_data, minimal);
 	}
+#ifdef BCM_ALFRAG_MDATA
+	if (POOL_ENAB(pktpool_shared_alfrag_mdata)) {
+		pktpool_fill(pktpool_osh, pktpool_shared_alfrag_mdata, minimal);
+	}
+#endif /* BCM_ALFRAG_MDATA */
 #endif /* BCMFRAGPOOL */
 
 /* rx fragpool reclaim */

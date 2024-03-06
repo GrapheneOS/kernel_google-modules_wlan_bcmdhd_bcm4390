@@ -5961,6 +5961,8 @@ dhd_deferred_work_rte_log_time_sync(void *handle, void *event_info, u8 event)
 }
 #endif /* DHD_H2D_LOG_TIME_SYNC */
 
+#define APF_PKT_DLOAD "apf_pkt_dload"
+
 int dhd_ioctl_process(dhd_pub_t *pub, int ifidx, dhd_ioctl_t *ioc, void *data_buf)
 {
 	int bcmerror = BCME_OK;
@@ -6062,9 +6064,14 @@ int dhd_ioctl_process(dhd_pub_t *pub, int ifidx, dhd_ioctl_t *ioc, void *data_bu
 		bcmerror = BCME_UNSUPPORTED;
 		goto done;
 	}
-
-	/* this typecast is BAD !!! */
-	bcmerror = dhd_wl_ioctl(pub, ifidx, (wl_ioctl_t *)ioc, data_buf, buflen);
+	/* PKT_FILTER_ADD iovar needs special 'split' handling */
+	if (ioc->cmd == WLC_SET_VAR && data_buf != NULL &&
+		!strncmp(APF_PKT_DLOAD, data_buf, strlen(APF_PKT_DLOAD))) {
+		bcmerror = dhd_download_blob(pub, (uint8 *)data_buf + strlen(APF_PKT_DLOAD) + 1,
+			buflen - (strlen(APF_PKT_DLOAD) + 1), APF_PKT_DLOAD, ifidx);
+	} else {
+		bcmerror = dhd_wl_ioctl(pub, ifidx, (wl_ioctl_t *)ioc, data_buf, buflen);
+	}
 
 #ifdef REPORT_FATAL_TIMEOUTS
 	/* ensure that the timeouts/flags are started/set after the ioctl returns success */
@@ -17652,7 +17659,7 @@ _dhd_apf_add_filter(struct net_device *ndev, uint32 filter_id, u8* program, uint
 	char *buf = NULL;
 	u32 cmd_len, buf_len, max_len;
 	int ifidx, ret = BCME_OK;
-	char cmd[] = "pkt_filter_add";
+	char cmd[] = APF_PKT_DLOAD;
 
 	ifidx = dhd_net2idx(dhd, ndev);
 	if (ifidx == DHD_BAD_IF) {
@@ -17705,7 +17712,8 @@ _dhd_apf_add_filter(struct net_device *ndev, uint32 filter_id, u8* program, uint
 		goto exit;
 	}
 
-	ret = dhd_wl_ioctl_cmd(dhdp, WLC_SET_VAR, buf, buf_len, TRUE, ifidx);
+	ret = dhd_download_blob(dhdp, (uint8 *)buf + strlen(cmd) + 1,
+			buf_len - (strlen(cmd) + 1), cmd, ifidx);
 	if (unlikely(ret)) {
 		DHD_ERROR(("%s: failed to add APF filter, id=%d, ret=%d\n", __FUNCTION__,
 			filter_id, ret));
@@ -20172,18 +20180,23 @@ void dhd_schedule_memdump(dhd_pub_t *dhdp, uint8 *buf, uint32 size)
 		(dhdp->memdump_type == DUMP_TYPE_SMMU_FAULT) ||
 		(dhdp->memdump_type == DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF))
 	{
+		/* dhd_mem_dump will clear memdump_type, so cache it */
+		uint32 memdump_type = dhdp->memdump_type;
 		dhd_info->scheduled_memdump = FALSE;
 		dhd_mem_dump((void *)dhdp->info, (void *)dump, 0);
 #ifdef DHD_LOG_DUMP
 		if (OSL_ATOMIC_READ(dhdp->osh, &reboot_in_progress) >= 0) {
 			DHD_PRINT(("%s: reboot in progress, "
 				"don't collect debug_dump\n", __FUNCTION__));
-		} else if ((dhdp->memdump_type != DUMP_TYPE_DONGLE_INIT_FAILURE) &&
-			(dhdp->memdump_type != DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF)) {
+		} else if ((memdump_type != DUMP_TYPE_DONGLE_INIT_FAILURE) &&
+			(memdump_type != DUMP_TYPE_DONGLE_TRAP_DURING_WIFI_ONOFF)) {
 			log_dump_type_t *flush_type = NULL;
-			/* for dongle init fail cases, 'dhd_mem_dump' does
-			 * not call 'dhd_log_dump', so call it here.
-			*/
+			/* for above cases in the outer if() condition,
+			 * 'dhd_mem_dump' does not call 'dhd_log_dump',
+			 * so call it here. For dongle init fail/trap cases
+			 * log_dump should not be called, as it sends iovar to
+			 * fw to flush preserve logs, which can cause further problems.
+			 */
 			flush_type = MALLOCZ(dhdp->osh,
 				sizeof(log_dump_type_t));
 			if (flush_type) {
@@ -20330,6 +20343,14 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		DHD_PRINT(("%s: fis_enab=%d collect_fis=%d fis_fw_triggered=%d\n",
 			__FUNCTION__, fis_enab,	dhdp->collect_fis, fis_fw_triggered));
 
+#ifdef DHD_SDTC_ETB_DUMP
+		DHD_PRINT(("%s: collect_sdtc = %d\n", __FUNCTION__, dhdp->collect_sdtc));
+		if (dhdp->collect_sdtc) {
+			dhd_sdtc_etb_dump(dhdp);
+			dhdp->collect_sdtc = FALSE;
+		}
+#endif /* DHD_SDTC_ETB_DUMP */
+
 		/* Collect FIS provided dongle supports it, for the
 		 * following cases:
 		 * 1. module param 'fis_enab' is set AND of
@@ -20377,9 +20398,6 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 						set_linkdwn_cto = TRUE;
 					}
 				}
-#ifdef DHD_SDTC_ETB_DUMP
-				dhdp->collect_sdtc = TRUE;
-#endif /* DHD_SDTC_ETB_DUMP */
 			}
 			/* link down is not set from cto recovery handler as
 			 * it will prevent FIS dump collection. So set it here
@@ -20402,14 +20420,6 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		}
 	}
 #endif /* DHD_SSSR_DUMP */
-#ifdef DHD_SDTC_ETB_DUMP
-	DHD_PRINT(("%s: collect_sdtc = %d\n", __FUNCTION__, dhdp->collect_sdtc));
-
-	if (dhdp->collect_sdtc) {
-		dhd_sdtc_etb_dump(dhdp);
-		dhdp->collect_sdtc = FALSE;
-	}
-#endif /* DHD_SDTC_ETB_DUMP */
 #ifdef DHD_SSSR_DUMP
 	dhdp->fis_triggered = FALSE;
 #endif /* DHD_SSSR_DUMP */
@@ -20682,6 +20692,11 @@ exit:
 		dhdp->hang_was_pending = 0;
 	}
 #endif /* OEM_ANDROID */
+
+	/* Clear memdump_type and check for the same in logdump
+	 * to avoid racing with other contexts
+	 */
+	dhdp->memdump_type = DUMP_TYPE_CLEAR;
 
 	DHD_PRINT(("%s: EXIT \n", __FUNCTION__));
 

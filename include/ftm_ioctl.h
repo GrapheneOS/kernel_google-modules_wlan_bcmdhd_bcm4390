@@ -605,6 +605,21 @@ enum wl_ftm_az_rtt_sample_flags {
 };
 typedef uint16 wl_ftm_az_rtt_sample_flags_t;
 
+/* 802.11az-2022 Table 9-322al */
+/* WL_FTM_TLV_ID_FORMAT_BW */
+enum wl_ftm_ranging_format_bw {
+	WL_FTM_FMT_BW_HE_20		= 0u,
+	WL_FTM_FMT_BW_HE_40		= 1u,
+	WL_FTM_FMT_BW_HE_80		= 2u,
+	WL_FTM_FMT_BW_HE_80_80		= 3u,
+	WL_FTM_FMT_BW_HE_2RF_160	= 4u,
+	WL_FTM_FMT_BW_HE_1RF_160	= 5u,
+	/* determined by ranging chanspec configuration */
+	WL_FTM_FMT_BW_AUTO		= 255u
+};
+typedef uint8 wl_ftm_ranging_format_bw_t;
+
+
 /* WL_FTM_TLV_ID_AZ_RTT_SAMPLE_V1
  * 11az RTT sample from a measurement
  */
@@ -681,6 +696,9 @@ typedef struct wl_ftm_az_rtt_result_v2 {
 	uint8				r2i_ltf_rep;	/* responder to initiator ltf repetitions */
 	uint16				num_sample;	/* number of rtt sample */
 	uint16				sample_fmt;	/* format of rtt sample (TLV ID) */
+	chanspec_t			chanspec;	/* ranging chanspec */
+	wl_ftm_ranging_format_bw_t	format_bw;	/* format bw used for ranging */
+	uint8				pad[3];
 	uint8				rtt_samples[];	/* optional variable length fields */
 } wl_ftm_az_rtt_result_v2_t;
 

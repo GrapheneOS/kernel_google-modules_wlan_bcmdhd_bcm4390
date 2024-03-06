@@ -30,6 +30,7 @@
 #define MAX_AP_INTERFACE	2
 #define MAX_STA_INTERFACE	2
 
+extern bool wl_cellavoid_supported(struct bcm_cfg80211 *cfg);
 extern int wl_cellavoid_init(struct bcm_cfg80211 *cfg);
 extern void wl_cellavoid_deinit(struct bcm_cfg80211 *cfg);
 extern int wl_cellavoid_reinit(struct bcm_cfg80211 *cfg);

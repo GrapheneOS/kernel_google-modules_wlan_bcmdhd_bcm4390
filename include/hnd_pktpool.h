@@ -286,6 +286,10 @@ extern pktpool_t *pktpool_shared_lfrag;
 extern pktpool_t *pktpool_shared_alfrag;
 #define SHARED_ALFRAG_DATA_POOL	(pktpool_shared_alfrag_data)
 extern pktpool_t *pktpool_shared_alfrag_data;
+#ifdef BCM_ALFRAG_MDATA
+#define SHARED_ALFRAG_MDATA_POOL	(pktpool_shared_alfrag_mdata)
+extern pktpool_t *pktpool_shared_alfrag_mdata;
+#endif /* BCM_ALFRAG_MDATA */
 #endif /* BCMFRAGPOOL */
 
 #ifdef BCMRESVFRAGPOOL
