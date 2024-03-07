@@ -71,6 +71,10 @@ extern uint16 dhd_prot_get_h2d_rx_post_active(dhd_pub_t *dhd);
 extern uint16 dhd_prot_get_d2h_rx_cpln_active(dhd_pub_t *dhd);
 extern void dhdpcie_cto_recovery_handler(dhd_pub_t *dhd);
 extern void dhdpcie_quirks_after_prot_init(dhd_pub_t *dhd);
+extern uint dhd_bus_db0_addr_get(struct dhd_bus *bus);
+extern uint dhd_bus_db0_addr_2_get(struct dhd_bus *bus);
+extern uint dhd_bus_db1_addr_get(struct dhd_bus *bus);
+extern uint dhd_bus_db1_addr_3_get(struct dhd_bus *bus);
 #endif /* BCMPCIE */
 
 /* Send/receive a control message to/from the dongle.

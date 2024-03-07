@@ -113,8 +113,6 @@
 #include <dhd_pcie_sssr_dump.h>
 #endif /* DHD_SSSR_DUMP */
 
-#define EXTENDED_PCIE_DEBUG_DUMP 1	/* Enable Extended pcie registers dump */
-
 #define MEMBLOCK	2048		/* Block size used for downloading of dongle image */
 #if defined(__linux__)
 #define MAX_WKLK_IDLE_CHECK	3 /* times dhd_wake_lock checked before deciding not to suspend */
@@ -794,7 +792,7 @@ dhdpcie_bus_reg_unmap(osl_t *osh, volatile char *addr, int size)
  * retrun H2D Doorbell registers address
  * use DAR registers instead of enum register for corerev >= 23 (4347B0)
  */
-static INLINE uint
+uint
 dhd_bus_db0_addr_get(struct dhd_bus *bus)
 {
 	uint addr = PCIE_REG_OFF(hosttodev0doorbell0);
@@ -805,7 +803,7 @@ dhd_bus_db0_addr_get(struct dhd_bus *bus)
 	return ((DAR_ACTIVE(bus->dhd)) ? dar_addr : addr);
 }
 
-static INLINE uint
+uint
 dhd_bus_db0_addr_2_get(struct dhd_bus *bus)
 {
 	/* Note: For DAR doorbell registers, the values is invalid. */
@@ -813,14 +811,14 @@ dhd_bus_db0_addr_2_get(struct dhd_bus *bus)
 	        PCIE_REG_OFF(hosttodev2doorbell0));
 }
 
-static INLINE uint
+uint
 dhd_bus_db1_addr_get(struct dhd_bus *bus)
 {
 	/* Note: For DB1, don't use DAR register */
 	return PCIE_REG_OFF(hosttodev0doorbell1);
 }
 
-static INLINE uint
+uint
 dhd_bus_db1_addr_3_get(struct dhd_bus *bus)
 {
 	/* Note: For DB7, don't use DAR register */
@@ -2510,8 +2508,6 @@ dhdpcie_check_reset_sysmem(dhd_bus_t *bus, bool check)
 }
 
 #define PMU_BASE 0x18018000u
-#define PCIE_SUBSYS_CTRL_BPACCESS_ENABLE 0x800C0u
-#define PCIE_SUBSYS_CTRL_BPACCESS_DISABLE 0x80080u
 #define PMU_VREG11 0XBu
 #define PMU_PFM_KICKSTART_ENABLE 0x12000u
 static void
@@ -2650,12 +2646,16 @@ dhdpcie_dongle_attach(dhd_bus_t *bus)
 	}
 #endif /* DHD_EFI */
 
+	DHD_PRINT(("%s: before si_attach\n", __FUNCTION__));
+	dhdpcie_print_amni_regs(bus);
 	/* si_attach() will provide an SI handle and scan the backplane */
 	if (!(bus->sih = si_attach((uint)devid, osh, regsva, PCI_BUS, bus,
 	                           &bus->vars, &bus->varsz))) {
 		DHD_ERROR(("%s: si_attach failed!\n", __FUNCTION__));
 		goto fail;
 	}
+	DHD_PRINT(("%s: after si_attach\n", __FUNCTION__));
+	dhdpcie_print_amni_regs(bus);
 
 	if (MULTIBP_ENAB(bus->sih) && (bus->sih->buscorerev >= 66)) {
 		/*
@@ -6014,7 +6014,7 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 #endif	/* DHD_DEBUG_UART */
 
 	if (timeout && (bus->link_state == DHD_PCIE_ALL_GOOD)) {
-		/* print ARMCA7 PC, SR engine regs, and nci wrapper dump for timeout cases */
+		/* print ARMCA7 PC, SR engine regs and nci wrapper dump for timeout cases */
 		dhd_bus_get_armca7_pc(dhdp->bus, TRUE);
 		dhdpcie_dump_sreng_regs(bus);
 		dhd_pcie_nci_wrapper_dump(dhdp, FALSE);
@@ -8035,9 +8035,11 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 		*/
 		dhdpcie_advertise_bus_cleanup(bus->dhd);
 
+		dhdpcie_print_amni_regs(bus);
 #ifdef OEM_ANDROID
 		dhdpcie_dongle_reset(bus);
 #endif /* OEM_ANDROID */
+		dhdpcie_print_amni_regs(bus);
 
 		if (bus->dhd->busstate != DHD_BUS_DOWN) {
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
@@ -8201,12 +8203,14 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			bus->dhd->hp2p_enable = TRUE;
 #endif
 
+			dhdpcie_print_amni_regs(bus);
 #ifdef OEM_ANDROID
 			/* For android platforms reset (FLR) dongle during Wifi ON
 			 * this should be done before dongle attach
 			 */
 			dhdpcie_dongle_reset(bus);
 #endif /* OEM_ANDROID */
+			dhdpcie_print_amni_regs(bus);
 
 			bcmerror = dhdpcie_bus_dongle_attach(bus);
 			if (bcmerror) {
@@ -11783,6 +11787,8 @@ __dhdpcie_bus_download_state(dhd_bus_t *bus, bool state)
 
 		bus->arm_oor_time = OSL_LOCALTIME_NS();
 
+		dhdpcie_print_amni_regs(bus);
+
 		if (is_arm_ca7) {
 			/* for ARM CA7 it is enough if we clear bit5 in IO DMP ctrl
 			* register to bring it out of halt
@@ -14692,6 +14698,7 @@ dhdpcie_wait_readshared_area_addr(dhd_bus_t *bus, uint32 *share_addr)
 			DHD_ERROR(("%s: no boot intr recd. shared addr=%x\n",
 				__FUNCTION__, addr));
 		}
+		dhdpcie_print_amni_regs(bus);
 	} else {
 #ifdef GDB_PROXY
 		/* Loop while timeout is caused by firmware stop in GDB */

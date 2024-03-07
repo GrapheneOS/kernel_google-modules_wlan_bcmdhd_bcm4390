@@ -198,6 +198,18 @@ int wifi_platform_set_power(wifi_adapter_info_t *adapter, bool on, unsigned long
 	}
 #endif /* WBRC_HW_QUIRKS */
 
+	if (on && dhd_plat_get_wlan_reg_on_gpio() == 1) {
+		DHD_PRINT(("%s: wl_reg_on gpio already high\n", __FUNCTION__));
+		is_power_on = TRUE;
+		goto exit;
+	}
+
+	if (!on && dhd_plat_get_wlan_reg_on_gpio() == 0) {
+		DHD_PRINT(("%s: wl_reg_on gpio already low\n", __FUNCTION__));
+		is_power_on = FALSE;
+		goto exit;
+	}
+
 #ifdef CONFIG_DTS
 	if (on) {
 		err = regulator_enable(wifi_regulator);
@@ -210,8 +222,11 @@ int wifi_platform_set_power(wifi_adapter_info_t *adapter, bool on, unsigned long
 	if (err < 0)
 		DHD_ERROR(("%s: regulator enable/disable failed", __FUNCTION__));
 #else
-	if (!adapter || !adapter->wifi_plat_data)
-		return -EINVAL;
+	if (!adapter || !adapter->wifi_plat_data) {
+		err = -EINVAL;
+		goto exit;
+	}
+
 	plat_data = adapter->wifi_plat_data;
 
 	DHD_PRINT(("%s = %d, delay: %lu msec\n", __FUNCTION__, on, msec));
@@ -248,6 +263,7 @@ int wifi_platform_set_power(wifi_adapter_info_t *adapter, bool on, unsigned long
 
 #endif /* CONFIG_DTS */
 
+exit:
 #ifdef WBRC_HW_QUIRKS
 	if (on) {
 		wl2wbrc_wlan_after_regon();
@@ -255,7 +271,6 @@ int wifi_platform_set_power(wifi_adapter_info_t *adapter, bool on, unsigned long
 		wl2wbrc_wlan_after_regoff();
 	}
 #endif /* WBRC_HW_QUIRKS */
-
 
 	return err;
 }
@@ -1019,7 +1034,6 @@ concate_custom_board_revision(char *nv_path)
 }
 #endif /* SUPPORT_MULTIPLE_BOARD_REVISION */
 
-
 /* Weak functions that can be overridden in Platform specific implementation */
 char* __attribute__ ((weak)) dhd_get_device_dt_name(void)
 {
@@ -1121,5 +1135,11 @@ int
 __attribute__ ((weak)) dhd_get_platform_naming_for_nvram_clmblob_file(download_type_t component,
 	char *file_name)
 {
+	return BCME_ERROR;
+}
+
+int __attribute__ ((weak)) dhd_plat_get_wlan_reg_on_gpio(void)
+{
+	DHD_ERROR(("%s:%s: enter\n", __FILE__, __func__));
 	return BCME_ERROR;
 }

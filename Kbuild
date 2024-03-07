@@ -37,8 +37,6 @@ endif
 # For inbuilt module, below configs will be provided via defconfig
 # But for out-of-tree module, explicitly define them here and add
 # them as cflags
-BCMDHD=4390
-
 ifeq ($(CONFIG_BCMDHD),)
   CONFIG_BCMDHD=m
   CONFIG_BCMDHD_PCIE=y
@@ -316,6 +314,7 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
   # Perform Backplane Reset else FLR will happen
   # DHDCFLAGS += -DDHD_USE_BP_RESET_SS_CTRL
 
+  DHDCFLAGS += -DDBG_PRINT_AMNI
   # Memory consumed by DHD
   DHDCFLAGS += -DDHD_MEM_STATS
   # Check trap in the case of ROT
@@ -413,11 +412,11 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
     # Skip coredump for continousy pkt drop health check
     DHDCFLAGS += -DSKIP_COREDUMP_PKTDROP_RXHC
     # Boost host cpufreq to max for peak tput. default is false
-    #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST
+    DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST
     # Boost host cpufreq to max for peak tput. default is true
-    #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST_DEFAULT_ENAB
+    DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST_DEFAULT_ENAB
     # Force all CPUs to run at MAX frequencies
-    # DHDCFLAGS += -DDHD_FORCE_MAX_CPU_FREQ
+    DHDCFLAGS += -DDHD_FORCE_MAX_CPU_FREQ
   endif
 endif # CONFIG_BCMDHD_PCIE
 
@@ -1080,6 +1079,8 @@ else ifneq ($(CONFIG_ARCH_HISI),)
   DHDCFLAGS += -DDHD_SUPPORT_VFS_CALL
   # Skip pktlogging of data packets
   DHDCFLAGS += -DDHD_SKIP_PKTLOGGING_FOR_DATA_PKTS
+  # Copy to new pkts for pkts from invalid RA range
+  DHDCFLAGS += -DDHD_VALIDATE_PKT_ADDRESS
   # Allow wl event forwarding as network packet
   DHDCFLAGS += -DWL_EVENT_ENAB
   # Enable memdump for logset beyond range only internal builds

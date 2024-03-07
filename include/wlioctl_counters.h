@@ -3696,6 +3696,79 @@ typedef struct wl_pwr_scan_6E_stats {
 /* Version of wlc_btc_stats_t structure.
  * Increment whenever a change is made to wlc_btc_stats_t
  */
+#define BTCX_STATS_VER_13 13
+typedef struct wlc_btc_stats_v13 {
+	uint16 version;			/* version number of struct */
+	uint16 valid;			/* validness */
+	uint32 stats_update_timestamp;	/* tStamp when data is updated. */
+	uint32 btc_status;		/* btc status log */
+	uint32 bt_gcishm_active_task_bm; /* Active task bitmap of BT shared thru gci shm */
+	uint32 bt_gcishm_bt_tasks; /* BT Tasks info shared in GCI Shm */
+	uint32 bt_req_type_map;		/* BT Antenna Req types since last stats sample */
+	uint32 bt_req_cnt;		/* #BT antenna requests since last stats sampl */
+	uint32 bt_gnt_cnt;		/* #BT antenna grants since last stats sample */
+	uint32 bt_gnt_dur;		/* usec BT owns antenna since last stats sample */
+	uint16 bt_abort_cnt;		/* #Times WL was preempted due to BT since WL up */
+	uint16 bt_latency_cnt;		/* #Time ucode high latency detected since WL up */
+	uint16 bt_pm_protect_cnt;	/* PM protection count requested by Coex */
+	uint16 bt_succ_pm_protect_cnt;	/* successful PM protection */
+	uint16 bt_succ_cts_cnt;		/* successful CTS2A protection */
+	uint16 bt_wlan_tx_preempt_cnt;	/* WLAN TX Preemption */
+	uint16 bt_wlan_rx_preempt_cnt;	/* WLAN RX Preemption */
+	uint16 bt_ap_tx_after_pm_cnt;	/* AP TX even after PM protection */
+	uint16 bt_peraud_cumu_gnt_cnt;	/* Grant cnt for periodic audio */
+	uint16 bt_peraud_cumu_deny_cnt; /* Deny cnt for periodic audio */
+	uint16 bt_a2dp_cumu_gnt_cnt;	/* Grant cnt for A2DP */
+	uint16 bt_a2dp_cumu_deny_cnt;	/* Deny cnt for A2DP */
+	uint16 bt_sniff_cumu_gnt_cnt;	/* Grant cnt for Sniff */
+	uint16 bt_sniff_cumu_deny_cnt;	/* Deny cnt for Sniff */
+	uint16 bt_frameburst_ack_cncl_cnt;	/* Count of Ack Cancel for Frame Burst */
+	uint16 bt_le_scan_tx_intr_cnt;	/* LE Scan Tx Interrupt Count */
+	uint16 bt_le_scan_intr_cnt; /* LE Scan INterrupt Count */
+	uint16 bt_a2dp_grant_ext_intr;	/* A2DP Grant Extension Count */
+	uint16 bt_a2dp_uhp_intr_cnt;	/* A2DP UHP Interrupt Count */
+	uint16 bt_pred_out_of_sync_cnt; /* Predictor Out Of Sync Count */
+	uint16 bt_isoc_intr_cnt;	/* ISOC Interrupt count */
+	uint16 bt_ampdu_collision_cnt;	/* BTCX ampdu collision count */
+	uint16 bt_back_collision_cnt;	/* BTCX BACK collision count */
+	uint16 bt_dcsn_map;		/* Accumulated decision bitmap once Ant grant */
+	uint16 bt_dcsn_cnt;		/* Accumulated decision bitmap counters once Ant grant */
+	uint16 bt_a2dp_hiwat_cnt;	/* Ant grant by a2dp high watermark */
+	uint16 bt_datadelay_cnt;	/* Ant grant by acl/a2dp datadelay */
+	uint16 bt_crtpri_cnt;		/* Ant grant by critical BT task */
+	uint16 bt_pri_cnt;		/* Ant grant by high BT task */
+	uint16 a2dpbuf1cnt;		/* Ant request with a2dp buffercnt 1 */
+	uint16 a2dpbuf2cnt;		/* Ant request with a2dp buffercnt 2 */
+	uint16 a2dpbuf3cnt;		/* Ant request with a2dp buffercnt 3 */
+	uint16 a2dpbuf4cnt;		/* Ant request with a2dp buffercnt 4 */
+	uint16 a2dpbuf5cnt;		/* Ant request with a2dp buffercnt 5 */
+	uint16 a2dpbuf6cnt;		/* Ant request with a2dp buffercnt 6 */
+	uint16 a2dpbuf7cnt;		/* Ant request with a2dp buffercnt 7 */
+	uint16 a2dpbuf8cnt;		/* Ant request with a2dp buffercnt 8 */
+	uint16 antgrant_lt10ms;		/* Ant grant duration cnt 0~10ms */
+	uint16 antgrant_lt30ms;		/* Ant grant duration cnt 10~30ms */
+	uint16 antgrant_lt60ms;		/* Ant grant duration cnt 30~60ms */
+	uint16 antgrant_ge60ms;		/* Ant grant duration cnt 60~ms */
+	uint16 wldurn_ge0ms;		/* WL duration count between 0-5ms */
+	uint16 wldurn_ge5ms;		/* WL duration count between 5-12ms */
+	uint16 wldurn_ge12ms;		/* WL duration count between 12-21ms */
+	uint16 wldurn_ge21ms;		/* WL duration count between 21-30ms */
+	uint16 wldurn_ge30ms;		/* WL duration count between 30-65ms */
+	uint16 wldurn_ge65ms;		/* WL Duration greater than 65ms */
+	uint16 btcx_override_cnt;	/* Btcx override count */
+	uint32 btcx_override_dur;	/* Btcx override duration */
+	uint16 fbaci_status_idx0;	/* channel and maxgain index for index0 */
+	uint16 fbaci_nsamples_idx0;	/* number of samples at index0 */
+	uint16 fbaci_status_idx1;	/* channel and maxgain index for index1 */
+	uint16 fbaci_nsamples_idx1;	/* number of samples at index1 */
+	uint16 fbaci_status_idx2;	/* channel and maxgain index for index2 */
+	uint16 fbaci_nsamples_idx2;	/* number of samples at index2 */
+	uint16 fbaci_status_idx3;	/* channel and maxgain index for index3 */
+	uint16 fbaci_nsamples_idx3;	/* number of samples at index3 */
+	uint16 idle2fbc_cnt;		/* count of radio state changes from IDle to FBC */
+	uint16 idle2wlauxrx_cnt;	/* count of radio state changes from IDle to Aux Ded Rx. */
+} wlc_btc_stats_v13_t;
+
 #define BTCX_STATS_VER_12 12
 typedef struct wlc_btc_stats_v12 {
 	uint16 version; /* version number of struct */
@@ -4271,6 +4344,33 @@ typedef struct phy_ecounter_log_core_v4 {
 	int8	obss_pwrest[ACPHY_OBSS_SUBBAND_CNT];	/* OBSS signal power per sub-band in dBm */
 } phy_ecounter_log_core_v4_t;
 
+typedef struct phy_ecounter_log_core_v5 {
+	uint16	bad_txbaseidx_cnt;	/* cntr for tx_baseidx=127 in healthcheck */
+	uint16	curr_tssival;		/* TxPwrCtrlInit_path[01].TSSIVal */
+	uint16	pwridx_init;		/* TxPwrCtrlInit_path[01].pwrIndex_init_path[01] */
+	uint16	auxphystats;		/* Indicates the PHY stats for aux slice */
+	uint16	phystatsgaininfo;	/* Indicates the gain stats */
+	uint16	flexgaininfo_A;		/* Indicates the gain settings */
+	uint8	crsmin_pwr_idx;		/* Index to the crsminpower threshold array */
+	uint8	baseindxval;		/* TPC Base index */
+	int8	crsmin_pwr;		/* Noise level for applied desense */
+	int8	noise_level_inst;	/* Instantaneous noise cal pwr */
+	int8	tgt_pwr;		/* Programmed Target power */
+	int8	estpwradj;		/* Current Est Power Adjust value */
+	int8	ed_threshold;		/* Energy detection threshold */
+	uint8	debug_01;		/* for future debugging */
+	int16	debug_02;		/* for future debugging */
+	int16	debug_03;		/* for future debugging */
+	int16	debug_04;		/* for future debugging */
+	int16	debug_05;		/* for future debugging */
+	uint16	debug_06;		/* for future debugging */
+	uint16	debug_07;		/* for future debugging */
+	uint16	debug_08;		/* for future debugging */
+	uint16	debug_09;		/* for future debugging */
+	uint32	debug_10;		/* for future debugging */
+	int8	obss_pwrest[ACPHY_OBSS_SUBBAND_CNT];	/* OBSS signal power per sub-band in dBm */
+} phy_ecounter_log_core_v5_t;
+
 /* For trunk ONLY */
 typedef struct phy_ecounter_log_core_v255 {
 	uint16	bad_txbaseidx_cnt;	/* cntr for tx_baseidx=127 in healthcheck */
@@ -4694,6 +4794,116 @@ typedef struct phy_ecounter_v6 {
 	uint32		interference;
 	phy_ecounter_log_core_v4_t phy_ecounter_core[2];
 } phy_ecounter_v6_t;
+
+typedef struct phy_ecounter_v7 {
+	chanspec_t	chanspec;
+	uint16		phy_wdg;		/* Count of times watchdog happened */
+	uint16		noise_req;		/* Count of phy noise sample requests */
+	uint16		noise_crsbit;		/* Count of CRS high during noisecal request */
+	uint16		noise_apply;		/* Count of applying noisecal result to crsmin */
+	uint16		cal_counter;		/* Count of performing single and multi phase cal */
+	uint8		slice;			/* Slice # 0 - MAIN, 1 - AUX, 2 - SCAN */
+	uint8		rxchain;		/* Status of active RX chains */
+	uint8		txchain;		/* Status of active TX chains */
+	uint8		gbd_bphy_sleep_counter;	/* Sleep count for bphy GBD */
+	uint8		gbd_ofdm_sleep_counter;	/* Sleep count for ofdm GBD */
+	uint8		btc_mode;		/* btc mode */
+	uint8		gbd_ofdm_desense;	/* Glitch based desense level for ofdm reception */
+	uint8		gbd_bphy_desense;	/* Glitch based desense level for bphy reception */
+	int8		chiptemp;		/* Chip temperature */
+	int8		femtemp;		/* Fem temperature */
+	int8		weakest_rssi;		/* Weakest link RSSI */
+	int8		ltecx_mode;		/* LTE coex desense mode */
+	int32		btcx_mode;		/* BT coex desense mode */
+	uint8		chan_switch_cnt;	/* Count to track channel change */
+	uint8		phycal_disable;		/* Status of phy calibration */
+	int8		rxsense_noise_idx;	/* rxsense det thresh desense idx */
+	int8		rxsense_offset;		/* rxsense min power desense idx */
+	uint32		rxsense_disable_req_ch;	/* channel disable requests */
+	uint16		featureflag;		/* Currently active feature flags */
+	uint16		deaf_count;		/* Count for RX stay in carrier search state */
+	uint16		noise_mmt_overdue;	/* Noise measurement overdue status */
+	uint16		counter_noise_iqest_to;	/* count of IQ_Est time out */
+	uint16		crsmin_pwr_apply_cnt;	/* Count for desense updates */
+	uint16		ed_crs_status;		/* Status of ED and CRS during noise cal */
+	uint16		preempt_status2;	/* status of preemption */
+	uint16		debug_01;		/* for future debugging */
+	uint32		cca_stats_total_glitch;	/* ccastats: count of total glitches */
+	uint32		cca_stats_bphy_glitch;	/* ccastats: count of bphy glitches */
+	uint32		cca_stats_total_badplcp;	/* ccastats: count of total badplcp */
+	uint32		cca_stats_bphy_badplcp;	/* ccastats: count of bphy badplcp */
+	uint32		cca_stats_mbsstime;	/* ccastats: monitor duration in msec */
+	uint32		cca_stats_ed_duration;	/* ccastats: ed_duration */
+	uint32		measurehold;		/* PHY hold activities */
+	uint32		ocl_disable_reqs;	/* OCL disable bitmap */
+	uint32		interference_mode;	/* interference mitigation mode */
+	uint32		power_mode;		/* power mode */
+	int32		asym_intf_ed_thresh;	/* smartcca ed threshold %d */
+	uint32		obss_last_read_time;	/* last stats read time */
+	uint16		obss_mit_bw;		/* selected mitigation BW */
+	uint16		obss_stats_cnt;		/* stats count */
+	uint16		obss_mmt_skip_cnt;	/* mmt skipped due to powersave */
+	uint16		obss_mmt_no_result_cnt;	/* mmt with no result */
+	uint16		obss_mmt_intr_err_cnt;	/* obss reg mismatch between ucode and fw */
+	uint8		obss_last_rec_bw;	/* last recommended bw to wlc-Sent to SW */
+	uint8		obss_cur_det_bitmap;	/* OBSS curr detection bitmap */
+	uint8		obss_need_updt;		/* BW update needed flag */
+	uint8		obss_mit_status;	/* OBSS mitigation status */
+	uint16		dynbw_init_reducebw_cnt;	/* BW reduction cnt of initiator */
+	uint16		dynbw_resp_reducebw_cnt;	/* BW reduction cnt of responder */
+	uint16		dynbw_rxdata_reducebw_cnt;	/* rx data cnt with reduced BW */
+	int16		ed_crsEn;		/* ed enable 0x%04x */
+	int16		nvcfg0;			/* noise update to hw 0x%04x */
+	uint16		asym_intf_stats;	/* smartCCA status 0x%04x */
+	uint16		asym_intf_ncal_crs_stat;	/* noise cal and crs status %d */
+	uint8		asym_intf_ant_noise_idx;	/* current noise storage index */
+	uint8		asym_intf_pending_host_req_type;	/* usb plugin request */
+	uint8		asym_intf_ncal_crs_stat_idx;	/* crs status storage index %d */
+	int8		asym_intf_tx_smartcca_cm;	/* smartCCA tx coremask %d */
+	int8		asym_intf_rx_noise_mit_cm;	/* smartCCA rx coremask %d */
+	int8		asym_intf_avg_noise[2];		/* average noise %d */
+	int8		asym_intf_latest_noise[2];	/* current noise %d */
+	uint8		cal_suppressed_cntr_ed;	/* cnt including ss, mp cals, MSB is cur state */
+	uint8		sc_dccal_incc_cnt;	/* scan dccal counter */
+	uint8		sc_noisecal_incc_cnt;	/* scan noise cal counter */
+	uint8		dcc_digi_gain;		/* digi gain value used for DC cal */
+	uint8		dcc_est_overflow;	/* DC cal estimation overflow indicator */
+	uint32		fbcx_info01;		/* Indicates FBCX debug information */
+	uint32		fbcx_info02;		/* Indicates FBCX debug information */
+	uint32		fbcx_info03;		/* Indicates FBCX debug information */
+	uint32		fbcx_info04;		/* Indicates FBCX debug information */
+	uint32		fbcx_info05;		/* Indicates FBCX debug information */
+	uint32		fbcx_info06;		/* Indicates FBCX debug information */
+	uint16		scan_info;		/* Indicates scan information */
+	uint16		scan_starts;		/* Indicates frame starts */
+	uint16		scan_detect[3];		/* Indicates frame detections */
+	uint16		scan_good_fcs[3];	/* Indicates good FCS Rx counter */
+	uint16		scan_bad_fcs;		/* Indicates bad FCS Rx counter */
+	uint16		scan_busy;		/* Indicates hardware busy */
+	uint16		scan_errors;		/* Indicates error counter */
+	uint16		debug_02;		/* for future debugging */
+	uint32		srmc_debug_01;		/* Indicates radio state info */
+	uint16		debug_cal_code_main_slice;	/* Indicates VCO cal code main slice */
+	uint16		debug_cal_code_scan_5g_slice[8]; /* Indicates VCO cal code scan 5G radio */
+	uint16		PLL_2g_VCOCAL_calCapRB;	/* Indicates VCO cal code */
+	int16		phy_cal_debug_01;	/* Indicates DC cal params */
+	int16		phy_cal_debug_02;	/* Indicates DC cal params */
+	uint16		ml_req_txcnt;		/* Indicates ML notif req Tx count new attempts */
+	uint16		ml_req_tot_retry_cnt;	/* Indicates ML notif req total retries */
+	uint16		ml_resp_rxcnt;		/* Indicates ML notif resp Rx count */
+	uint16		ml_resp_match_rxcnt;	/* Indicates ML notif resp all conds matched */
+	uint8		ml_req_retry_cnt;	/* ML notification request retry count */
+	uint8		pa_mode;		/* PA mode */
+	uint16		debug_03;		/* for future debugging */
+	uint16		debug_04;		/* for future debugging */
+	uint16		debug_05;		/* for future debugging */
+	uint16		debug_06;		/* for future debugging */
+	uint16		debug_07;		/* for future debugging */
+	uint16		debug_08;		/* for future debugging */
+	uint16		debug_09;		/* for future debugging */
+	uint16		debug_10;		/* for future debugging */
+	phy_ecounter_log_core_v5_t phy_ecounter_core[2];
+} phy_ecounter_v7_t;
 
 /* For trunk ONLY */
 /* Do not remove phy_ecounter_v1_t parameters */
@@ -5176,6 +5386,15 @@ typedef struct phy_ecounter_stats_v6 {
 	uint8			PAD[3];
 	phy_ecounter_v6_t	phy_counter[];
 } phy_ecounter_stats_v6_t;
+
+#define PHY_ECOUNTERS_STATS_VER7	7u
+typedef struct phy_ecounter_stats_v7 {
+	uint16			version;
+	uint16			length;
+	uint8			num_channel;	/* Number of active channels. */
+	uint8			PAD[3];
+	phy_ecounter_v7_t	phy_counter[];
+} phy_ecounter_stats_v7_t;
 
 /* For trunk ONLY */
 #define PHY_ECOUNTERS_STATS_VER255	255u
@@ -6410,8 +6629,7 @@ enum wl_chan_stats_xtlv {
 
 /* WL_CHAN_STATS_XTLV_CHANSPEC_CONTAINER above carries payload below */
 #define WL_CHANCNTR_HDR_VER_1	(1u)
-typedef struct wlc_chan_cntr_hdr_v1
-{
+typedef struct wlc_chan_cntr_hdr_v1 {
 	uint16 version;		/* Already in use. So keep it */
 	uint16 PAD;
 	chanspec_t chanspec;	/* Dont add any fields above this */
@@ -6421,6 +6639,17 @@ typedef struct wlc_chan_cntr_hdr_v1
 	uint32 chan_entry_cnt;
 	uint32 data[];
 } wlc_chan_cntr_hdr_v1_t;
+
+#define WL_CHANCNTR_HDR_VER_2	(2u)
+typedef struct wlc_chan_cntr_hdr_v2 {
+	uint16 version;		/* Already in use. So keep it */
+	chanspec_t chanspec;	/* Dont add any fields above this */
+	uint8 flags;		/* See bit fields defn  below */
+	uint8 PAD[3];
+	uint32 chan_entry_cnt;
+	uint64 total_time_ns;
+	uint32 data[];
+} wlc_chan_cntr_hdr_v2_t;
 
 /* flags field bit fields in structure above */
 #define WL_CHAN_STATS_FLAGS_RESTART	(1u << 0)
@@ -6944,4 +7173,128 @@ typedef struct wl_cnt_resp_status_v1 {
 	uint8	PAD[2];
 } wl_cnt_resp_status_v1_t;
 
+#define WL_SC_MULTI_SCAN_CNT_VER_V1            1u
+#define WL_SC_MULTI_SCAN_FES_V1                3u
+
+typedef struct wl_sc_multi_scan_cnts_v1 {
+	uint16  version;	/* WL_SC_MULTI_SCAN_CNT_VER_V1 */
+	uint16  len;
+	uint32  ofdm_crs_detect;
+	uint32  ofdm_be_busy;
+	uint32  ofdm_false_detect;
+	uint32  ofdm_cstr_timeout;
+	uint32  ofdm_fstr_timeout;
+	uint32  ofdm_sig1_error;
+	uint32  ofdm_sig2_error;
+	uint32  ofdm_filt_reject;
+	uint32  ofdm_fifo_drop;
+	uint32  ofdm_unsupported;
+	uint32  ofdm_be_timeout;
+	uint32  ofdm_fcs_fail;
+	uint32  ofdm_fcs_pass;
+	uint32  dsss_crs_detect;
+	uint32  dsss_be_busy;
+	uint32  dsss_false_detect;
+	uint32  dsss_fos_timeout;
+	uint32  dsss_sfd_timeout;
+	uint32  dsss_phr_error;
+	uint32  dsss_filt_reject;
+	uint32  dsss_fifo_drop;
+	uint32  dsss_unsupported;
+	uint32  dsss_be_timeout;
+	uint32  dsss_fcs_fail;
+	uint32  dsss_fcs_pass;
+	uint32  tot_queue_drop;
+	uint32  tot_aborted;
+	uint32  fe_ofdm_crs_detect[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_ofdm_be_busy[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_ofdm_fcs_fail[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_ofdm_fcs_pass[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_ofdm_depri_detect[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_ofdm_be_reassign[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_dsss_crs_detect[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_dsss_be_busy[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_dsss_fcs_fail[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_dsss_fcs_pass[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_dsss_depri_detect[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_dsss_be_reassign[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_tot_aborted[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_tot_timeout[WL_SC_MULTI_SCAN_FES_V1];
+	uint32  fe_tot_reset[WL_SC_MULTI_SCAN_FES_V1];
+} wl_sc_multi_scan_cnts_v1_t;
+
+/* LLW stats */
+typedef enum wl_llw_xtlv {
+	WL_LLW_XTLV_STATS = 0,
+	WL_LLW_XTLV_STATS_V2 = 1
+} wl_llw_xtlv_t;
+
+/* Session/receiver statistics */
+typedef struct wl_llw_stats {
+	uint32 txpkt_pri_rate;
+	uint32 txpkt_fb0_rate;
+	uint32 txpkt_fb1_rate;
+	uint32 txpkt_fb2_rate;
+	uint32 txpackets;
+	uint32 txbytes;
+	uint32 txnoack;
+	uint32 rxpackets;
+	uint32 rxbytes;
+	uint32 rxretry;
+} wl_llw_stats_t;
+
+#define LLW_RX_MCS_BIN		16u
+#define LLW_RX_NSS_BIN		2u
+#define LLW_RX_BW_BIN		5u
+#define LLW_RX_RSSI_BIN		18u
+#define LLW_RX_SNR_BIN		18u
+
+/* Session/receiver statistics V2 (WL_LLW_XTLV_STATS_V2) */
+typedef struct wl_llw_stats_v2 {
+	uint32 txpkt_pri_rate;
+	uint32 txpkt_fb0_rate;
+	uint32 txpkt_fb1_rate;
+	uint32 txpkt_fb2_rate;
+	uint32 txpackets;
+	uint32 txbytes;
+	uint32 txnoack;
+	uint32 rxpackets;
+	uint32 rxbytes;
+	uint32 rxretry;
+	uint32 rxholes;
+	uint32 txpkt_wl;
+	uint32 rxmpdu;
+	ratespec_t rx_last_rspec;
+	int16 rx_last_rssi;
+	int16 rx_last_snr;
+} wl_llw_stats_v2_t;
+
+/* GCR-UR Tx stats collected in PCIEDEV */
+typedef struct wl_llw_gcr_ur_pcie_tx_stats {
+	uint16 version;
+	uint16 length;
+	uint32 txpkt_pcie;
+	uint32 txdrop_pcie;
+	uint32 txdrop_wl;
+} wl_llw_gcr_ur_pcie_tx_stats_t;
+
+typedef struct wl_llw_stats_hdr {
+	uint16 version;
+	uint16 stats_cnt;
+	uint32 tot_len;
+	uint8 stat_xtlvs[];
+} wl_llw_stats_hdr_t;
+
+/* WL_LLW_XTLV_STATS */
+typedef struct wl_llw_stats_xtlv {
+	uint16 type;
+	uint16 len;
+	uint8 stats[];
+} wl_llw_stats_xtlv_t;
+
+/* WL_XTLV_GCR_UR_RX_INFO */
+typedef struct wl_llw_rx_info {
+	ratespec_t rspec;
+	/* more info can be added later */
+} wl_llw_rx_info_t;
 #endif /* _wlioctl_counters_h_ */

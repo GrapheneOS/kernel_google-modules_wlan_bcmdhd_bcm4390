@@ -2343,6 +2343,7 @@ dhd_pcie_debug_info_dump(dhd_pub_t *dhd)
 		dhd_bus_pcie_pwr_req(dhd->bus);
 	}
 
+	dhdpcie_print_amni_regs(dhd->bus);
 	dhd_pcie_dump_wrapper_regs(dhd);
 #ifdef DHD_PCIE_WRAPPER_DUMP
 	dhd_pcie_get_wrapper_regs(dhd);
@@ -3467,3 +3468,65 @@ dhd_sdtc_etb_hal_file_dump(void *dhd_pub, const void *user_buf, uint32 len)
 	return ret;
 }
 #endif /* DHD_SDTC_ETB_DUMP */
+
+#define CC_AMNI_BASE 0x1851c000u
+#define IDM_ERRSTATUS 0x110u
+#define IDM_INTSTATUS 0x158u
+#define GCI_BASE 0x18010000u
+#define GCI_NCI_ERR_INT_STATUS 0xA04u
+void
+dhdpcie_print_amni_regs(dhd_bus_t *bus)
+{
+#ifdef DBG_PRINT_AMNI
+	uint32 val = 0, pcie_ssctrl = 0;
+	uint32 idm_errstatus = -1, idm_intstatus = -1, gci_nci_err_intstatus = -1;
+	osl_t *osh = bus->osh;
+	uint32 bar0 = 0;
+
+	bar0 =  OSL_PCI_READ_CONFIG(osh, PCI_BAR0_WIN, sizeof(uint32));
+	/* set bar0 win to point to -
+	 * 'Slave CFG Registers for chipcommon' AMNI[0] space
+	 */
+	OSL_PCI_WRITE_CONFIG(osh, PCI_BAR0_WIN, sizeof(uint32), CC_AMNI_BASE);
+	/* enable indirect bpaccess */
+	pcie_ssctrl = OSL_PCI_READ_CONFIG(osh, PCIE_CFG_SUBSYSTEM_CONTROL, sizeof(uint32));
+	val = pcie_ssctrl | BP_INDACCESS_SHIFT;
+	OSL_PCI_WRITE_CONFIG(osh, PCIE_CFG_SUBSYSTEM_CONTROL, sizeof(uint32), val);
+
+	/* read idm_errstatus */
+	OSL_PCI_WRITE_CONFIG(osh, PCI_CFG_INDBP_ADDR, sizeof(uint32),
+		IDM_ERRSTATUS);
+	idm_errstatus = OSL_PCI_READ_CONFIG(osh, PCI_CFG_INDBP_DATA, sizeof(uint32));
+
+	/* read idm_interrupt_status */
+	OSL_PCI_WRITE_CONFIG(osh, PCI_CFG_INDBP_ADDR, sizeof(uint32),
+		IDM_INTSTATUS);
+	idm_intstatus = OSL_PCI_READ_CONFIG(osh, PCI_CFG_INDBP_DATA, sizeof(uint32));
+
+	/* read gci_nci_err_int_status */
+	/* set bar0 win to point to GCI space */
+	OSL_PCI_WRITE_CONFIG(osh, PCI_BAR0_WIN, sizeof(uint32), GCI_BASE);
+	OSL_PCI_WRITE_CONFIG(osh, PCI_CFG_INDBP_ADDR, sizeof(uint32),
+		GCI_NCI_ERR_INT_STATUS);
+	gci_nci_err_intstatus = OSL_PCI_READ_CONFIG(osh, PCI_CFG_INDBP_DATA,
+		sizeof(uint32));
+
+	/* restore back values */
+	/* restore bar0 */
+	OSL_PCI_WRITE_CONFIG(bus->osh, PCI_BAR0_WIN, sizeof(uint32), bar0);
+	/* disable indirect bpaccess */
+	OSL_PCI_WRITE_CONFIG(osh, PCIE_CFG_SUBSYSTEM_CONTROL,
+		sizeof(uint32), pcie_ssctrl);
+
+	if (idm_errstatus != (uint32)-1) {
+		DHD_PRINT(("%s: idm_errstatus(0x%x)=0x%x\n", __FUNCTION__,
+			CC_AMNI_BASE + IDM_ERRSTATUS, idm_errstatus));
+		DHD_PRINT(("%s: idm_interrupt_status(0x%x)=0x%x\n", __FUNCTION__,
+			CC_AMNI_BASE + IDM_INTSTATUS, idm_intstatus));
+	}
+	if (gci_nci_err_intstatus != (uint32)-1) {
+		DHD_PRINT(("%s: gci_nci_err_intstatus(0x%x)=0x%x\n", __FUNCTION__,
+			GCI_BASE + GCI_NCI_ERR_INT_STATUS, gci_nci_err_intstatus));
+	}
+#endif /* DBG_PRINT_AMNI */
+}

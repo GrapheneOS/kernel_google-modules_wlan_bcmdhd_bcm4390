@@ -2253,9 +2253,6 @@ wl_cfgnan_set_if_addr(struct bcm_cfg80211 *cfg)
 	wl_cfgnan_reset_bootstrapping_entries(cfg);
 	return ret;
 fail:
-	if (!rand_mac) {
-		wl_release_vif_macaddr(cfg, if_addr.octet, WL_IF_TYPE_NAN_NMI);
-	}
 
 	return ret;
 }
@@ -8520,9 +8517,6 @@ wl_cfgnan_deinit(struct bcm_cfg80211 *cfg, uint8 busstate)
 	wl_cfgnan_deinit_cleanup(cfg);
 
 fail:
-	if (!nancfg->mac_rand && !ETHER_ISNULLADDR(nancfg->nan_nmi_mac)) {
-		wl_release_vif_macaddr(cfg, nancfg->nan_nmi_mac, WL_IF_TYPE_NAN_NMI);
-	}
 	NAN_MUTEX_UNLOCK();
 	NAN_DBG_EXIT();
 	return ret;

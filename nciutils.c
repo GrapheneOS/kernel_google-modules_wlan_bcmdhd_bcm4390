@@ -3253,3 +3253,13 @@ BCMPOSTTRAPFN(nci_wrapper_dump_binary)(const si_t *sih, uchar *p)
 
 	return 0;
 }
+
+int nci_get_amni_slave_cfg_cc_reg_addrs(si_t *sih, volatile uint32 **idm_errstatus_addr,
+	volatile uint32 **idm_intstatus_addr)
+{
+	const si_info_t *sii = SI_INFO(sih);
+	amni_regs_t *amni = (amni_regs_t *)(uintptr)sii->curwrap;
+	*idm_errstatus_addr = &amni->ni.idm_errstatus;
+	*idm_intstatus_addr = &amni->ni.idm_interrupt_status;
+	return 0;
+}

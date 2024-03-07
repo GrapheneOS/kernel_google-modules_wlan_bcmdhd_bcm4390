@@ -653,6 +653,7 @@ typedef enum dhd_dongledump_status {
 #endif /* DHD_FILE_DUMP_EVENT && DHD_FW_COREDUMP */
 
 enum dhd_dongledump_type {
+	DUMP_TYPE_CLEAR				= 0,
 	DUMP_TYPE_RESUMED_ON_TIMEOUT		= 1,
 	DUMP_TYPE_D3_ACK_TIMEOUT		= 2,
 	DUMP_TYPE_DONGLE_TRAP			= 3,
@@ -2108,6 +2109,10 @@ typedef struct dhd_pub {
 	uint *sssr_srcb_buf_after;
 	uint *sssr_cmn_buf_after;
 #endif /* DHD_SSSR_DUMP */
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+	uint badaddr_pkt_cnt;
+	uint badaddr_pkt_copy_fail_cnt;
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -4087,7 +4092,7 @@ int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t com
 void dhd_free_download_buffer(dhd_pub_t	*dhd, void *buffer, int length);
 
 int dhd_download_blob(dhd_pub_t *dhd, unsigned char *buf,
-		uint32 len, char *iovar);
+	uint32 len, char *iovar, int ifidx);
 
 int dhd_download_blob_cached(dhd_pub_t *dhd, char *file_path,
 	uint32 len, char *iovar);
@@ -5066,4 +5071,7 @@ int write_dump_to_file(dhd_pub_t *dhd, uint8 *buf, int size, char *fname);
 #ifdef SHOW_LOGTRACE
 int dhd_reinit_logtrace_process(void *dhd_info);
 #endif /* SHOW_LOGTRACE */
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+extern void *dhd_validate_packet_address(dhd_pub_t *dhd, void *pkt);
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
 #endif /* _dhd_h_ */

@@ -632,9 +632,6 @@ wl_cfg80211_create_iface(struct wiphy *wiphy, wl_iftype_t
 s32
 wl_cfg80211_del_iface(struct wiphy *wiphy, struct wireless_dev *wdev);
 
-s32 wl_cfg80211_interface_ops(struct bcm_cfg80211 *cfg,
-	struct net_device *ndev, s32 bsscfg_idx,
-	wl_iftype_t iftype, s32 del, u8 *addr);
 s32 wl_cfg80211_add_del_bss(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev, s32 bsscfg_idx,
 	wl_iftype_t brcm_iftype, s32 del, u8 *addr);
@@ -689,10 +686,10 @@ static s32 wl_notify_roaming_status(struct bcm_cfg80211 *cfg,
 	bcm_struct_cfgdev *cfgdev, const wl_event_msg_t *e, void *data);
 static s32 wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	const wl_event_msg_t *e, void *data, bool completed);
-#if defined(DHD_LOSSLESS_ROAMING) || !defined(DHD_NONFT_ROAMING)
+#if defined(DHD_LOSSLESS_ROAMING) || !defined(DHD_NONFT_ROAMING) || defined(WLFBT)
 static s32 wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	const wl_event_msg_t *e, void *data);
-#endif /* DHD_LOSSLESS_ROAMING || !DHD_NONFT_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || !DHD_NONFT_ROAMING || WLFBT */
 static s32 wl_notify_mic_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	const wl_event_msg_t *e, void *data);
 #ifdef GSCAN_SUPPORT
@@ -709,13 +706,13 @@ static s32 wl_notifier_change_state(struct bcm_cfg80211 *cfg, struct net_info *_
 static s32 wl_check_pmstatus(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	const wl_event_msg_t *e, void *data);
 #endif	/* CUSTOM_EVENT_PM_WAKE */
-#if defined(DHD_LOSSLESS_ROAMING) || defined (DBG_PKT_MON)
+#if defined(DHD_LOSSLESS_ROAMING) || defined (DBG_PKT_MON) || defined(WLFBT)
 static s32 wl_notify_roam_prep_status(struct bcm_cfg80211 *cfg,
 	bcm_struct_cfgdev *cfgdev, const wl_event_msg_t *e, void *data);
-#endif /* DHD_LOSSLESS_ROAMING || DBG_PKT_MON */
-#ifdef DHD_LOSSLESS_ROAMING
+#endif /* DHD_LOSSLESS_ROAMING || DBG_PKT_MON || WLFBT */
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 static void wl_del_roam_timeout(struct bcm_cfg80211 *cfg);
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 #ifdef WL_SDO
 static s32 wl_svc_resp_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	const wl_event_msg_t *e, void *data);
@@ -2534,7 +2531,6 @@ wl_cfg80211_iface_state_ops(struct wireless_dev *wdev,
 			 }
 #endif /* defined(KEEP_ALIVE) && defined(DHD_CLEANUP_KEEP_ALIVE) */
 
-			wl_release_vif_macaddr(cfg, wdev->netdev->dev_addr, wl_iftype);
 #ifdef WL_NAN
 			if ((cfg->nancfg->nan_init_state && cfg->nancfg->nan_enable &&
 				wl_iftype == WL_IF_TYPE_NAN) &&
@@ -3521,133 +3517,6 @@ fail:
 }
 #endif /* WLAIBSS_MCHAN */
 
-s32
-wl_cfg80211_to_fw_iftype(wl_iftype_t iftype)
-{
-	s32 ret = BCME_ERROR;
-
-	switch (iftype) {
-		case WL_IF_TYPE_AP:
-			ret = WL_INTERFACE_TYPE_AP;
-			break;
-		case WL_IF_TYPE_STA:
-			ret = WL_INTERFACE_TYPE_STA;
-			break;
-		case WL_IF_TYPE_NAN_NMI:
-		case WL_IF_TYPE_NAN:
-			ret = WL_INTERFACE_TYPE_NAN;
-			break;
-		case WL_IF_TYPE_P2P_DISC:
-			ret = WL_INTERFACE_TYPE_P2P_DISC;
-			break;
-		case WL_IF_TYPE_P2P_GO:
-			ret = WL_INTERFACE_TYPE_P2P_GO;
-			break;
-		case WL_IF_TYPE_P2P_GC:
-			ret = WL_INTERFACE_TYPE_P2P_GC;
-			break;
-
-
-		default:
-			WL_ERR(("Unsupported type:%d \n", iftype));
-			ret = -EINVAL;
-			break;
-	}
-	return ret;
-}
-
-s32
-wl_cfg80211_interface_ops(struct bcm_cfg80211 *cfg,
-	struct net_device *ndev, s32 bsscfg_idx,
-	wl_iftype_t cfg_iftype, s32 del, u8 *addr)
-{
-	s32 ret;
-	struct wl_interface_create_v2 iface;
-	wl_interface_create_v3_t iface_v3;
-	struct wl_interface_info_v1 *info;
-	wl_interface_info_v2_t *info_v2;
-	uint32 ifflags = 0;
-	bool use_iface_info_v2 = false;
-	u8 ioctl_buf[WLC_IOCTL_SMLEN];
-	s32 iftype;
-
-	if (del) {
-		ret = wldev_iovar_setbuf(ndev, "interface_remove",
-			NULL, 0, ioctl_buf, sizeof(ioctl_buf), NULL);
-		if (unlikely(ret))
-			WL_ERR(("Interface remove failed!! ret %d\n", ret));
-		return ret;
-	}
-
-	/* Interface create */
-	bzero(&iface, sizeof(iface));
-	/*
-	 * flags field is still used along with iftype inorder to support the old version of the
-	 * FW work with the latest app changes.
-	 */
-
-	iftype = wl_cfg80211_to_fw_iftype(cfg_iftype);
-	if (iftype < 0) {
-		return -ENOTSUPP;
-	}
-
-	if (addr) {
-		ifflags |= WL_INTERFACE_MAC_USE;
-	}
-
-	/* Pass ver = 0 for fetching the interface_create iovar version */
-	ret = wldev_iovar_getbuf(ndev, "interface_create",
-		&iface, sizeof(struct wl_interface_create_v2),
-		ioctl_buf, sizeof(ioctl_buf), NULL);
-	if (ret == BCME_UNSUPPORTED) {
-		WL_ERR(("interface_create iovar not supported\n"));
-		return ret;
-	} else if ((ret == 0) && *((uint32 *)ioctl_buf) == WL_INTERFACE_CREATE_VER_3) {
-		WL_DBG(("interface_create version 3. flags:0x%x \n", ifflags));
-		use_iface_info_v2 = true;
-		bzero(&iface_v3, sizeof(wl_interface_create_v3_t));
-		iface_v3.ver = WL_INTERFACE_CREATE_VER_3;
-		iface_v3.iftype = iftype;
-		iface_v3.flags = ifflags;
-		if (addr) {
-			memcpy(&iface_v3.mac_addr.octet, addr, ETH_ALEN);
-		}
-		ret = wldev_iovar_getbuf(ndev, "interface_create",
-			&iface_v3, sizeof(wl_interface_create_v3_t),
-			ioctl_buf, sizeof(ioctl_buf), NULL);
-	} else {
-		/* On any other error, attempt with iovar version 2 */
-		WL_DBG(("interface_create version 2. get_ver:%d ifflags:0x%x\n", ret, ifflags));
-		iface.ver = WL_INTERFACE_CREATE_VER_2;
-		iface.iftype = iftype;
-		iface.flags = ifflags;
-		if (addr) {
-			memcpy(&iface.mac_addr.octet, addr, ETH_ALEN);
-		}
-		ret = wldev_iovar_getbuf(ndev, "interface_create",
-			&iface, sizeof(struct wl_interface_create_v2),
-			ioctl_buf, sizeof(ioctl_buf), NULL);
-	}
-
-	if (unlikely(ret)) {
-		WL_ERR(("Interface create failed!! ret %d\n", ret));
-		return ret;
-	}
-
-	/* success case */
-	if (use_iface_info_v2 == true) {
-		info_v2 = (wl_interface_info_v2_t *)ioctl_buf;
-		ret = info_v2->bsscfgidx;
-	} else {
-		/* Use v1 struct */
-		info = (struct wl_interface_info_v1 *)ioctl_buf;
-		ret = info->bsscfgidx;
-	}
-
-	WL_DBG(("wl interface create success!! bssidx:%d \n", ret));
-	return ret;
-}
-
 
 s32
 wl_cfg80211_add_del_bss(struct bcm_cfg80211 *cfg,
@@ -4084,6 +3953,14 @@ wl_cfg80211_delete_iface(struct bcm_cfg80211 *cfg,
 				ret = -ENOTSUPP;
 				goto fail;
 			}
+#ifdef WL_NAN
+			if ((sec_data_if_type == WL_IF_TYPE_NAN) &&
+				(wl_cfgnan_is_enabled(cfg) == true)) {
+				WL_ERR(("Avoid deleting NDP in UP state\n"));
+				ret = -ENOTSUPP;
+				goto fail;
+			}
+#endif /* WL_NAN */
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) */
 
 			switch (sec_data_if_type) {
@@ -4241,7 +4118,7 @@ wl_cfg80211_create_iface(struct wiphy *wiphy,
 
 
 	{
-		ret = wl_cfg80211_interface_ops(cfg, primary_ndev, bsscfg_idx,
+		ret = wl_cfgvif_interface_ops(cfg, primary_ndev, bsscfg_idx,
 			wl_iftype, 0, addr);
 	}
 	if (ret == BCME_UNSUPPORTED) {
@@ -4381,7 +4258,7 @@ wl_cfg80211_del_iface(struct wiphy *wiphy, struct wireless_dev *wdev)
 	}
 
 	cfg->bss_pending_del_op = true;
-	ret = wl_cfg80211_interface_ops(cfg, ndev, bsscfg_idx,
+	ret = wl_cfgvif_interface_ops(cfg, ndev, bsscfg_idx,
 		wl_iftype, 1, NULL);
 	if (ret == BCME_UNSUPPORTED) {
 		if ((ret = wl_cfg80211_add_del_bss(cfg, ndev,
@@ -6729,7 +6606,7 @@ wl_cfg80211_ml_link_del(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev,
 
 			if ((ml_link->if_idx == link->if_idx) &&
 					(ml_link->cfg_idx == link->cfg_idx)) {
-				WL_DBG(("matching link found for ifidx:%d bsscfgidx:%d\n",
+				WL_DBG_MEM(("matching link found for ifidx:%d bsscfgidx:%d\n",
 					link->if_idx, link->cfg_idx));
 				(void)memset_s(ml_link, sizeof(wl_mlo_link_t), 0,
 					sizeof(wl_mlo_link_t));
@@ -7952,12 +7829,28 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 	s32 err = BCME_OK;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	wlcfg_assoc_info_t assoc_info;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 2))
+	struct wireless_dev *wdev = dev->ieee80211_ptr;
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 2) */
 
 	WL_DBG(("Enter len=%zu\n", sme->ie_len));
 	RETURN_EIO_IF_NOT_UP(cfg);
 
 	/* syncronize the connect states */
 	mutex_lock(&cfg->connect_sync);
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 2))
+	/* connect request in already connected state. Possible indication of supplicant state
+	 * out of sync. This can happen when the disconnect event haven't yet cleared the
+	 * wdev->connect. This could be due to delayed event or missing disconnect event.
+	 */
+	if (wdev->connected) {
+		WL_ERR(("wdev already in connected state, ignore the current request\n"));
+		CFG80211_DISCONNECTED(dev, 0, NULL, 0, false, GFP_KERNEL);
+		err = -EALREADY;
+		goto fail;
+	}
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 2) */
 
 #ifdef WL_DUAL_STA
 	if (wl_is_macaddr_in_use(cfg, dev)) {
@@ -9321,10 +9214,10 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 	defined(WL_COMPAT_WIRELESS)
 	s8 eabuf[ETHER_ADDR_STR_LEN];
 #endif
+	u32 dhd_assoc_state = 0;
 #if defined(BCMDONGLEHOST)
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 	bool fw_assoc_state = FALSE;
-	u32 dhd_assoc_state = 0;
 #endif
 	void *buf;
 	s32 ifidx = DHD_BAD_IF;
@@ -9336,8 +9229,17 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 		return -EINVAL;
 	}
 
+	/* If state is in roaming, then skip and retry again. During roaming the statistics
+	 * may not be updated for the new BSS
+	 */
+	if (IS_STA_IFACE(ndev_to_wdev(dev)) &&
+		wl_get_drv_status(cfg, ROAMING, dev)) {
+		WL_INFORM_MEM(("[%s] roam in progress. retry\n", dev->name));
+		return -EBUSY;
+	}
+
 	link_idx = wl_cfg80211_get_link_idx_by_bssid(cfg, dev, mac);
-	WL_DBG(("query bssid:"MACDBG" link_idx:%d\n", MAC2STRDBG(mac), link_idx));
+	WL_DBG_MEM(("query bssid:"MACDBG" link_idx:%d\n", MAC2STRDBG(mac), link_idx));
 
 	buf = MALLOC(cfg->osh, WLC_IOCTL_MEDLEN);
 	if (buf == NULL) {
@@ -9365,8 +9267,8 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 					}
 				}
 			}
-#if defined(BCMDONGLEHOST)
 			dhd_assoc_state = wl_get_drv_status(cfg, CONNECTED, dev);
+#if defined(BCMDONGLEHOST)
 			ifidx = dhd_net2idx(dhd->info, dev);
 			DHD_OS_WAKE_LOCK(dhd);
 			fw_assoc_state = dhd_is_associated(dhd, ifidx, &err);
@@ -9380,7 +9282,7 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 			DHD_OS_WAKE_UNLOCK(dhd);
 			if (!dhd_assoc_state || !fw_assoc_state)
 #else
-			if (!wl_get_drv_status(cfg, CONNECTED, dev))
+			if (!dhd_assoc_state)
 #endif /* defined(BCMDONGLEHOST) */
 			{
 				WL_ERR(("NOT assoc\n"));
@@ -9458,7 +9360,7 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 			}
 			sinfo->filled |= STA_INFO_BIT(INFO_SIGNAL);
 			sinfo->signal = rssi;
-			WL_DBG(("RSSI %d dBm\n", rssi));
+			WL_DBG_MEM(("RSSI %d dBm\n", rssi));
 #if defined(SUPPORT_RSSI_SUM_REPORT) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
 			/* Query RSSI sum across antennas */
 			(void)memset_s(&rssi_ant_mimo,
@@ -9471,7 +9373,7 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 				for (cnt = 0; cnt < rssi_ant_mimo.count; cnt++) {
 					sinfo->chain_signal[cnt] = rssi_ant_mimo.rssi_ant[cnt];
 					chains |= (1 << cnt);
-					WL_DBG(("RSSI[%d]: %d dBm\n",
+					WL_DBG_MEM(("RSSI_REPORT[%d]: %d dBm\n",
 						cnt, rssi_ant_mimo.rssi_ant[cnt]));
 				}
 				sinfo->chains = chains;
@@ -12053,9 +11955,9 @@ wl_cfg80211_post_scb_auth(struct bcm_cfg80211 *cfg, struct net_device *dev)
 	LOG_TS(cfg, authorize_cmplt);
 	CLR_TS(cfg, authorize_start);
 	wl_set_drv_status(cfg, AUTHORIZED, dev);
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	wl_del_roam_timeout(cfg);
-#endif
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 #ifdef WBTEXT
 	/* send nbr request or BTM query to update RCC
 	 * after 4-way handshake is completed
@@ -14767,7 +14669,7 @@ wl_handle_link_down(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 
 #ifdef DHD_LOSSLESS_ROAMING
 	wl_del_roam_timeout(cfg);
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 	/*
 	* FW sends body and body len as a part of deauth
 	* and disassoc events (WLC_E_DISASSOC_IND, WLC_E_DEAUTH_IND)
@@ -14942,7 +14844,7 @@ wl_handle_roam_done(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 			as->addr, true);
 #endif /* DHD_EVENT_LOG_FILTER */
 
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	{
 		struct wl_security *sec = wl_read_prof(cfg,
 				as->ndev, WL_PROF_SEC);
@@ -14953,7 +14855,7 @@ wl_handle_roam_done(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 			wl_bss_roaming_done(cfg, as->ndev, as->event_msg, as->data);
 		}
 	}
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 
 	/* Arm pkt logging timer */
 	dhd_dump_mod_pkt_timer(dhdp, PKT_CNT_RSN_ROAM);
@@ -15537,9 +15439,9 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	s32 err = 0;
 	u32 event = be32_to_cpu(e->event_type);
 	u32 status = be32_to_cpu(e->status);
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	struct wl_security *sec;
-#endif
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 #ifdef BCMDONGLEHOST
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 #endif /* BCMDONGLEHOST */
@@ -15570,7 +15472,7 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 
 	if ((event == WLC_E_ROAM || event == WLC_E_BSSID) && status == WLC_E_STATUS_SUCCESS) {
 		if (wl_get_drv_status(cfg, CONNECTED, ndev)) {
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 			sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
 			/* In order to reduce roaming delay, wl_bss_roaming_done is
 			 * early called with WLC_E_LINK event. It is called from
@@ -15596,7 +15498,7 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #if !defined(DHD_NONFT_ROAMING)
 			wl_bss_roaming_done(cfg, ndev, e, data);
 #endif /* !DHD_NONFT_ROAMING */
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 #ifdef WBTEXT
 			if (dhdp->wbtext_support) {
 				/* set wnm_keepalives_max_idle after association */
@@ -15617,14 +15519,14 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				}
 			}
 #endif /* WBTEXT */
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 			if (sec->wpa_auth == 0) {
 				WL_INFORM_MEM(("clr roaming state after roam with"
 					"success status\n"));
 				wl_clr_drv_status(cfg, ROAMING, ndev);
 				CLR_TS(cfg, roam_start)
 			}
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 		} else {
 			wl_bss_connect_done(cfg, ndev, e, data, true);
 		}
@@ -15636,11 +15538,11 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			wl_vndr_ies_get_vendor_oui(cfg, ndev, NULL, 0);
 		}
 	}
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	else if ((event == WLC_E_ROAM || event == WLC_E_BSSID) && status != WLC_E_STATUS_SUCCESS) {
 		wl_del_roam_timeout(cfg);
 	}
-#endif
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 	return err;
 }
 
@@ -15996,7 +15898,7 @@ wl_config_up_table(struct bcm_cfg80211 *cfg,
 }
 #endif /* defined(QOS_MAP_SET) || defined(WL_CUSTOM_MAPPING_OF_DSCP) */
 
-#if defined(DHD_LOSSLESS_ROAMING) || defined (DBG_PKT_MON)
+#if defined(DHD_LOSSLESS_ROAMING) || defined (DBG_PKT_MON) || defined(WLFBT)
 /*
  * start packet logging in advance to make sure that EAPOL
  * messages are not missed during roaming
@@ -16012,6 +15914,7 @@ wl_notify_roam_prep_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	u32 reason = ntoh32(e->reason);
 	int ifidx;
 
+	BCM_REFERENCE(dhdp);
 	BCM_REFERENCE(sec);
 	BCM_REFERENCE(ifidx);
 
@@ -16047,7 +15950,7 @@ wl_notify_roam_prep_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	}
 #endif /* DHD_PKT_MON_DUAL_STA */
 #endif /* DBG_PKT_MON */
-#ifdef DHD_LOSSLESS_ROAMING
+
 	sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
 	/* Disable Lossless Roaming for specific AKM suite
 	 * Any other AKM suite can be added below if transition time
@@ -16058,6 +15961,7 @@ wl_notify_roam_prep_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		return BCME_OK;
 	}
 
+#ifdef DHD_LOSSLESS_ROAMING
 	dhdp->dequeue_prec_map = 1 << dhdp->flow_prio_map[PRIO_8021D_NC];
 	/* Restore flow control  */
 	dhd_txflowcontrol(dhdp, ALL_INTERFACES, OFF);
@@ -16065,7 +15969,7 @@ wl_notify_roam_prep_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 
 	return BCME_OK;
 }
-#endif /* DHD_LOSSLESS_ROAMING || DBG_PKT_MON */
+#endif /* DHD_LOSSLESS_ROAMING || DBG_PKT_MON || WLFBT */
 
 static s32
 wl_notify_roam_start_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
@@ -16388,7 +16292,7 @@ update_bss_info_out:
 	return err;
 }
 
-#if defined(DHD_LOSSLESS_ROAMING) || !defined(DHD_NONFT_ROAMING)
+#if defined(DHD_LOSSLESS_ROAMING) || !defined(DHD_NONFT_ROAMING) || defined(WLFBT)
 static s32
 wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	const wl_event_msg_t *e, void *data)
@@ -16634,14 +16538,14 @@ fail:
 	* layers, since we skip roam indication to upper layers in fail: handling
 	*/
 	wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	wl_del_roam_timeout(cfg);
-#endif  /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 	wl_cfgvif_ml_link_update(cfg, ndev->ieee80211_ptr,
 			e, data, LINK_UPDATE_ROAM_FAIL);
 	return err;
 }
-#endif /* DHD_LOSSLESS_ROAMING || !DHD_NONFT_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || !DHD_NONFT_ROAMING || WLFBT */
 
 static bool
 wl_cfg80211_verify_bss(struct bcm_cfg80211 *cfg, struct net_device *ndev,
@@ -17848,9 +17752,9 @@ static void wl_init_event_handler(struct bcm_cfg80211 *cfg)
 #ifdef CUSTOM_EVENT_PM_WAKE
 	cfg->evt_handler[WLC_E_EXCESS_PM_WAKE_EVENT] = wl_check_pmstatus;
 #endif	/* CUSTOM_EVENT_PM_WAKE */
-#if defined(DHD_LOSSLESS_ROAMING) || defined (DBG_PKT_MON)
+#if defined(DHD_LOSSLESS_ROAMING) || defined (DBG_PKT_MON) || defined(WLFBT)
 	cfg->evt_handler[WLC_E_ROAM_PREP] = wl_notify_roam_prep_status;
-#endif /* DHD_LOSSLESS_ROAMING || DBG_PKT_MON  */
+#endif /* DHD_LOSSLESS_ROAMING || DBG_PKT_MON || WLFBT */
 	cfg->evt_handler[WLC_E_ROAM_START] = wl_notify_roam_start_status;
 #ifdef WL_BAM
 	cfg->evt_handler[WLC_E_ADPS] = wl_adps_event_handler;
@@ -18133,14 +18037,18 @@ void wl_terminate_event_handler(struct net_device *dev)
 	}
 }
 
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 static void wl_del_roam_timeout(struct bcm_cfg80211 *cfg)
 {
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 	struct net_info *iter, *next;
 
+	BCM_REFERENCE(dhdp);
+
+#ifdef DHD_LOSSLESS_ROAMING
 	/* restore prec_map to ALLPRIO */
 	dhdp->dequeue_prec_map = ALLPRIO;
+#endif /* DHD_LOSSLESS_ROAMING */
 	del_timer_sync(&cfg->roam_timeout);
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	for_each_ndev(cfg, iter, next) {
@@ -18160,8 +18068,12 @@ static void wl_roam_timeout(unsigned long data)
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 	struct net_info *iter, *next;
 
+	BCM_REFERENCE(dhdp);
+
+#ifdef DHD_LOSSLESS_ROAMING
 	/* restore prec_map to ALLPRIO */
 	dhdp->dequeue_prec_map = ALLPRIO;
+#endif /* DHD_LOSSLESS_ROAMING */
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	for_each_ndev(cfg, iter, next) {
 		GCC_DIAGNOSTIC_POP();
@@ -18174,7 +18086,7 @@ static void wl_roam_timeout(unsigned long data)
 	CLR_TS(cfg, roam_start);
 }
 
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 
 #ifdef WL_CP_COEX
 #define CP_CHAN_INFO_RAT_MODE_LTE	3
@@ -18561,7 +18473,7 @@ static s32 wl_notifier_change_state(struct bcm_cfg80211 *cfg, struct net_info *_
 	return err;
 }
 
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 static s32 wl_init_roam_timeout(struct bcm_cfg80211 *cfg)
 {
 	int err = 0;
@@ -18571,7 +18483,7 @@ static s32 wl_init_roam_timeout(struct bcm_cfg80211 *cfg)
 
 	return err;
 }
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 
 #ifdef CONFIG_SLEEP_MONITOR
 extern long long temp_raw;
@@ -18656,12 +18568,12 @@ static s32 wl_init_priv(struct bcm_cfg80211 *cfg)
 	err = wl_init_scan(cfg);
 	if (err)
 		return err;
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	err = wl_init_roam_timeout(cfg);
 	if (err) {
 		return err;
 	}
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 	wl_init_conf(cfg->conf);
 	wl_init_prof(cfg, ndev);
 	wl_link_down(cfg);
@@ -18698,9 +18610,9 @@ static void wl_deinit_priv(struct bcm_cfg80211 *cfg)
 	dhd_cancel_delayed_work_sync(&cfg->sched_scan_stop_work);
 #endif /* WL_SCHED_SCAN */
 	del_timer_sync(&cfg->scan_timeout);
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	del_timer_sync(&cfg->roam_timeout);
-#endif
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 #ifdef WL_CELLULAR_CHAN_AVOID
 	wl_cellavoid_deinit(cfg);
 #endif /* WL_CELLULAR_CHAN_AVOID */
@@ -18994,9 +18906,9 @@ void wl_cfg80211_detach(struct bcm_cfg80211 *cfg)
 #endif /* WL_WPS_SYNC */
 
 	del_timer_sync(&cfg->scan_timeout);
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	del_timer_sync(&cfg->roam_timeout);
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 
 #ifdef WL_STATIC_IF
 	wl_cfg80211_unregister_static_if(cfg);
@@ -20261,7 +20173,9 @@ static s32 __wl_update_wiphybands(struct bcm_cfg80211 *cfg, bool notify)
 	}
 
 #ifdef WL_CELLULAR_CHAN_AVOID
-	err = wl_cellavoid_reinit(cfg);
+	if (wl_cellavoid_supported(cfg) && cfg->cellavoid_info) {
+		err = wl_cellavoid_reinit(cfg);
+	}
 #endif /* WL_CELLULAR_CHAN_AVOID */
 
 	return err;
@@ -20483,15 +20397,17 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 	u8 ioctl_buf[WLC_IOCTL_SMLEN];
 	wl_actframe_version_v1_t *af_ver_p;
 
-	WL_DBG(("In\n"));
+	WL_INFORM_MEM(("Enter. ifname:%s iftype:%d\n",
+		ndev->name, wdev->iftype));
 
 	/* Reserve 0x8000 toggle bit for P2P GO/GC */
 	cfg->vif_macaddr_mask = 0x8000;
 
 #if defined(BCMDONGLEHOST)
 	err = dhd_config_dongle(cfg);
-	if (unlikely(err))
+	if (unlikely(err)) {
 		return err;
+	}
 #endif /* defined(BCMDONGLEHOST) */
 
 #ifdef SHOW_LOGTRACE
@@ -20532,6 +20448,8 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 	}
 
 	if (cfg80211_to_wl_iftype(wdev->iftype, &wl_iftype, &wl_mode) < 0) {
+		WL_ERR(("unsupported wdev_iftype:%d wl_iftype:%d wl_mode:%d\n",
+			wdev->iftype, wl_iftype, wl_mode));
 		return -EINVAL;
 	}
 	if (!dhd->fw_preinit) {
@@ -20642,11 +20560,14 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 	}
 #endif /* WL_RAV_MSCS_NEG_IN_ASSOC */
 
-#ifdef DHD_LOSSLESS_ROAMING
+#if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	del_timer_sync(&cfg->roam_timeout);
-#endif /* DHD_LOSSLESS_ROAMING */
+#endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 
 	err = dhd_monitor_init(cfg->pub);
+	if (err) {
+		WL_ERR(("monitor init failed err:%d\n", err));
+	}
 
 #ifdef WL_HOST_BAND_MGMT
 	/* By default the curr_band is initialized to BAND_AUTO */
@@ -20766,7 +20687,9 @@ static s32 __wl_cfg80211_up(struct bcm_cfg80211 *cfg)
 #endif /* WL_IDAUTH */
 
 #if defined(KEEP_ALIVE) && defined(OEM_ANDROID)
-	err = wl_cfgvif_apply_default_keep_alive(ndev, cfg);
+	if (IS_STA_IFACE(ndev_to_wdev(ndev))) {
+		err = wl_cfgvif_apply_default_keep_alive(ndev, cfg);
+	}
 #endif /* KEEP_ALIVE && OEM_ANDROID */
 
 	return err;
@@ -21061,34 +20984,35 @@ s32 wl_cfg80211_up(struct net_device *net)
 #ifdef WL_USE_RANDOMIZED_SCAN
 	uint8 random_addr[ETHER_ADDR_LEN] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
 #endif /* WL_USE_RANDOMIZED_SCAN */
+
 	WL_DBG(("In\n"));
 	cfg = wl_get_cfg(net);
 
+	mutex_lock(&cfg->usr_sync);
 #ifdef WL_DUAL_STA
 	cfg->inet_ndev = net;
 #endif /* WL_DUAL_STA */
 	if ((err = wldev_ioctl_get(bcmcfg_to_prmry_ndev(cfg), WLC_GET_VERSION, &val,
 		sizeof(int)) < 0)) {
 		WL_ERR(("WLC_GET_VERSION failed, err=%d\n", err));
-		return err;
+		goto exit;
 	}
 	val = dtoh32(val);
 	if (val != WLC_IOCTL_VERSION && val != 1) {
 		WL_ERR(("Version mismatch, please upgrade. Got %d, expected %d or 1\n",
 			val, WLC_IOCTL_VERSION));
-		return BCME_VERSION;
+		goto exit;
 	}
 	ioctl_version = val;
 	WL_TRACE(("WLC_GET_VERSION=%d\n", ioctl_version));
 
-	mutex_lock(&cfg->usr_sync);
 #if defined(BCMDONGLEHOST)
 	dhd = (dhd_pub_t *)(cfg->pub);
 	if (!(dhd->op_mode & DHD_FLAG_HOSTAP_MODE)) {
 		err = wl_cfg80211_attach_post(bcmcfg_to_prmry_ndev(cfg));
 		if (unlikely(err)) {
-			mutex_unlock(&cfg->usr_sync);
-			return err;
+			WL_ERR(("wl_cfg80211_attach_post failed. err:%d\n", err));
+			goto exit;
 		}
 	}
 #if defined(BCMSUP_4WAY_HANDSHAKE)
@@ -21103,8 +21027,10 @@ s32 wl_cfg80211_up(struct net_device *net)
 #endif /* BCMSUP_4WAY_HANDSHAKE */
 #endif /* defined(BCMDONGLEHOST) */
 	err = __wl_cfg80211_up(cfg);
-	if (unlikely(err))
-		WL_ERR(("__wl_cfg80211_up failed\n"));
+	if (unlikely(err)) {
+		WL_ERR(("__wl_cfg80211_up failed. err:%d\n", err));
+		goto exit;
+	}
 
 #ifdef ROAM_CHANNEL_CACHE
 	if (init_roam_cache(cfg, ioctl_version) == 0) {
@@ -21150,8 +21076,6 @@ s32 wl_cfg80211_up(struct net_device *net)
 	}
 #endif /* WL_CHAN_UTIL */
 
-	mutex_unlock(&cfg->usr_sync);
-
 #ifdef WLAIBSS_MCHAN
 	bcm_cfg80211_add_ibss_if(cfg->wdev->wiphy, IBSS_IF_NAME);
 #endif /* WLAIBSS_MCHAN */
@@ -21161,6 +21085,8 @@ s32 wl_cfg80211_up(struct net_device *net)
 		wl_set_drv_status(cfg, READY, net);
 	}
 
+exit:
+	mutex_unlock(&cfg->usr_sync);
 	return err;
 }
 
