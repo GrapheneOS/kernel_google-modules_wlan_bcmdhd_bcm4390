@@ -133,23 +133,30 @@ dhd_bus_dump_imp_cfg_registers(struct dhd_bus *bus)
 	uint32 base_addr0 = dhd_pcie_config_read(bus, PCIECFGREG_BASEADDR0, sizeof(uint32));
 	uint32 base_addr1 = dhd_pcie_config_read(bus, PCIECFGREG_BASEADDR1, sizeof(uint32));
 	uint32 linkctl = dhd_pcie_config_read(bus, PCIECFGREG_LINK_STATUS_CTRL, sizeof(uint32));
+	uint32 linkctl2 = dhd_pcie_config_read(bus, PCIECFGREG_LINK_STATUS_CTRL2, sizeof(uint32));
 	uint32 l1ssctrl =
 		dhd_pcie_config_read(bus, PCIECFGREG_PML1_SUB_CTRL1, sizeof(uint32));
 	uint32 devctl = dhd_pcie_config_read(bus, PCIECFGREG_DEV_STATUS_CTRL, sizeof(uint32));
 	uint32 devctl2 = dhd_pcie_config_read(bus, PCIECFGGEN_DEV_STATUS_CTRL2, sizeof(uint32));
+	uint32 uc_err_status = dhd_pcie_config_read(bus, PCIE_CFG_UC_ERR_STS, sizeof(uint32));
+	uint32 corr_err_status = dhd_pcie_config_read(bus, PCIE_CFG_CORR_ERR_STS, sizeof(uint32));
 
 	DHD_PRINT(("PCIE CFG regs: status_cmd(0x%x)=0x%x, pmcsr(0x%x)=0x%x "
 		"base_addr0(0x%x)=0x%x base_addr1(0x%x)=0x%x "
-		"linkctl(0x%x)=0x%x l1ssctrl(0x%x)=0x%x "
-		"devctl(0x%x)=0x%x devctl2(0x%x)=0x%x \n",
+		"linkctl(0x%x)=0x%x linkctl2(0x%x)=0x%x l1ssctrl(0x%x)=0x%x "
+		"devctl(0x%x)=0x%x devctl2(0x%x)=0x%x uc_err_status(0x%x)=0x%x "
+		"corr_err_status(0x%x)=0x%x\n",
 		PCIECFGREG_STATUS_CMD, status_cmd,
 		PCIE_CFG_PMCSR, pmcsr,
 		PCIECFGREG_BASEADDR0, base_addr0,
 		PCIECFGREG_BASEADDR1, base_addr1,
 		PCIECFGREG_LINK_STATUS_CTRL, linkctl,
+		PCIECFGREG_LINK_STATUS_CTRL2, linkctl2,
 		PCIECFGREG_PML1_SUB_CTRL1, l1ssctrl,
 		PCIECFGREG_DEV_STATUS_CTRL, devctl,
-		PCIECFGGEN_DEV_STATUS_CTRL2, devctl2));
+		PCIECFGGEN_DEV_STATUS_CTRL2, devctl2,
+		PCIE_CFG_UC_ERR_STS, uc_err_status,
+		PCIE_CFG_CORR_ERR_STS, corr_err_status));
 }
 
 #define PCIE_SLAVER_WRAPPER_BASE	0x18102000u
@@ -3141,13 +3148,13 @@ dhd_bus_get_etb_dump_cmn(dhd_bus_t *bus, uint8 *buf, uint bufsize, uint32 etb_co
 	ccrev = si_corerev(bus->sih);
 	si_setcore(bus->sih, curcore, 0);
 
-#if defined(OEM_ANDROID)
+#if defined(FIS_WITH_CMN)
 	/* if FIS dump with common subcore is collected, which happens
 	 * only on android platforms which support reg on,
 	 * skip DAP TMC flush as recommended by ASIC. Also do not update RWP.
 	 */
 	 skip_flush_and_rwp_update = dhdp->fis_triggered;
-#endif /* OEM_ANDROID */
+#endif /* FIS_WITH_CMN */
 
 	if (skip_flush_and_rwp_update) {
 		DHD_PRINT(("%s: skip DAP TMC flush and RWP update due to FIS\n", __FUNCTION__));

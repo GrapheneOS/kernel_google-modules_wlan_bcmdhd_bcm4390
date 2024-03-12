@@ -1052,6 +1052,24 @@ typedef BWL_PRE_PACKED_STRUCT struct he_bsscolor_change_ie {
 /* For HE MU SIG A : RX PLCP4 bit fields [8bit] */
 #define HE_MU_SIGA2_STBC_RX_MASK	0x40u
 
+/**
+ * Draft P802.11REVme_D4.2; 9.4.2.312 Non-AP STA Regulatory Connectivity element
+ */
+typedef BWL_PRE_PACKED_STRUCT struct he_non_ap_sta_reg_conn_ie {
+	uint8 id;
+	uint8 len;
+	uint8 id_ext;
+	uint8 reg_conn_data[];	/* Variable length Regulatory Connectivity Data */
+} BWL_POST_PACKED_STRUCT he_non_ap_sta_reg_conn_ie_t;
+
+/* Refer Table 9-415 Regulatory Connectivity field.
+ * Client device capabilities, various bits for byte 0.
+ */
+#define HE_NON_AP_STA_REG_CONN_DATA_LPI_CLIENT_VALID	(1u << 0u) /* bit 0 */
+#define HE_NON_AP_STA_REG_CONN_DATA_LPI_CLIENT		(1u << 1u) /* bit 1 */
+
+#define HE_NON_AP_STA_REG_CONN_DATA_SP_CLIENT_VALID	(1u << 2u) /* bit 2 */
+#define HE_NON_AP_STA_REG_CONN_DATA_SP_CLIENT		(1u << 3u) /* bit 3 */
 
 /* This marks the end of a packed structure section. */
 #include <packed_section_end.h>

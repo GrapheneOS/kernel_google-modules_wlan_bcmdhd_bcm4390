@@ -1988,7 +1988,6 @@ typedef struct dhd_pub {
 	} roam_evt;
 	bool ring_attached;
 #ifdef DHD_PCIE_RUNTIMEPM
-	bool rx_pending_due_to_rpm;
 #ifdef RPM_FAST_TRIGGER
 	bool rpm_fast_trigger;
 	bool rpm_fast_candidate;
