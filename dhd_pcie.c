@@ -5126,7 +5126,9 @@ dhd_validate_pcie_link_cbp_wlbp(dhd_bus_t *bus)
 		DHD_PRINT(("%s : Set collect_sssr\n", __FUNCTION__));
 		bus->dhd->collect_sssr = TRUE;
 		dhdpcie_set_collect_fis(bus);
-		bus->dhd->memdump_type = DUMP_TYPE_COMMON_BP_DOWN;
+		if (!bus->dhd->memdump_type) {
+			bus->dhd->memdump_type = DUMP_TYPE_COMMON_BP_DOWN;
+		}
 #endif /* DHD_SSSR_DUMP */
 #endif /* DHD_FW_COREDUMP */
 	} else if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
@@ -5137,7 +5139,9 @@ dhd_validate_pcie_link_cbp_wlbp(dhd_bus_t *bus)
 		DHD_PRINT(("%s : Set collect_sssr\n", __FUNCTION__));
 		bus->dhd->collect_sssr = TRUE;
 		dhdpcie_set_collect_fis(bus);
-		bus->dhd->memdump_type = DUMP_TYPE_WL_BP_DOWN;
+		if (!bus->dhd->memdump_type) {
+			bus->dhd->memdump_type = DUMP_TYPE_WL_BP_DOWN;
+		}
 #endif /* DHD_SSSR_DUMP */
 #endif /* DHD_FW_COREDUMP */
 	}
@@ -8247,6 +8251,7 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			bus->dhd->dongle_reset = FALSE;
 			bus->fw_boot_intr = FALSE;
 			bus->init_done = FALSE;
+			dhd_bus_reset_link_state(dhdp);
 			bcmerror = dhd_bus_start(dhdp);
 			if (bcmerror) {
 				DHD_ERROR(("%s: dhd_bus_start: %d\n",

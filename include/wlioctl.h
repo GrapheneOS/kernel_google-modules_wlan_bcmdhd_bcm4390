@@ -329,11 +329,15 @@ typedef enum bsscfg_subtype {
 	BSSCFG_GENERIC_STA = 1,		/* GENERIC */
 	BSSCFG_GENERIC_AP = 2,
 	BSSCFG_GENERIC_IBSS = 6,
-	BSSCFG_P2P_GC = 3,		/* P2P */
-	BSSCFG_P2P_GO = 4,
-	BSSCFG_P2P_DISC = 5,
+	BSSCFG_SUBTYPE_P2P_GC = 3,	/* P2P */
+	BSSCFG_SUBTYPE_P2P_GO = 4,
+	BSSCFG_SUBTYPE_P2P_DISC = 5,
+	/* Remove the next 3 P2P subtypes in the future */
+	BSSCFG_P2P_GC = BSSCFG_SUBTYPE_P2P_GC,		/* to be removed */
+	BSSCFG_P2P_GO = BSSCFG_SUBTYPE_P2P_GO,		/* to be removed */
+	BSSCFG_P2P_DISC = BSSCFG_SUBTYPE_P2P_DISC,	/* to be removed */
 	/* Index 7 & 8 earlier used for BTAMP */
-	BSSCFG_SUBTYPE_AWDL = 9, /* SLOTTED_BSS_TYPE */
+	BSSCFG_SUBTYPE_AWDL = 9,	/* SLOTTED_BSS_TYPE */
 	BSSCFG_SUBTYPE_NAN_MGMT = 10,
 	BSSCFG_SUBTYPE_NAN_DATA = 11,
 	BSSCFG_SUBTYPE_NAN_MGMT_DATA = 12
@@ -7358,12 +7362,21 @@ BWL_PRE_PACKED_STRUCT struct bus_tput_params_v1 {
 #define BUS_TPUT_STATS_VERSION_1	(1u)
 #include <packed_section_start.h>
 BWL_PRE_PACKED_STRUCT struct bus_tput_stats_v1 {
-	uint16	ver; /**<version */
-	uint16	len; /**<length */
+	uint16	ver; /**< version */
+	uint16	len; /**< length */
 	uint32  time_taken; /**< no of usecs the test is run */
 	uint16  count;  /**< no of dma desc transferred */
 	uint16  nbytes_per_descriptor; /**< no of bytes of data dma ed per descriptor */
 	uint32  flags; /**< stats flags */
+} BWL_POST_PACKED_STRUCT;
+
+BWL_PRE_PACKED_STRUCT struct bus_tput_stats_v2 {
+	uint16	ver;			/**< version */
+	uint16	len;			/**< length */
+	uint16  count;			/**< no of dma desc transferred */
+	uint16  nbytes_per_descriptor;	/**< no of bytes of data dma ed per descriptor */
+	uint64  time_taken_ns;		/**< no of nsecs the test is run */
+	uint32  flags;			/**< stats flags */
 } BWL_POST_PACKED_STRUCT;
 #include <packed_section_end.h>
 
@@ -11468,9 +11481,13 @@ enum wl_nan_cfg_ctrl2_flags2 {
 	 * needed.
 	 */
 	WL_NAN_CTRL2_FLAG2_USE_WFA_MODE				=	(1u << 3u), /* bit 3 */
-	WL_NAN_CTRL2_FLAG2_S3_CAPABLE				=	(1u << 4u) /* bit 4 */
+	WL_NAN_CTRL2_FLAG2_S3_CAPABLE				=	(1u << 4u), /* bit 4 */
+	/* AutoDAM Control flag to disable NAN SCC in infra channel
+	 * when infra is associated in non-soc channel.
+	 */
+	WL_NAN_CTRL2_FLAG2_AUTODAM_DISABLE_INFRA_SCC		=	(1u << 5u) /* bit 5 */
 };
-#define WL_NAN_CTRL2_FLAGS2_MASK	0x0000001f
+#define WL_NAN_CTRL2_FLAGS2_MASK	0x0000003f
 
 /*
  * WL_NAN_CMD_CFG_BAND, WL_NAN_CMD_CFG_RSSI_THRESHOLD(Get only)
@@ -17331,6 +17348,7 @@ enum {
 	IOV_DYNSAR_PROFILE	= 12,
 	IOV_DYNSAR_PROFILES	= 13,
 	IOV_DYNSAR_STAT_DET_V2	= 14,
+	IOV_DYNSAR_UTMON_BT     = 15,
 	IOV_DYNSAR_CMD_LAST
 };
 
@@ -17347,6 +17365,7 @@ enum {
 #define DYNSAR_CNT_VERSION_V2	2u
 #define DYNSAR_CNT_VERSION_V3	3u
 #define DYNSAR_CNT_VERSION_V4	4u
+#define DYNSAR_CNT_VERSION_V5	5u
 #define DYNSAR_STS_OBS_WIN	20u
 #define DYNSAR_MAX_ANT		WL_STA_ANT_MAX
 #define DYNSAR_MAX_AGG_IDX (DYNSAR_MAX_ANT << 1u) /* max antenna aggregation index */
@@ -17500,10 +17519,10 @@ typedef struct dynsar_unshared_ant_stats {
 } dynsar_unshared_ant_stats_t;
 
 typedef struct dynsar_ant_stats {
-	uint32 tx_dur;		/* tx duration     */
-	uint16 sar_util;	/* sar utilization */
-	uint8  valid;		/* valid record    */
-	uint8  PAD;		/* pad */
+	uint32 tx_dur;      /* tx duration     */
+	uint16 sar_util;    /* sar utilization */
+	uint8  valid;       /* valid record    */
+	uint8  PAD;         /* pad */
 } dynsar_ant_stats_t;
 
 typedef struct dynsar_sum_v1 {
@@ -17560,6 +17579,13 @@ typedef struct dynsar_var_info {
 	uint32 lim; /* variance limit */
 	uint32 off; /* hysterysis offset applied to variance while optimized */
 } dynsar_var_info_t;
+
+
+typedef struct dynsar_sar_dist_fact {
+	uint8 sardist_main;
+	uint8 sardist_aux;
+	uint8 sardist_bt;
+} dynsar_sar_dist_fact_t;
 
 typedef struct dynsar_status_v3 {
 	uint16 ver;
@@ -17626,7 +17652,9 @@ typedef struct dynsar_opt_profile_v2 {
 	uint8 avg_txdc_th;   /* mean txdc threshold for throttling txdc */
 	uint8 opt_txdc_tgt; /* target txdc */
 	uint8 twin; /* Twin in seconds */
-	uint8 pad[3];
+	uint8 sardist_main; /* sar budget percentage in 5g */
+	uint8 sardist_aux;  /* sar budget percentage in 2g */
+	uint8 sardist_bt;   /* sar budget percentage in bt */
 } dynsar_opt_profile_v2_t;
 
 typedef struct dynsar_opt_profiles_v1 {
@@ -19763,7 +19791,7 @@ typedef struct wl_mlo_config_pref_v1 {
 #define WL_MLO_FEATURE_EN_VER_1		1u
 #define WL_MLO_FEATURE_MASK_VER_1	(WL_MLO_FEA_EMLSR_MASK | WL_MLO_FEA_STR_ON_SCAN_MASK | \
 					WL_MLO_FEA_LGCY_SCORE_ML_ASSOC_MASK | \
-					WL_MLO_FEA_STR_ON_SB_MASK)
+					WL_MLO_FEA_STR_ON_SB_MASK | WL_MLO_FEA_MLO_ASSOC_MODE_MASK)
 
 /* Following mask are used in wl_mlo_feature_en_v1_t to find the value of enab field
  * corresponding to a feature. Please update WL_MLO_FEATURE_MASK_VER_1 whenever
@@ -19783,6 +19811,9 @@ typedef struct wl_mlo_config_pref_v1 {
 #define WL_MLO_FEA_STR_ON_SB_MASK		0x30	/* STR during Slotted BSS oper mask */
 #define WL_MLO_FEA_STR_ON_SB_SHIFT		4u	/* STR during Slotted BSS oper shift */
 
+#define WL_MLO_FEA_MLO_ASSOC_MODE_MASK		0xC0	/* MLO assoc mode mask */
+#define WL_MLO_FEA_MLO_ASSOC_MODE_SHIFT		6u	/* MLO assoc mode shift */
+
 #define WL_MLO_FEA_EMLSR_DISABLE		0u	/* Disable eMLSR mode */
 #define WL_MLO_FEA_EMLSR_ENABLE			1u	/* Enable eMLSR mode */
 
@@ -19796,6 +19827,9 @@ typedef struct wl_mlo_config_pref_v1 {
 #define WL_MLO_FEA_STR_ON_SB_DISABLE		0u	/* STR operation for AWDL/NAN Disabled */
 #define WL_MLO_FEA_SLINK_STR_ON_SB		1u	/* 1 link STR operation on  AWDL/NAN */
 #define WL_MLO_FEA_MLINK_STR_ON_SB		2u	/* Multi link STR operation on AWDL/NAN */
+
+#define WL_MLO_FEA_MLO_ASSOC_MODE_STRICT	0u	/* Strict assoc mode 0 */
+#define WL_MLO_FEA_MLO_ASSOC_MODE_FLEXI		1u	/* Flexible assoc mode 1 (default) */
 
 /* Mask in the following structure defines which bit is valid in the enab field. If a bit in
  * mask field is zero, the corresponding value in enab will be ignored. The definition of
@@ -24132,6 +24166,7 @@ typedef enum wl_rffe_cmd_type {
 	WL_RFFE_CMD_ELNA_VDD_MODE	= 3,
 	WL_RFFE_CMD_DRV_STRENGTH        = 4,
 	WL_RFFE_CMD_RX_MODE             = 5,
+	WL_RFFE_CMD_EFUSE_DUMP		= 6,
 	WL_RFFE_CMD_LAST
 } wl_rffe_cmd_type_t;
 
@@ -25344,9 +25379,9 @@ typedef struct frameburst_cot {
 } frameburst_cot_t;
 
 typedef enum {
-	BCM_TRACE_VER		= 1,
-	BCM_TRACE_ENAB		= 2,
-	BCM_TRACE_EVENT_ENAB	= 3
+	BCM_TRACE_VER		= 1u,
+	BCM_TRACE_ENAB		= 2u,
+	BCM_TRACE_EVENT_ENAB	= 3u
 } bcm_trace_sub_cmds_t;
 
 #define BCM_TRACE_VERSION_1	1u
@@ -25359,19 +25394,13 @@ typedef struct bcm_trace_event_enab_v1 {
 	uint8 PAD[1];
 } bcm_trace_event_enab_v1_t;
 
-
-/* BCMTRACE even log type bit definitions */
-#define BCM_TRACE_TYPE_NORMAL	0x1
-#define BCM_TRACE_TYPE_CHATTY	0x2
-
-#define BCM_TRACE_TYPE_MASK	0x3
-
-/* Enum value for BCMTRACE array index */
-enum bcmtrace_array_val {
-	BCM_TRACE_NORMAL	= 0,
-	BCM_TRACE_CHATTY,
-	BCM_TRACE_LAST
-};
+/* bcmtrace even log type definitions */
+typedef enum  {
+	BCM_TRACE_TYPE_INVALID	= 0u,
+	BCM_TRACE_TYPE_NORMAL	= 1u,
+	BCM_TRACE_TYPE_CHATTY	= 2u,
+	BCM_TRACE_TYPE_MAX	= 255u
+} bcm_trace_type_t;
 
 typedef struct bcm_trace_event_enab_v2 {
 	uint8 version;
@@ -26598,18 +26627,18 @@ typedef struct wl_phy_dbg_gci_data_v1 {
 #define WL_PHY_DBG_SRA_INFO_VERSION_1	1u
 /* Info struct */
 typedef struct wl_phy_dbg_sra_info_v1 {
-	uint32	srmc_init_status_bt;	/* SRCB init_status reg for bt */
-	uint32	srmc_init_status_wl;	/* SRCB init_status reg for wl */
-	uint32	sr_crash_counter_bt;	/* BT FW trap count */
-	uint32	sr_crash_counter_wl;	/* WL FW trap count */
-	uint16	sr_crash_reason_bt;	/* BT FW trap reason */
-	uint16	sr_crash_reason_wl;	/* WL FW trap reason */
-	uint8	sr_boot_count;		/* critical + non-critical region boot count */
-	uint8	sr_softrecovery_count;	/* critical region recoverable boot count */
-	uint16	sr_dbg01;
-	uint32	sr_dbg02;
-	uint32	sr_dbg03;
-	uint32	sr_dbg04;
+	uint32	srmc_init_status_bt;	/* SRCB init_status reg for BT */
+	uint32	srmc_init_status_wl;	/* SRCB init_status reg for WL */
+	uint32	sr_crash_counter_bt;	/* BT FW initiated trap notifications count */
+	uint32	sr_crash_counter_wl;	/* WL FW initiated notifications count */
+	uint16	sr_crash_reason_bt;	/* Last BT FW trap reason */
+	uint16	sr_crash_reason_wl;	/* Last WL FW trap reason */
+	uint8	sr_boot_count;		/* Critical + Non-critical region boot count */
+	uint8	sr_softrecovery_count;	/* Critical region recoverable boot count */
+	uint16	sr_dbg01;		/* not populated yet */
+	uint32	sr_dbg02;		/* not populated yet */
+	uint32	sr_dbg03;		/* BT initiated Temp Req count */
+	uint32	sr_dbg04;		/* BT initiated Cal Req count */
 } wl_phy_dbg_sra_info_v1_t;
 
 typedef struct wl_phy_dbg_v1 {
@@ -27266,68 +27295,5 @@ typedef struct wl_antgain6g_list {
 	uint8	pad[3];
 	wl_antgain6g_t antgain[];	/* list of antenna gain values */
 } wl_antgain6g_list_t;
-
-/* Debug Crash types */
-#define WL_DBG_CRSH_TYPE_RD_RANDOM			0x00
-#define WL_DBG_CRSH_TYPE_RD_INV_CORE			0x01
-#define WL_DBG_CRSH_TYPE_WR_INV_CORE			0x02
-#define WL_DBG_CRSH_TYPE_RD_INV_WRAP			0x03
-#define WL_DBG_CRSH_TYPE_WR_INV_WRAP			0x04
-#define WL_DBG_CRSH_TYPE_RD_RES_CORE			0x05
-#define WL_DBG_CRSH_TYPE_WR_RES_CORE			0x06
-#define WL_DBG_CRSH_TYPE_RD_RES_WRAP			0x07
-#define WL_DBG_CRSH_TYPE_WR_RES_WRAP			0x08
-#define WL_DBG_CRSH_TYPE_RD_CORE_NO_CLK			0x09
-#define WL_DBG_CRSH_TYPE_WR_CORE_NO_CLK			0x0A
-#define WL_DBG_CRSH_TYPE_RD_CORE_NO_PWR			0x0B
-#define WL_DBG_CRSH_TYPE_WR_CORE_NO_PWR			0x0C
-#define WL_DBG_CRSH_TYPE_PCIe_AER			0x0D
-#define WL_DBG_CRSH_TYPE_POWERCYCLE			0x0E
-#define WL_DBG_CRSH_TYPE_TRAP				0x0E
-#define WL_DBG_CRSH_TYPE_HANG				0x0F
-#define WL_DBG_CRSH_TYPE_PHYTXERR			0x10
-
-#define WL_DBG_CRSH_TYPE_PHYREAD			0x11
-#define WL_DBG_CRSH_TYPE_PHYWRITE			0x12
-#define WL_DBG_CRSH_TYPE_INV_PHYREAD			0x13
-#define WL_DBG_CRSH_TYPE_INV_PHYWRITE			0x14
-#define WL_DBG_CRSH_TYPE_DUMP_STATE			0x15
-
-
-/* Radio/PHY health check crash scenarios - reserved 0x16 to 0x30 */
-#define WL_DBG_CRSH_TYPE_RADIO_HEALTHCHECK_START	0x16
-#define WL_DBG_CRSH_TYPE_DESENSE_LIMITS			0x17
-#define WL_DBG_CRSH_TYPE_BASEINDEX_LIMITS		0x18
-#define WL_DBG_CRSH_TYPE_TXCHAIN_INVALID		0x19
-#define WL_DBG_CRSH_TYPE_CRITICAL_MALLOC_FAIL		0x1a
-#define WL_DBG_CRSH_TYPE_TEMPSENSE_LIMITS		0x20
-#define WL_DBG_CRSH_TYPE_TXPOWER_LIMITS			0x21
-#define WL_DBG_CRSH_TYPE_VCOCAL_FAILED			0x22
-#define WL_DBG_CRSH_TYPE_PLL_NOTLOCKED			0x23
-#define WL_DBG_CRSH_TYPE_RADIO_HEALTHCHECK_LAST		0x30
-#define WL_DBG_CRSH_TYPE_BTCOEX_RFACTIVE		0x31
-#define WL_DBG_CRSH_TYPE_BTCOEX_TXCONF_DELAY		0x32
-#define WL_DBG_CRSH_TYPE_BTCOEX_ANT_DELAY		0x33
-#define WL_DBG_CRSH_TYPE_BTCOEX_INVLD_TASKID		0x34
-#define WL_DBG_CRSH_TYPE_STACK_OVERRUN			0x35
-#define WL_DBG_CRSH_TYPE_MPU_HCHK			0x36
-#define WL_DBG_CRSH_TYPE_STACK_CORRUPTION		0x38
-/* To maintain uniformity with other branches, leaving 0x37 & 0x38 unused */
-#define WL_DBG_CRSH_TYPE_ARM_DBG_REG_ACCESS		0x39
-#define WL_DBG_CRSH_TYPE_WLREGON			0x3a
-
-#define WL_DBG_CRSH_TYPE_SR_DCCAL0			0x40
-#define WL_DBG_CRSH_TYPE_SR_DCCAL1			0x41
-#define WL_DBG_CRSH_TYPE_SR_RXIQCAL0			0x50
-#define WL_DBG_CRSH_TYPE_SR_RXIQCAL1			0x51
-#define WL_DBG_CRSH_TYPE_SR_TEMP0			0x60
-#define WL_DBG_CRSH_TYPE_SR_TEMP1			0x61
-#define WL_DBG_CRSH_TYPE_SR_FULLCAL0			0x70
-#define WL_DBG_CRSH_TYPE_SR_FULLCAL1			0x71
-#define WL_DBG_CRSH_TYPE_SR_MPCAL0			0x80
-#define WL_DBG_CRSH_TYPE_SR_MPCAL1			0x81
-#define WL_DBG_CRSH_TYPE_SR_SEM				0x90
-#define WL_DBG_CRSH_TYPE_SR_AXI				0x91
-#define WL_DBG_CRSH_TYPE_LAST				0x92
 
 #endif /* _wlioctl_h_ */

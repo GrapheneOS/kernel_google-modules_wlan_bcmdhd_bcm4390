@@ -3522,12 +3522,6 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 				/* It can make stuck NET TX Queue without below */
 				dhd_bus_start_queue(bus);
 				DHD_GENERAL_UNLOCK(dhd, flags);
-				if (bus->dhd->rx_pending_due_to_rpm) {
-					/* Reschedule tasklet to process Rx frames */
-					DHD_PRINT(("%s: Schedule DPC to process pending"
-						" Rx packets\n", __FUNCTION__));
-					dhd_schedule_delayed_dpc_on_dpc_cpu(bus->dhd, 0);
-				}
 				smp_wmb();
 				wake_up(&bus->rpm_queue);
 				return FALSE;
@@ -3595,14 +3589,6 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 			/* For making sure NET TX Queue active  */
 			dhd_bus_start_queue(bus);
 			DHD_GENERAL_UNLOCK(dhd, flags);
-
-			if (bus->dhd->rx_pending_due_to_rpm) {
-				/* Reschedule tasklet to process Rx frames */
-				DHD_PRINT(("%s: Schedule DPC to process pending Rx packets\n",
-					__FUNCTION__));
-				bus->rpm_sched_dpc_time = OSL_LOCALTIME_NS();
-				dhd_schedule_delayed_dpc_on_dpc_cpu(bus->dhd, 0);
-			}
 
 			smp_wmb();
 			wake_up(&bus->rpm_queue);

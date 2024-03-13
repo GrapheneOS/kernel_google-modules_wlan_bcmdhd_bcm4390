@@ -243,7 +243,8 @@ typedef struct xtlv_uc_txs {
 #define WL_SSUM_MODE_SHIFT	9u	/* shift mode scan operation */
 
 /* Common bits for channel and scan summary info */
-#define SCAN_SUM_CHAN_RESHED	0x1000 /* Bit 12 as resched scan for chaninfo and scan summary */
+#define SCAN_SUM_CHAN_RESHED		0x1000 /* Bit 12 resched scan for chaninfo/scan summary */
+#define SCAN_SUM_CHAN_SC_EXTENDED_SC	0x2000 /* Bit 13 indicates MultiScan is used */
 
 #define WL_SSUM_CLIENT_ASSOCSCAN	0x0u	/* Log as scan requested client is assoc scan */
 #define WL_SSUM_CLIENT_ROAMSCAN		0x1u	/* Log as scan requested client is roam scan */
@@ -286,7 +287,11 @@ typedef struct wl_scan_channel_info {
 
 typedef struct wl_scan_channel_info_v2 {
 	uint16 chanspec;			/* chanspec scanned */
-	uint16 reserv;
+	uint16 ms_chans;			/* if SCAN_SUM_CHAN_SC_EXTENDED_SC is set,
+						 * it contains MS channels in the format of
+						 * 0xb61 = chan[0]=1,chan[1]=6,chan[2]=11
+						 * Assumed to be 20MHz only.
+						 */
 	uint32 start_time;			/* Scan start time in
 						* milliseconds for the chanspec
 						* or home_dwell time start
@@ -469,7 +474,8 @@ struct wl_scan_summary_v3 {
 				 * 6G channels was dwelled only for FILS duration.
 				 */
 				/* flags[12] SCAN_SUM_CHAN_RESHED indicate scan rescheduled */
-				/* flags[7:11, 13:15] = reserved */
+				/* flags[7:11, 13:14] = reserved */
+				/* flags[15] = SCAN_SUM_CHAN_SC_EXTENDED_SC indicats MultiScanPhy */
 				/* when scan_summary_info is used, */
 				/* the following flag bits are used: */
 				/* flags[1] or BAND5G_SIB_ENAB = */
@@ -488,7 +494,8 @@ struct wl_scan_summary_v3 {
 				 * WL_SCAN_MODE_LOW_POWER 2u
 				 */
 				/* flags[12] SCAN_SUM_CHAN_RESHED indicate scan rescheduled */
-				/* flags[13:15] = reserved */
+				/* flags[13] = SCAN_SUM_CHAN_SC_EXTENDED_SC indicats MultiScanPhy */
+				/* flags[14:15] = reserved */
 	union {
 		wl_scan_channel_info_v2_t scan_chan_info;	/* scan related information
 							* for each channel scanned

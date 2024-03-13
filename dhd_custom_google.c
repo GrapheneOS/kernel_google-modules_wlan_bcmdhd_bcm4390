@@ -86,6 +86,9 @@ static uint hw_stage_val = 0;
 static bool is_irq_on_big_core = TRUE;
 static bool is_plat_pcie_resume = FALSE;
 
+uint affinity_big_core = 0;
+uint affinity_small_core = 0;
+
 static int pcie_ch_num = EXYNOS_PCIE_CH_NUM;
 #if defined(CONFIG_SOC_GOOGLE)
 #define EXYNOS_PCIE_RC_ONOFF
@@ -896,6 +899,7 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 	uint64 curr_time_ns)
 {
 	int err = 0;
+
 	bool has_recent_affinity_update = (curr_time_ns - last_affinity_update_time_ns)
 		< (AFFINITY_UPDATE_MIN_PERIOD_SEC * NSEC_PER_SEC);
 	if (!pdev) {
@@ -905,7 +909,7 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 
 	if (!is_irq_on_big_core && (resched_streak_max >= RESCHED_STREAK_MAX_HIGH) &&
 		!has_recent_affinity_update) {
-		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_BIG_CORE));
+		err = set_affinity(pdev->irq, cpumask_of(affinity_big_core));
 		if (!err) {
 			is_irq_on_big_core = TRUE;
 			last_affinity_update_time_ns = curr_time_ns;
@@ -914,7 +918,8 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 				dhd_set_max_cpufreq();
 			}
 #endif /* DHD_HOST_CPUFREQ_BOOST */
-			DHD_INFO(("%s switches to big core successfully\n", __FUNCTION__));
+			DHD_INFO(("%s switches to big core %u successfully\n",
+				__FUNCTION__, affinity_big_core));
 		} else {
 			DHD_ERROR(("%s switches to big core unsuccessfully!\n", __FUNCTION__));
 		}
@@ -922,7 +927,7 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 	if (is_plat_pcie_resume ||
 		(is_irq_on_big_core && (resched_streak_max <= RESCHED_STREAK_MAX_LOW) &&
 		!has_recent_affinity_update)) {
-		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_SMALL_CORE));
+		err = set_affinity(pdev->irq, cpumask_of(affinity_small_core));
 		if (!err) {
 			is_irq_on_big_core = FALSE;
 			is_plat_pcie_resume = FALSE;
@@ -932,7 +937,8 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 				dhd_restore_cpufreq();
 			}
 #endif /* DHD_HOST_CPUFREQ_BOOST */
-			DHD_INFO(("%s switches to all cores successfully\n", __FUNCTION__));
+			DHD_INFO(("%s switches to small core %u successfully\n",
+				__FUNCTION__, affinity_small_core));
 		} else {
 			DHD_ERROR(("%s switches to all cores unsuccessfully\n", __FUNCTION__));
 		}
@@ -946,7 +952,7 @@ static void dhd_force_affinity_cpufreq(struct pci_dev *pdev)
 	int err;
 
 	if (is_plat_pcie_resume || !is_irq_on_big_core) {
-		err = set_affinity(pdev->irq, cpumask_of(IRQ_AFFINITY_BIG_CORE));
+		err = set_affinity(pdev->irq, cpumask_of(affinity_big_core));
 		if (!err) {
 			is_irq_on_big_core = TRUE;
 			is_plat_pcie_resume = FALSE;
@@ -955,7 +961,8 @@ static void dhd_force_affinity_cpufreq(struct pci_dev *pdev)
 				dhd_set_max_cpufreq();
 			}
 #endif /* DHD_HOST_CPUFREQ_BOOST */
-			DHD_PRINT(("%s switches to big core successfully\n", __FUNCTION__));
+			DHD_PRINT(("%s switches to big core %u successfully\n",
+				__FUNCTION__, affinity_big_core));
 		} else {
 			DHD_ERROR(("%s switches to big core unsuccessfully!\n", __FUNCTION__));
 		}
@@ -1091,6 +1098,28 @@ dhd_wlan_init(void)
 #if defined(SUPPORT_MULTIPLE_NVRAM) || defined(SUPPORT_MULTIPLE_CLMBLOB)
 	dhd_wlan_init_hardware_info();
 #endif /* SUPPORT_MULTIPLE_NVRAM || SUPPORT_MULTIPLE_CLMBLOB */
+
+	affinity_big_core = IRQ_AFFINITY_BIG_CORE;
+	if (affinity_big_core < 0 || (affinity_big_core > (num_possible_cpus() - 1))) {
+		affinity_big_core = num_possible_cpus() - 1;
+		DHD_ERROR(("%s: IRQ_AFFINITY_BIG_CORE=%u, num_cpus=%u, so set "
+			"affinity_big_core=%u\n", __FUNCTION__, IRQ_AFFINITY_BIG_CORE,
+			num_possible_cpus(), affinity_big_core));
+	}
+
+	affinity_small_core = IRQ_AFFINITY_SMALL_CORE;
+	if (affinity_small_core < 0 || affinity_small_core >= affinity_big_core) {
+		if (affinity_big_core > 0) {
+			affinity_small_core = affinity_big_core - 1;
+		} else {
+			affinity_small_core = affinity_big_core;
+		}
+		DHD_ERROR(("%s: IRQ_AFFINITY_SMALL_CORE=%u, affinity_big_core=%u, so set "
+			"affinity_small_core=%u\n", __FUNCTION__, IRQ_AFFINITY_SMALL_CORE,
+			affinity_big_core, affinity_small_core));
+	}
+	DHD_INFO(("%s: affinity_big_core=%u affinity_small_core=%u\n", __FUNCTION__,
+		affinity_big_core, affinity_small_core));
 
 fail:
 	DHD_PRINT(("%s: FINISH.......\n", __FUNCTION__));

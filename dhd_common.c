@@ -5906,7 +5906,7 @@ dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 								sizeof(bcm_dngl_pcie_hc_t)) {
 							DHD_ERROR(("Wrong length:%d\n",
 								ltoh32(dngl_hc->top_module_len)));
-							return;
+							break;
 						}
 						DHD_EVENT(("%d:PCIE HC error:%d flag:0x%x,"
 							" control:0x%x\n",
@@ -5931,7 +5931,7 @@ dngl_host_event_process(dhd_pub_t *dhdp, bcm_dngl_event_t *event,
 								sizeof(bcm_xtlv_t)) {
 							DHD_ERROR(("WL SW HC Wrong length:%d\n",
 								ltoh32(dngl_hc->top_module_len)));
-							return;
+							break;
 						}
 						BCM_REFERENCE(wl_hc);
 						DHD_EVENT(("WL SW HC type %d len %d\n",
