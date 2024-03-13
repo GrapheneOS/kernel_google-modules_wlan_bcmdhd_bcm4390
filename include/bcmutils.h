@@ -141,7 +141,7 @@ extern int bcm_ether_atoe(const char *p, struct ether_addr *ea);
 
 #define SPINWAIT_TRAP(exp, us) SPINWAIT(exp, us)
 
-#elif defined(PHY_REG_TRACE_FRAMEWORK)
+#elif defined(PHY_REG_TRACE_FRAMEWORK) && !defined(COEX_CPU_BUILD)
 #include <phy_utils_log_api.h>
 #define SPINWAIT(exp, us) { \
 	uint countdown = (us) + (SPINWAIT_POLL_PERIOD - 1U); \

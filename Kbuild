@@ -377,8 +377,9 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
     DHDCFLAGS += -DRESCHED_STREAK_MAX_HIGH=20
     DHDCFLAGS += -DRESCHED_STREAK_MAX_LOW=2
     DHDCFLAGS += -DCLEAN_IRQ_AFFINITY_HINT
-    DHDCFLAGS += -DIRQ_AFFINITY_BIG_CORE=7
     DHDCFLAGS += -DIRQ_AFFINITY_SMALL_CORE=6
+    DHDCFLAGS += -DIRQ_AFFINITY_BIG_CORE=7
+    DHDCFLAGS += -DCPU_IRQ_AFFINITY
     DHDCFLAGS += -DDHD_BUS_BUSY_TIMEOUT=5000
     # MSI supported in GOOGLE SOC
     DHDCFLAGS += -DDHD_MSI_SUPPORT
@@ -412,7 +413,7 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
     # Skip coredump for continousy pkt drop health check
     DHDCFLAGS += -DSKIP_COREDUMP_PKTDROP_RXHC
     # Boost host cpufreq to max for peak tput. default is false
-    #DHDCFLAGS += -DDDHD_HOST_CPUFREQ_BOOSTHD_HOST_CPUFREQ_BOOST
+    #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST
     # Boost host cpufreq to max for peak tput. default is true
     #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST_DEFAULT_ENAB
     # Force all CPUs to run at MAX frequencies

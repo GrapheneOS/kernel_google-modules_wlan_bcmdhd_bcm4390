@@ -249,6 +249,19 @@ BCMFASTPATH(__dhd_sendpkt)(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 	}
 #endif /* PCIE_FULL_DONGLE */
 
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+	{
+		struct sk_buff *skb = PKTTONATIVE(dhdp->osh, pktbuf);
+		skb = (struct sk_buff *)dhd_validate_packet_address(dhdp, skb);
+		/* if NULL, pkt is already dropped, return OK */
+		if (skb == NULL) {
+			dhdp->tx_dropped++;
+			return NETDEV_TX_OK;
+		}
+		pktbuf = PKTFRMNATIVE(dhdp->osh, skb);
+	}
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
+
 	/* Reject if pktlen > MAX_MTU_SZ */
 	if (PKTLEN(dhdp->osh, pktbuf) > MAX_MTU_SZ) {
 		/* free the packet here since the caller won't */
@@ -626,15 +639,6 @@ BCMFASTPATH(dhd_start_xmit)(struct sk_buff *skb, struct net_device *net)
 	if (dhd_query_bus_erros(&dhd->pub)) {
 		return -ENODEV;
 	}
-
-#ifdef DHD_VALIDATE_PKT_ADDRESS
-	skb = (struct sk_buff *)dhd_validate_packet_address(&dhd->pub, skb);
-	/* if NULL, pkt is already dropped, return OK */
-	if (skb == NULL) {
-		dhd->pub.tx_dropped++;
-		return NETDEV_TX_OK;
-	}
-#endif /* DHD_VALIDATE_PKT_ADDRESS */
 
 	DHD_GENERAL_LOCK(&dhd->pub, flags);
 	DHD_BUS_BUSY_SET_IN_TX(&dhd->pub);

@@ -1656,10 +1656,18 @@ enum dot11_tag_ids {
 #define EXT_MNG_BW_IND_ID			135u	/* Bandwidth Indication */
 #define DOT11_MNG_BW_IND_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_BW_IND_ID)
 
-/* For RCM see Draft P802.11bh_D1.0.pdf */
-#define EXT_MNG_RCM_DEV_ID			136u	/* RCM Device ID */
+/* Draft P802.11REVme_D4.2; Non-AP STA Regulatory Connectivity element ID */
+#define EXT_MNG_NON_AP_STA_REG_CONN_ID		137u
+#define DOT11_MNG_NON_AP_STA_REG_CONN_ID	(DOT11_MNG_ID_EXT_ID + \
+						EXT_MNG_NON_AP_STA_REG_CONN_ID)
+
+/* For RCM see Draft P802.11bh_D1.0.pdf. The RCM extension IDs 250 and 251
+ * are chosen temporarily until they get assigned by the ANA.
+ */
+#define EXT_MNG_RCM_DEV_ID			250u	/* RCM Device ID */
 #define DOT11_MNG_RCM_DEV_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_RCM_DEV_ID)
-#define EXT_MNG_RCM_IRM				137u	/* RCM IRM */
+
+#define EXT_MNG_RCM_IRM				251u	/* RCM IRM */
 #define DOT11_MNG_RCM_IRM			(DOT11_MNG_ID_EXT_ID + EXT_MNG_RCM_IRM)
 
 /* deprecated definitions, do not use, to be deleted later */

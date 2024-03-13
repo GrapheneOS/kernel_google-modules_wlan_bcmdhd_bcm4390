@@ -583,6 +583,13 @@ uint dhd_force_max_cpu_freq = 0;
 #endif /* DHD_FORCE_MAX_CPU_FREQ */
 module_param(dhd_force_max_cpu_freq, int, 0644);
 
+#ifdef CPU_IRQ_AFFINITY
+extern uint affinity_big_core;
+extern uint affinity_small_core;
+module_param(affinity_big_core, int, 0644);
+module_param(affinity_small_core, int, 0644);
+#endif /* CPU_IRQ_AFFINITY */
+
 #ifdef ARP_OFFLOAD_SUPPORT
 /* ARP offload agent mode : Enable ARP Host Auto-Reply and ARP Peer Auto-Reply */
 /* ARP HOST Auto Reply can cause dongle trap at VSDB situation */

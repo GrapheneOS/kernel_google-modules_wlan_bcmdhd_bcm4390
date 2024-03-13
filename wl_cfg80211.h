@@ -792,13 +792,11 @@ do {									\
 #define WL_RSDB_MODE_MIMO			0u
 #define WL_RSDB_MODE_RSDB			1u
 
-#ifdef WL_NAN
-#define WL_SCAN_TIMER_INTERVAL_MS_NAN		15000u /* Scan timeout */
-#endif /* WL_NAN */
+/* Scan timeout delay for secondary interface */
+#define WL_SCAN_TIMER_INTERVAL_SEC_IFACE	15000u
 #ifdef WL_6G_BAND
 /* additional scan timeout for 6GHz, 6000msec */
 #define WL_SCAN_TIMER_INTERVAL_MS_6G		6000u
-
 #define CHSPEC_TO_WLC_BAND(chspec) (CHSPEC_IS2G(chspec) ? WLC_BAND_2G : CHSPEC_IS5G(chspec) ? \
 	WLC_BAND_5G : WLC_BAND_6G)
 #else

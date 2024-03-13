@@ -2391,6 +2391,8 @@ static s32
 wl_get_scan_timeout_val(struct bcm_cfg80211 *cfg)
 {
 	u32 scan_timer_interval_ms = WL_SCAN_TIMER_INTERVAL_MS;
+	bool nan_enabled = FALSE;
+	bool dual_sta = FALSE;
 
 #ifdef WES_SUPPORT
 #ifdef CUSTOMER_SCAN_TIMEOUT_SETTING
@@ -2404,12 +2406,17 @@ wl_get_scan_timeout_val(struct bcm_cfg80211 *cfg)
 #endif /* CUSTOMER_SCAN_TIMEOUT_SETTING */
 #endif /* WES_SUPPORT */
 
-	/* If NAN is enabled adding +10 sec to the existing timeout value */
 #ifdef WL_NAN
-	if (wl_cfgnan_is_enabled(cfg)) {
-		scan_timer_interval_ms += WL_SCAN_TIMER_INTERVAL_MS_NAN;
-	}
+	nan_enabled = wl_cfgnan_is_enabled(cfg);
 #endif /* WL_NAN */
+#ifdef WL_STATIC_IF
+	dual_sta = IS_CFG80211_STATIC_IF_ACTIVE(cfg);
+#endif /* WL_STATIC_IF */
+	/* If NAN or dual sta is enabled adding +10 sec to the existing timeout value */
+	if (nan_enabled || dual_sta) {
+		scan_timer_interval_ms += WL_SCAN_TIMER_INTERVAL_SEC_IFACE;
+	}
+
 	/* Additional time to scan 6GHz band channels */
 #ifdef WL_6G_BAND
 	if (cfg->band_6g_supported) {

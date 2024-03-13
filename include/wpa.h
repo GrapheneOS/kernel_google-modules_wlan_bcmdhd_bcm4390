@@ -109,30 +109,37 @@ typedef BWL_PRE_PACKED_STRUCT struct
 } BWL_POST_PACKED_STRUCT wpa_pmkid_list_t;
 
 /* WPA cipher suites */
-#define WPA_CIPHER_NONE		0	/* None */
-#define WPA_CIPHER_WEP_40	1	/* WEP (40-bit) */
-#define WPA_CIPHER_TKIP		2	/* TKIP: default for WPA */
-#define WPA_CIPHER_AES_OCB	3	/* AES (OCB) */
-#define WPA_CIPHER_AES_CCM	4	/* AES (CCM) */
-#define WPA_CIPHER_WEP_104	5	/* WEP (104-bit) */
-#define WPA_CIPHER_BIP		6	/* WEP (104-bit) */
-#define WPA_CIPHER_TPK		7	/* Group addressed traffic not allowed */
+enum wpa_cipher_suites {
+	WPA_CIPHER_NONE		=0,	/* None */
+	WPA_CIPHER_WEP_40	=1,	/* WEP (40-bit) */
+	WPA_CIPHER_TKIP		=2,	/* TKIP: default for WPA */
+	WPA_CIPHER_AES_OCB	=3,	/* AES (OCB) */
+	WPA_CIPHER_AES_CCM	=4,	/* AES (CCM) */
+	WPA_CIPHER_WEP_104	=5,	/* WEP (104-bit) */
+	WPA_CIPHER_BIP		=6,	/* WEP (104-bit) */
+	WPA_CIPHER_TPK		=7,	/* Group addressed traffic not allowed */
+	WPA_CIPHER_AES_GCM	=8,	/* AES (GCM) */
+	WPA_CIPHER_AES_GCM256	=9,	/* AES (GCM256) */
+	WPA_CIPHER_CCMP_256	=10,	/* CCMP-256 */
+	WPA_CIPHER_BIP_GMAC_128	=11,	/* BIP_GMAC_128 */
+	WPA_CIPHER_BIP_GMAC_256	=12,	/* BIP_GMAC_256 */
+	WPA_CIPHER_BIP_CMAC_256	=13,	/* BIP_CMAC_256 */
+};
+typedef enum wpa_cipher_suites wpa_cipher_suites_t;
+
 #ifdef BCMCCX
-#define WPA_CIPHER_CKIP		8	/* KP with no MIC */
-#define WPA_CIPHER_CKIP_MMH	9	/* KP with MIC ("CKIP/MMH", "CKIP+CMIC") */
-#define WPA_CIPHER_WEP_MMH	10	/* MIC with no KP ("WEP/MMH", "CMIC") */
+	/* KP with no MIC */
+#define WPA_CIPHER_CKIP		WPA_CIPHER_AES_GCM
+	/* KP with MIC ("CKIP/MMH", "CKIP+CMIC") */
+#define WPA_CIPHER_CKIP_MMH	WPA_CIPHER_AES_GCM256
+	/* MIC with no KP ("WEP/MMH", "CMIC") */
+#define WPA_CIPHER_WEP_MMH	WPA_CIPHER_CCMP_256
 
 #define IS_CCX_CIPHER(cipher)	((cipher) == WPA_CIPHER_CKIP || \
 				 (cipher) == WPA_CIPHER_CKIP_MMH || \
 				 (cipher) == WPA_CIPHER_WEP_MMH)
 #endif /* BCMCCX */
 
-#define WPA_CIPHER_AES_GCM	8	/* AES (GCM) */
-#define WPA_CIPHER_AES_GCM256	9	/* AES (GCM256) */
-#define WPA_CIPHER_CCMP_256	10	/* CCMP-256 */
-#define WPA_CIPHER_BIP_GMAC_128	11	/* BIP_GMAC_128 */
-#define WPA_CIPHER_BIP_GMAC_256 12	/* BIP_GMAC_256 */
-#define WPA_CIPHER_BIP_CMAC_256 13	/* BIP_CMAC_256 */
 
 #define IS_WPA_CIPHER(cipher)	((cipher) == WPA_CIPHER_NONE || \
 				 (cipher) == WPA_CIPHER_WEP_40 || \

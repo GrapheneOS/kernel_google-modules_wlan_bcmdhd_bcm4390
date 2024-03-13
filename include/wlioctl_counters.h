@@ -3095,6 +3095,7 @@ typedef struct wlc_ba_cnt {
 /* ##### Power Stats section ##### */
 
 #define WL_PWRSTATS_VERSION	2
+#define WL_PWRSTATS_VERSION_3	3
 
 /** Input structure for pwrstats IOVAR */
 typedef struct wl_pwrstats_query {
@@ -3496,6 +3497,41 @@ typedef struct pcie_bus_metrics {
 	uint32 ltr_sleep_dur;	/**< # of msecs chip was in LTR SLEEP */
 } pcie_bus_metrics_t;
 
+typedef struct pcie_bus_metrics_v2 {
+	uint64 active_dur_ns;		/**< nsecs */
+	uint64 d3_suspend_dur_ns;	/**< nsecs */
+	uint64 perst_dur_ns;		/**< nsecs */
+	uint64 timestamp_ns;		/**< Timestamp on when stats are collected */
+	uint64 deepsleep_dur_ns;	/**< # of nsecs chip was in deepsleep */
+	uint64 ltr_active_dur_ns;	/**< # of nsecs chip was in LTR ACTIVE */
+	uint64 ltr_sleep_dur_ns;	/**< # of nsecs chip was in LTR SLEEP */
+	uint32 d3_suspend_ct;		/**< suspend count */
+	uint32 d0_resume_ct;		/**< resume count */
+	uint32 perst_assrt_ct;		/**< PERST# assert count */
+	uint32 perst_deassrt_ct;	/**< PERST# de-assert count */
+	uint32 l0_cnt;			/**< L0 entry count */
+	uint32 l0_usecs;		/**< L0 duration in usecs */
+	uint32 l1_cnt;			/**< L1 entry count */
+	uint32 l1_usecs;		/**< L1 duration in usecs */
+	uint32 l1_1_cnt;		/**< L1_1ss entry count */
+	uint32 l1_1_usecs;		/**< L1_1ss duration in usecs */
+	uint32 l1_2_cnt;		/**< L1_2ss entry count */
+	uint32 l1_2_usecs;		/**< L1_2ss duration in usecs */
+	uint32 l2_cnt;			/**< L2 entry count */
+	uint32 l2_usecs;		/**< L2 duration in usecs */
+	uint32 num_h2d_doorbell;	/**< # of doorbell interrupts - h2d */
+	uint32 num_d2h_doorbell;	/**< # of doorbell interrupts - d2h */
+	uint32 num_submissions;		/**< # of submissions */
+	uint32 num_completions;		/**< # of completions */
+	uint32 num_rxcmplt;		/**< # of rx completions */
+	uint32 num_rxcmplt_drbl;	/**< of drbl interrupts for rx complt. */
+	uint32 num_txstatus;		/**< # of tx completions */
+	uint32 num_txstatus_drbl;	/**< of drbl interrupts for tx complt. */
+	uint32 deepsleep_count;		/**< # of times chip went to deepsleep */
+	uint32 ltr_active_ct;		/**< # of times chip went to LTR ACTIVE */
+	uint32 ltr_sleep_ct;		/**< # of times chip went to LTR SLEEP */
+} pcie_bus_metrics_v2_t;
+
 typedef struct pcie_cnt {
 	uint32 ltr_state; /**< Current LTR state */
 	uint32 l0_sr_cnt; /**< SR count during L0 */
@@ -3523,10 +3559,17 @@ typedef struct pcie_cnt {
 
 /** Bus interface info for PCIE */
 typedef struct wl_pwr_pcie_stats {
-	uint16 type;	     /**< WL_PWRSTATS_TYPE_PCIE */
-	uint16 len;	     /**< Up to 4K-1, top 4 bits are reserved */
+	uint16 type;			/**< WL_PWRSTATS_TYPE_PCIE */
+	uint16 len;			/**< Up to 4K-1, top 4 bits are reserved */
 	pcie_bus_metrics_t pcie;	/**< stats from pcie bus driver */
 } wl_pwr_pcie_stats_t;
+
+typedef struct wl_pwr_pcie_stats_v2 {
+	uint16 type;			/**< WL_PWRSTATS_TYPE_PCIE */
+	uint16 len;			/**< Up to 4K-1, top 4 bits are reserved */
+	uint32 pad;
+	pcie_bus_metrics_v2_t pcie;	/**< stats from pcie bus driver */
+} wl_pwr_pcie_stats_v2_t;
 
 typedef struct scan_data_ext_v1 {
 	uint32 count;		/**< Number of scans performed */

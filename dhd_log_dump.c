@@ -30,6 +30,7 @@
 #include <dngl_stats.h>
 #include <dhd_linux_priv.h>
 #include <dhd_linux_wq.h>
+#include <dhd_bus.h>
 #include <dhd.h>
 #include <dhd_proto.h>
 #include <dhd_log_dump.h>
@@ -272,8 +273,9 @@ dhd_log_dump(void *handle, void *event_info, u8 event)
 
 	dhdp = &dhd->pub;
 
-#ifdef WL_CFG80211
-	if (dhdp->memdump_type != DUMP_TYPE_WL_BP_DOWN) {
+#if defined(WL_CFG80211)
+	if (!dhd_bus_is_wl_bp_down(dhdp) &&
+		dhdp->memdump_type != DUMP_TYPE_WL_BP_DOWN) {
 		/* flush the fw preserve logs */
 		wl_flush_fw_log_buffer(dhd_linux_get_primary_netdev(dhdp),
 			FW_LOGSET_MASK_ALL);

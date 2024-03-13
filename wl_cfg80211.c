@@ -6843,8 +6843,8 @@ wl_cfg80211_get_link_idx_by_bssid(struct bcm_cfg80211 *cfg, struct net_device *n
 			break;
 		}
 	}
-
 #endif /* WL_MLO */
+
 	return link_idx;
 }
 
@@ -6865,22 +6865,32 @@ wl_is_mlo_sec_supported(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	 * IOT issues.
 	 */
 	switch (sme->crypto.akm_suites[0]) {
-		case WLAN_AKM_SUITE_PSK:
-		case WL_AKM_SUITE_SHA256_PSK:
 #ifdef WL_OWE
 		case WLAN_AKM_SUITE_OWE:
+			mlo_sec = TRUE;
+			break;
 #endif /* WL_OWE */
 #if defined(WL_SAE) || defined(WL_CLIENT_SAE) || defined(WL_SAE_STD_API)
+		/* SAE AKMs */
 		case WLAN_AKM_SUITE_SAE:
 		case WLAN_AKM_SUITE_SAE_EXT_PSK:
 #ifdef WL_SAE_FT
 		case WLAN_AKM_SUITE_FT_OVER_SAE:
 		case WLAN_AKM_SUITE_FT_SAE_EXT:
 #endif /* WL_SAE_FT */
+#ifdef WL_SAE_STD_API
+			/* mlo requires h2e. if its HnP, disable MLO */
+			if (sme->crypto.sae_pwe == NL80211_SAE_PWE_HUNT_AND_PECK) {
+				mlo_sec = FALSE;
+			} else
+#endif /* WL_SAE_STD_API */
+			{
+				mlo_sec = TRUE;
+			}
+			break;
 #endif /* WL_SAE || WL_CLIENT_SAE || WL_SAE_STD_API */
 
 #ifdef NOT_YET
-		case WLAN_AKM_SUITE_FT_PSK:
 		case WLAN_AKM_SUITE_8021X:
 		case WL_AKM_SUITE_SHA256_1X:
 		case WLAN_AKM_SUITE_8021X_SUITE_B:
@@ -6890,8 +6900,6 @@ wl_is_mlo_sec_supported(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		case WLAN_AKM_SUITE_FILS_SHA256:
 		case WLAN_AKM_SUITE_FILS_SHA384:
 #endif /* NOT_YET */
-			mlo_sec = TRUE;
-			break;
 		default:
 			mlo_sec = FALSE;
 			WL_INFORM_MEM(("non-mlo security\n"));
@@ -6986,7 +6994,8 @@ wl_do_preassoc_ops(struct bcm_cfg80211 *cfg,
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0) || WL_MLO_HOST_CTRL */
 
 		if (mlo_enable) {
-			if (!wl_is_mlo_sec_supported(cfg, dev, sme)) {
+			if ((sme->crypto.n_akm_suites == 1u) &&
+				!wl_is_mlo_sec_supported(cfg, dev, sme)) {
 				/* for non verified ML securities, attempt non ML */
 				mlo_enable = FALSE;
 			}
