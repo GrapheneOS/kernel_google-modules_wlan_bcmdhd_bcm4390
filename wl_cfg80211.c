@@ -9238,15 +9238,6 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 		return -EINVAL;
 	}
 
-	/* If state is in roaming, then skip and retry again. During roaming the statistics
-	 * may not be updated for the new BSS
-	 */
-	if (IS_STA_IFACE(ndev_to_wdev(dev)) &&
-		wl_get_drv_status(cfg, ROAMING, dev)) {
-		WL_INFORM_MEM(("[%s] roam in progress. retry\n", dev->name));
-		return -EBUSY;
-	}
-
 	link_idx = wl_cfg80211_get_link_idx_by_bssid(cfg, dev, mac);
 	WL_DBG_MEM(("query bssid:"MACDBG" link_idx:%d\n", MAC2STRDBG(mac), link_idx));
 
