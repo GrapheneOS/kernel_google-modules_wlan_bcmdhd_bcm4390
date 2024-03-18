@@ -20259,7 +20259,8 @@ dhd_is_coredump_reqd(char *trapstr, uint str_len, dhd_pub_t *dhdp)
 
 #ifdef DHD_SKIP_COREDUMP_OLDER_CHIPS
 	/* customer ask to skip coredump collection for older chip revs */
-	if (BCM4397_CHIP(chipid) && (dhd_get_chiprev(dhdp->bus) <= 2)) {
+	if ((BCM4397_CHIP(chipid) && (dhd_get_chiprev(dhdp->bus) <= 2)) ||
+		(BCM4390_CHIP(chipid) && (dhd_get_chiprev(dhdp->bus) == 0))) {
 		return FALSE;
 	}
 #endif /* DHD_SKIP_COREDUMP_OLDER_CHIPS */
