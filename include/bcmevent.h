@@ -328,7 +328,8 @@ typedef union bcm_event_msg_u {
 #define WLC_E_ICM			213	/* ICM: Intelligent Connection
 						 * Management has kicked in
 						 */
-#define WLC_E_LAST			214	/* highest val + 1 for range checking */
+#define WLC_E_AIRIQ_EVENT		214	/* AIRIQ driver event */
+#define WLC_E_LAST			215	/* highest val + 1 for range checking */
 
 
 /* define an API for getting the string name of an event */
@@ -456,6 +457,7 @@ typedef enum wlc_roam_cache_update_reason {
 #define WLC_E_STATUS_WAIT_RXBCN_TIMEOUT	22	/* Time out happened waiting of beacon  */
 #define WLC_E_STATUS_6G_NO_TPE		23	/* No tpe in the fw cache for 6g channels  */
 #define WLC_E_STATUS_CHANNELSWITCH	24	/* scan aborted due to CSA event */
+#define WLC_E_STATUS_PREF_LINK_SWAP_FAIL	25	/* Failure happened during pref link swap */
 #define WLC_E_STATUS_INVALID 0xff  /* Invalid status code to init variables. */
 
 /* 4-way handshake event type */

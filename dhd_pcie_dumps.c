@@ -1209,7 +1209,6 @@ dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 #endif /* DHD_WAKE_EVENT_STATUS */
 #endif /* DHD_WAKE_STATUS */
 
-	dhd_prot_print_info(dhdp, strbuf);
 #ifdef DHD_TREAT_D3ACKTO_AS_LINKDWN
 	if (!dhdp->no_pcie_access_during_dump) {
 		dhd_dump_intr_registers(dhdp, strbuf);
@@ -1229,44 +1228,6 @@ dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 			dhdp->htput_flow_ring_start, dhdp->htput_total_flowrings,
 			dhdp->htput_client_flow_rings);
 	}
-
-#ifdef BCMDBG
-	if (!dhdp->d2h_sync_mode) {
-		ix = 0;
-		bcm_bprintf(strbuf, "\n%4s %4s %2s %10s %7s %6s %5s %5s %10s %7s %7s %7s %7s %7s\n",
-			"Num:", "Flow", "If", "     ACKED", "D11SPRS", "WLSPRS", "TSDWL",
-			"NOACK", "SPRS_ACKED", "EXPIRED", "DROPPED", "FWFREED",
-			"SPRS_RETRY", "FORCED_EXPIRED");
-		for (flowid = 0; flowid < dhdp->num_h2d_rings; flowid++) {
-			flow_ring_node = DHD_FLOW_RING(dhdp, flowid);
-			if (!flow_ring_node->active)
-				continue;
-
-			flow_info = &flow_ring_node->flow_info;
-			bcm_bprintf(strbuf, "%4d %4d %2d ",
-				ix++, flow_ring_node->flowid, flow_info->ifindex);
-			local_flow_info = &flow_ring_node->flow_info;
-			bcm_bprintf(strbuf, "%10d %7d %6d %5d %5d %10d %7d %7d %7d %7d %7d\n",
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_DISCARD],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_D11SUPPRESS],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_WLSUPPRESS],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_TOSSED_BYWLC],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_DISCARD_NOACK],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_SUPPRESS_ACKED],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_EXPIRED],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_DROPPED],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_MKTFREE],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_MAX_SUP_RETR],
-				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_FORCED_EXPIRED]);
-		}
-	}
-#endif /* BCMDBG */
-
-	dhd_bus_dump_flowring(dhdp, strbuf);
-
-
-	dhd_dump_dpc_histos(dhdp, strbuf);
-
 	bcm_bprintf(strbuf, "D3 inform cnt %d\n", dhdp->bus->d3_inform_cnt);
 	bcm_bprintf(strbuf, "D0 inform cnt %d\n", dhdp->bus->d0_inform_cnt);
 	bcm_bprintf(strbuf, "D0 inform in use cnt %d\n", dhdp->bus->d0_inform_in_use_cnt);
@@ -1312,6 +1273,45 @@ dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 		dhdp->bus->fw_boot_intr ? "Yes":"NO");
 	bcm_bprintf(strbuf, "ltr_active_set_during_init: %s\n",
 		dhdp->bus->ltr_active_set_during_init ? "Yes":"NO");
+
+	dhd_prot_print_info(dhdp, strbuf);
+#ifdef BCMDBG
+	if (!dhdp->d2h_sync_mode) {
+		ix = 0;
+		bcm_bprintf(strbuf, "\n%4s %4s %2s %10s %7s %6s %5s %5s %10s %7s %7s %7s %7s %7s\n",
+			"Num:", "Flow", "If", "     ACKED", "D11SPRS", "WLSPRS", "TSDWL",
+			"NOACK", "SPRS_ACKED", "EXPIRED", "DROPPED", "FWFREED",
+			"SPRS_RETRY", "FORCED_EXPIRED");
+		for (flowid = 0; flowid < dhdp->num_h2d_rings; flowid++) {
+			flow_ring_node = DHD_FLOW_RING(dhdp, flowid);
+			if (!flow_ring_node->active)
+				continue;
+
+			flow_info = &flow_ring_node->flow_info;
+			bcm_bprintf(strbuf, "%4d %4d %2d ",
+				ix++, flow_ring_node->flowid, flow_info->ifindex);
+			local_flow_info = &flow_ring_node->flow_info;
+			bcm_bprintf(strbuf, "%10d %7d %6d %5d %5d %10d %7d %7d %7d %7d %7d\n",
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_DISCARD],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_D11SUPPRESS],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_WLSUPPRESS],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_TOSSED_BYWLC],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_DISCARD_NOACK],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_SUPPRESS_ACKED],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_EXPIRED],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_DROPPED],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_MKTFREE],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_MAX_SUP_RETR],
+				local_flow_info->tx_status[WLFC_CTL_PKTFLAG_FORCED_EXPIRED]);
+		}
+	}
+#endif /* BCMDBG */
+
+	dhd_bus_dump_flowring(dhdp, strbuf);
+
+
+	dhd_dump_dpc_histos(dhdp, strbuf);
+	dhd_prot_print_traces(dhdp, strbuf);
 }
 
 int

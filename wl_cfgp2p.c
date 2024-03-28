@@ -2886,10 +2886,12 @@ wl_cfgp2p_stop_p2p_device(struct wiphy *wiphy, struct wireless_dev *wdev)
 	/* Cancel any on-going listen */
 	wl_cfgp2p_cancel_listen(cfg, bcmcfg_to_prmry_ndev(cfg), wdev, TRUE);
 
+	mutex_lock(&cfg->if_sync);
 	ret = wl_cfgp2p_disable_discovery(cfg);
 	if (unlikely(ret < 0)) {
 		CFGP2P_ERR(("P2P disable discovery failed, ret=%d\n", ret));
 	}
+	mutex_unlock(&cfg->if_sync);
 
 	p2p_on(cfg) = false;
 

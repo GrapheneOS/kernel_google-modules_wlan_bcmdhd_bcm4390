@@ -1109,6 +1109,7 @@ static struct ieee80211_sband_iftype_data __wl_he_sta_cap = {
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0) */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)) || defined(WL_MLO_BKPORT)
 	/* Android framework looks for eht capability for enabling EHT related code/functionality */
+#ifndef DISABLE_EHT_CAP
 	.eht_cap = {
 		.has_eht = true,
 		.eht_cap_elem = {
@@ -1171,6 +1172,7 @@ static struct ieee80211_sband_iftype_data __wl_he_sta_cap = {
 			}
 		}
 	},
+#endif /* DISABLE_EHT_CAP */
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)) || WL_MLO_BKPORT */
 };
 
@@ -2200,7 +2202,6 @@ chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy)
 	wl_bss_info_v109_t *bss = NULL;
 	u16 channel = WL_P2P_TEMP_CHAN;
 	char *buf;
-	bool is_unii4 = false;
 	uint32 chaninfo = 0;
 
 	bzero(&bssid, sizeof(bssid));
@@ -2239,14 +2240,10 @@ chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy)
 			return wl_ch_host_to_driver(channel);
 		}
 
-#ifdef WL_UNII4_CHAN
-		is_unii4 = (CHSPEC_IS5G(chspec) &&
-				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec)));
-#endif /* WL_UNII4_CHAN */
-		if ((is_unii4) || CHSPEC_IS6G(chspec) ||
-				(wl_cfgscan_get_chan_info(cfg, &chaninfo, chspec)) ||
-				(chaninfo & WL_CHAN_RADAR) ||
-				(chaninfo & WL_CHAN_P2P_PROHIBITED)) {
+		if (CHSPEC_IS6G(chspec) || ((wl_cfgscan_get_chan_info(cfg,
+				&chaninfo, chspec) == BCME_OK) &&
+				((chaninfo & WL_CHAN_RADAR) ||
+				(chaninfo & WL_CHAN_P2P_PROHIBITED)))) {
 			channel = WL_P2P_TEMP_CHAN_5G;
 			chspec = wl_ch_host_to_driver(channel);
 		}
@@ -9342,7 +9339,8 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 			if (!IS_STA_INFO_VER(sta)) {
 				WL_ERR(("STA INFO ver mismatch, %d! = %d\n",
 					sta->ver, WL_STAINFO_VER));
-				return BCME_VERSION;
+				err = BCME_VERSION;
+				goto error;
 			}
 			sta->rx_rate = dtoh32(sta->rx_rate);
 			if (sta->rx_rate != 0) {

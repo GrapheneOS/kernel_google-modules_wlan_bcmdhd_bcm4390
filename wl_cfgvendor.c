@@ -11918,6 +11918,8 @@ wl_cfgvendor_tx_power_scenario(struct wiphy *wiphy,
 	int i = 0;
 	bool found = FALSE;
 #endif /* WL_SAR_TX_POWER_CONFIG */
+	struct net_device *primary_ndev;
+	primary_ndev = bcmcfg_to_prmry_ndev(cfg);
 
 	nla_for_each_attr(iter, data, len, rem) {
 		type = nla_type(iter);
@@ -11952,6 +11954,13 @@ wl_cfgvendor_tx_power_scenario(struct wiphy *wiphy,
 	if (!found)
 #endif /* WL_SAR_TX_POWER_CONFIG */
 	{
+#ifndef USE_DEFAULT_SAR_TX_PWR
+		WL_ERR(("sarconfig not found, trigger hang_event\n"));
+		wl_cfg80211_handle_hang_event(primary_ndev,
+				HANG_REASON_UNKNOWN, DUMP_TYPE_CFG_VENDOR_TRIGGERED);
+		err = -EINVAL;
+		goto exit;
+#else
 		/* Map Android TX power modes to Brcm power mode */
 		switch (wifi_tx_power_mode) {
 			case WIFI_POWER_SCENARIO_VOICE_CALL:
@@ -11991,6 +12000,7 @@ wl_cfgvendor_tx_power_scenario(struct wiphy *wiphy,
 				err = -EINVAL;
 				goto exit;
 		}
+#endif /* !USE_DEFAULT_SAR_TX_PWR */
 	}
 	WL_DBG_MEM(("SAR: sar_mode %d airplane_mode %d\n", sar_tx_power_val, airplane_mode));
 	err = wldev_iovar_setint(wdev_to_ndev(wdev), "fccpwrlimit2g", airplane_mode);
@@ -13760,7 +13770,7 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 	struct net_device *p2p_ndev = NULL;
 	chanspec_t sta_chanspec = INVCHANSPEC, ap_chanspec = INVCHANSPEC;
 	uint32 sta_assoc_freq = 0;
-	bool is_unii4 = false;
+	bool is_p2p_restrict = false;
 #ifdef WL_NAN_INSTANT_MODE
 	chanspec_t nan_inst_mode_chspecs[WLC_BAND_6G + 1];
 #endif /* WL_NAN_INSTANT_MODE */
@@ -13899,16 +13909,13 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 
 		psc_include = chaninfo & WL_CHAN_BAND_6G_PSC;
 		vlp_include = chaninfo & WL_CHAN_BAND_6G_VLP;
-#ifdef WL_UNII4_CHAN
-		is_unii4 = (CHSPEC_IS5G(chspec) &&
-				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec)));
-#endif /* WL_UNII4_CHAN */
+		is_p2p_restrict = chaninfo & WL_CHAN_P2P_PROHIBITED;
 
 		/* STA set all chanspec but can be filtered out in filter function */
 		mask = (1 << WIFI_INTERFACE_STA);
 
 		if (sta_assoc_freq && (sta_assoc_freq == freq) &&
-			(!CHSPEC_IS6G(chspec) && !is_unii4)) {
+			(!CHSPEC_IS6G(chspec) && !is_p2p_restrict)) {
 			if (CHSPEC_IS5G(chspec) && (chaninfo & WL_CHAN_CLM_RESTRICTED)) {
 				/* if restricted channel, specifically allow only DFS channel
 				 * (radar+passive). TDLS operates on STA channel and
@@ -13932,7 +13939,7 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 		}
 
 		if (!restrict_chan && !ch_160mhz_5g) {
-			if (!is_unii4) {
+			if (!is_p2p_restrict) {
 				if (CHSPEC_IS6G(chspec)) {
 #ifdef WL_NAN
 					if (cfg->nancfg->is_6g_nan_supported) {
@@ -13978,8 +13985,7 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 
 		/* Supplicant does scan passive channel but not for DFS channel */
 		if (!(chaninfo & WL_CHAN_RADAR) && !ch_160mhz_5g &&
-			!CHSPEC_IS6G(chspec) && (!is_unii4) &&
-				!(chaninfo & WL_CHAN_P2P_PROHIBITED)) {
+			!CHSPEC_IS6G(chspec) && !is_p2p_restrict) {
 			mask |= (1 << WIFI_INTERFACE_P2P_CLIENT);
 		}
 
