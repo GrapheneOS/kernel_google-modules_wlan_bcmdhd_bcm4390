@@ -7149,9 +7149,8 @@ wl_android_get_freq_list_chanspecs(struct net_device *ndev, wl_uint32_list_t *li
 	char *pcmd, *token;
 	int len = buflen;
 	u32 freq_bands = 0;
-#ifdef WL_6G_BAND
 	struct bcm_cfg80211 *cfg = wl_get_cfg(ndev);
-#endif /* WL_6G_BAND */
+	u32 chan_info;
 
 	pcmd = bcmstrstr(cmd_str, FREQ_STR);
 	pcmd += strlen(FREQ_STR);
@@ -7169,14 +7168,17 @@ wl_android_get_freq_list_chanspecs(struct net_device *ndev, wl_uint32_list_t *li
 		chanspec = wl_freq_to_chanspec(freq);
 		/* Convert chanspec from frequency */
 		if ((freq > 0) && (chanspec != INVCHANSPEC)) {
-#ifdef WL_UNII4_CHAN
-			/* Skip UNII-4 frequencies */
-			if (CHSPEC_IS5G(chanspec) &&
-				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chanspec))) {
-				WL_DBG(("Skipped UNII-4 chanspec 0x%x\n", chanspec));
-				continue;
+			if (CHSPEC_IS5G(chanspec)) {
+				if ((wl_cfgscan_get_dynamic_chan_info(cfg, &chan_info,
+						chanspec,
+						WL_CHAN_RADAR | WL_CHAN_INDOOR_ONLY) == BCME_OK) &&
+						(chan_info & WL_CHAN_P2P_PROHIBITED)) {
+					/* Skip p2p prohibited channels */
+					WL_DBG(("Skipping p2p_prohibited chanspec 0x%x\n",
+						chanspec));
+					continue;
+				}
 			}
-#endif /* WL_UNII4_CHAN */
 #ifdef WL_5G_SOFTAP_ONLY_ON_DEF_CHAN
 			if (CHSPEC_IS5G(chanspec) &&
 				!(IS_5G_APCS_CHANNEL(wf_chspec_primary20_chan(chanspec)))) {
@@ -7288,7 +7290,7 @@ wl_android_get_band_chanspecs(struct net_device *ndev, void *buf, s32 buflen,
 	}
 
 	list = (wl_uint32_list_t *)buf;
-	/* Skip DFS and inavlid P2P channel. */
+	/* Skip DFS and invalid P2P channel. */
 	for (i = 0, j = 0; i < dtoh32(list->count); i++) {
 		if (!CHSPEC_IS20(list->element[i])) {
 			continue;
@@ -7304,6 +7306,7 @@ wl_android_get_band_chanspecs(struct net_device *ndev, void *buf, s32 buflen,
 		}
 
 		if (CHSPEC_IS5G(chanspec) && (CHANNEL_IS_RADAR(channel) ||
+			CHANNEL_IS_P2P_PROHIBITED(channel) ||
 #ifndef ALLOW_5G_ACS
 			((acs_req == true) &&
 			!(IS_5G_APCS_CHANNEL(wf_chspec_primary20_chan(chanspec)))) ||
@@ -7313,16 +7316,7 @@ wl_android_get_band_chanspecs(struct net_device *ndev, void *buf, s32 buflen,
 		} else if (!(CHSPEC_IS2G(chanspec) || CHSPEC_IS5G(chanspec)) &&
 			!(CHSPEC_IS_6G_PSC(chanspec))) {
 			continue;
-#ifdef WL_UNII4_CHAN
-		} else if (CHSPEC_IS5G(chanspec) &&
-			IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chanspec))) {
-			/* Skip UNII-4 channels */
-			WL_INFORM_MEM(("Skip UNII-4 chanspec from list : %x\n",
-				chanspec));
-			continue;
-#endif /* WL_UNII4_CHAN */
-		}
-		else {
+		} else {
 			list->element[j] = list->element[i];
 			WL_DBG(("Adding chanspec in list : %x\n", list->element[j]));
 		}

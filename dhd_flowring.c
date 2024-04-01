@@ -685,7 +685,8 @@ dhd_flowid_find(dhd_pub_t *dhdp, uint8 ifindex, uint8 prio, char *sa, char *da)
 		cur = if_flow_lkup[ifindex].fl_hash[hash];
 
 		while (cur) {
-			if ((ismcast && ETHER_ISMULTI(cur->flow_info.da)) ||
+			if ((ismcast && ETHER_ISMULTI(cur->flow_info.da) &&
+				TRUE) ||
 				(!memcmp(cur->flow_info.da, da, ETHER_ADDR_LEN) &&
 				(cur->flow_info.tid == prio))) {
 				DHD_FLOWID_UNLOCK(dhdp->flowid_lock, flags);

@@ -301,6 +301,7 @@ extern void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val);
 extern int dhd_bus_get_linkdown(dhd_pub_t *dhdp);
 bool dhd_bus_is_wl_bp_down(dhd_pub_t *dhdp);
 bool dhd_bus_is_common_bp_down(dhd_pub_t *dhdp);
+bool dhd_bus_is_coex_bp_down(dhd_pub_t *dhdp);
 void dhd_bus_reset_link_state(dhd_pub_t *dhdp);
 #if defined(CONFIG_ARCH_MSM) && defined(CONFIG_SEC_PCIE_L1SS)
 extern void dhd_bus_inform_ep_loaded_to_rc(dhd_pub_t *dhdp, bool up);
@@ -321,6 +322,7 @@ static INLINE bool dhd_bus_get_read_shm(dhd_pub_t *dhdp) { return 0; }
 extern INLINE int dhd_bus_checkdied(struct dhd_bus *bus, char *data, uint size) { return 0; }
 static INLINE bool dhd_bus_is_wl_bp_down(dhd_pub_t *dhdp) { return FALSE; }
 static INLINE bool dhd_bus_is_common_bp_down(dhd_pub_t *dhdp) { return FALSE; }
+static INLINE bool dhd_bus_is_coex_bp_down(dhd_pub_t *dhdp) { return FALSE; }
 static INLINE void dhd_bus_reset_link_state(dhd_pub_t *dhdp) { return; }
 #endif /* BCMPCIE */
 

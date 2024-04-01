@@ -4331,6 +4331,9 @@ typedef struct wlc_btc_stats_v2 {
 
 #define ACPHY_OBSS_SUBBAND_CNT		8u	/* Max sub band counts i.e., 160Mhz = 8 * 20MHZ */
 
+#define	PHY_RX_GAIN_INDICES		16u	/* num of Rx gain indices */
+#define	PHY_TX_GAIN_CAL			3u	/* num of Tx gain indices */
+
 typedef struct phy_ecounter_v1 {
 	chanspec_t	chanspec;
 	uint8		slice;
@@ -5172,6 +5175,67 @@ typedef struct phy_phycal_core_v2 {
 	uint32	debug_12;
 } phy_phycal_core_v2_t;
 
+typedef struct phy_phycal_core_v3 {
+	/* RxIQ imbalance coeff */
+	uint16	rxa;
+	uint16	rxb;
+	int32	rxs;
+
+	/* OFDM and BPHY TxIQ imbalance coeff */
+	uint16	ofdm_txd; /* contain di & dq */
+
+	/* tx baseindex */
+	uint8	baseidx;
+	uint8	baseidx_cck;
+
+	/* Rx IQ Cal coeff */
+	uint16	rxa_vpoff;
+	uint16	rxb_vpoff;
+	uint16	rxa_ipoff;
+	uint16	rxb_ipoff;
+	int32	rxs_vpoff;
+	int32	rxs_ipoff;
+
+	/* Tx IQ/LO calibration coeffs */
+	uint16	txiqlo_a0;
+	uint16	txiqlo_b0;
+	uint16	txiqlo_a1;
+	uint16	txiqlo_b1;
+	uint16	txiqlo_a2;
+	uint16	txiqlo_b2;
+
+	/* Misc. calibration params */
+	int32	txs;
+	int16	txs_mean;
+	uint16	txbaseidx_gtthres_cnt;
+	uint16	txgain_rad_gain;
+	uint16	txgain_rad_gain_mi;
+	uint16	txgain_rad_gain_hi;
+	uint16	txgain_bbmult;
+	int16	rxs_mean_vpoff;
+	int16	rxs_mean_ipoff;
+	int16	rxs_mean;
+	uint8	rxms;
+	uint8	rxms_vpoff;
+	uint8	rxms_ipoff;
+	uint8	ccktxgain_offset;
+	int8	mppc_gain_offset_qdB[TXCAL_MAX_PA_MODE];
+
+	int16	dc_est_i;		/* Residual DC Estimate */
+	int16	dc_est_q;		/* Residual DC Estimate */
+	int16	kappa_theta[PHY_RX_GAIN_INDICES][2u];	/* RX-IQ comp coefficients */
+	int16	dc_re_im[PHY_RX_GAIN_INDICES][2u];	/* DC compensation coefficients */
+	int16	txgaincal[PHY_TX_GAIN_CAL];		/* txgaincal correction factor */
+
+	/* Misc general purpose debug counters (will be used for future debugging) */
+	uint16	debug_01;
+	uint16	debug_02;
+	uint16	debug_03;
+	uint16	debug_04;
+	uint32	debug_05;
+	uint32	debug_06;
+} phy_phycal_core_v3_t;
+
 /* For trunk ONLY */
 typedef struct phy_phycal_core_v255 {
 	/* RxIQ imbalance coeff */
@@ -5302,6 +5366,51 @@ typedef struct phy_phycal_v2 {
 	phy_phycal_core_v2_t phy_phycal_core[2];
 } phy_phycal_v2_t;
 
+typedef struct phy_phycal_v3 {
+	/* General info */
+	uint32	last_cal_time; /* in [sec], covers 136 years if 32 bit */
+	chanspec_t	chanspec;
+	int16	last_cal_temp;
+	uint8	txiqlocal_retry;
+	uint8	rxe;
+	uint8	cal_phase_id;
+	uint8	slice;
+	uint32	desense_reason;
+	uint16	dur;	/* duration of cal in usec */
+	uint8	reason;
+
+	/* Health check counters */
+	uint8	hc_retry_count_vpoff;
+	uint8	hc_retry_count_ipoff;
+	uint8	hc_retry_count_rx;
+	uint8	hc_retry_count_tx;
+	/* Health check exceed conditions */
+	uint8	hc_dev_exceed_log_rx_vpoff;
+	uint8	hc_dev_exceed_log_rx_ipoff;
+	uint8	hc_dev_exceed_log_rx;
+	uint8	hc_dev_exceed_log_tx;
+
+	uint8	sc_rxiqcal_skip_cnt;
+	/* Tx cal counters */
+	uint16	txiqcal_max_retry_cnt;
+	uint16	txiqcal_max_slope_cnt;
+	uint16	mppc_cal_failed_count;
+	uint16	debug_01;
+	uint16	txiqlocal_coeffs[20];
+	uint8	is_mppc_gain_offset_cal_success;
+
+	/* Misc general purpose debug counters (will be used for future debugging) */
+	uint8	debug_02;
+	uint8	debug_03;
+	uint8	debug_04;
+	uint16	debug_05;
+	uint16	debug_06;
+	uint32	debug_07;
+	uint32	debug_08;
+
+	phy_phycal_core_v3_t phy_phycal_core[2];
+} phy_phycal_v3_t;
+
 /* For trunk ONLY */
 typedef struct phy_phycal_v255 {
 	uint32 last_cal_time; /* in [sec], covers 136 years if 32 bit */
@@ -5365,6 +5474,15 @@ typedef struct phy_ecounter_phycal_stats_v2 {
 	uint8			PAD[3];
 	phy_phycal_v2_t		phy_counter[];
 } phy_ecounter_phycal_stats_v2_t;
+
+#define PHY_ECOUNTERS_PHYCAL_STATS_VER3	3u
+typedef struct phy_ecounter_phycal_stats_v3 {
+	uint16			version;
+	uint16			length;
+	uint8			num_channel;	/* Number of active channels. */
+	uint8			PAD[3];
+	phy_phycal_v3_t		phy_counter[];
+} phy_ecounter_phycal_stats_v3_t;
 
 /* For trunk ONLY */
 #define PHY_ECOUNTERS_PHYCAL_STATS_VER255	255u

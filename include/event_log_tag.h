@@ -647,8 +647,11 @@
 /* KM INFO LOG					*/
 #define EVENT_LOG_TAG_KM_INFO			485
 #define EVENT_LOG_TAG_PHY_CAL_DATA		486
+/* MFP scan (motion triggered scan) */
+#define EVENT_LOG_TAG_MPF_SCAN_ERR		487
+#define	EVENT_LOG_TAG_MPF_SCAN_INFO		488
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			486
+#define EVENT_LOG_TAG_MAX			488
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

@@ -1856,7 +1856,7 @@ wl_get_lower_bw_chspec(chanspec_t *chspec)
 		return BCME_ERROR;
 	}
 
-	WL_INFORM_MEM(("cur_chspec:%x new_chspec:0x%x BW:%d chan:%d\n",
+	WL_INFORM_MEM(("cur_chspec:%x new_chspec:0x%x BW:%x chan:%d\n",
 			cur_chspec, *chspec, bw,
 			wf_chspec_primary20_chan(*chspec)));
 	return BCME_OK;
@@ -2017,11 +2017,11 @@ wl_filter_restricted_subbands(struct bcm_cfg80211 *cfg,
 
 	 do {
 		bw = CHSPEC_BW(sel_chspec);
-		WL_DBG_MEM(("chanspec_req:0x%x BW:%d overlap_channels:%d\n",
+		WL_DBG_MEM(("chanspec_req:0x%x BW:%x overlap_channels:%d\n",
 			sel_chspec, bw, arr_idx));
 		 for (k = 0; k < arr_idx; k++) {
 			retry_bw = FALSE;
-			WL_DBG(("chanspec:0x%x chaninfo:%d index:%d\n",
+			WL_DBG(("chanspec:0x%x chaninfo:%x index:%d\n",
 				overlap[k].chanspec, overlap[k].chaninfo, k));
 			if (wl_cfgscan_chaninfo_restricted(cfg, dev, overlap[k].chaninfo,
 					overlap[k].chanspec)) {
@@ -2076,6 +2076,7 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 #endif /* SUPPORT_AP_INIT_BWCONF */
 	u8 mlo_num_links = 0;
 	struct net_info *netinfo = NULL;
+	u32 chan_info;
 
 	BCM_REFERENCE(dhd);
 
@@ -2106,13 +2107,16 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 	}
 #endif /* WL_SOFTAP_6G */
 
-#ifdef WL_UNII4_CHAN
-	if (CHSPEC_IS5G(chspec) &&
-		IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec))) {
-		WL_ERR(("AP not allowed on UNII-4 chanspec 0x%x\n", chspec));
-		return -ENOTSUPP;
+	if (CHSPEC_IS5G(chspec)) {
+		if ((wl_cfgscan_get_dynamic_chan_info(cfg, &chan_info,
+			chspec, WL_CHAN_INDOOR_ONLY | WL_CHAN_RADAR) == BCME_OK) &&
+				(chan_info & WL_CHAN_P2P_PROHIBITED)) {
+			WL_ERR(("AP not allowed on peer to peer restricted chanspec 0x%x\n",
+				chspec));
+			return -ENOTSUPP;
+		}
 	}
-#endif /* WL_UNII4_CHAN */
+
 	/* Check whether AP is already operational */
 	err = wl_get_ap_chanspecs(cfg, &ap_oper_data);
 	if (err != BCME_OK) {
@@ -2210,12 +2214,7 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 				((CHSPEC_IS5G(sta_chanspec)) &&
 				(!IS_5G_APCS_CHANNEL(wf_chspec_primary20_chan(sta_chanspec)))) ||
 #else
-				(wl_is_chanspec_restricted(cfg, sta_chanspec) ||
-#ifdef WL_UNII4_CHAN
-				(CHSPEC_IS5G(sta_chanspec) &&
-				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(sta_chanspec))) ||
-#endif /* WL_UNII4_CHAN */
-				FALSE) ||
+				(wl_is_chanspec_restricted(cfg, sta_chanspec)) ||
 #endif /* APSTA_RESTRICTED_CHANNEL */
 				FALSE)) ? DEFAULT_2G_SOFTAP_CHANSPEC : sta_chanspec;
 				WL_ERR(("target chanspec will be changed to %x\n", chspec));
@@ -2346,6 +2345,8 @@ set_channel:
 		if (cur_chspec != INVCHANSPEC) {
 			err = wl_filter_restricted_subbands(cfg, dev, &cur_chspec);
 			if (err) {
+				WL_ERR(("Get filtered restrict subband chspec failed, err %d\n",
+					err));
 				return err;
 			}
 			WL_INFORM_MEM(("set chanspec 0x%x\n", cur_chspec));
@@ -4684,9 +4685,9 @@ wl_cfg80211_start_ap(
 #ifdef PKT_FILTER_SUPPORT
 		dhd_enable_packet_filter(0, dhd);
 #endif /* PKT_FILTER_SUPPORT */
-#ifdef APF
+#if defined(APF) && defined(APF_SINGLE_IF_SUPPORT)
 		dhd_dev_apf_disable_filter(dhd_linux_get_primary_netdev(dhd));
-#endif /* APF */
+#endif /* APF && APF_SINGLE_IF_SUPPORT */
 	}
 #endif /* BCMDONGLEHOST */
 
@@ -4828,9 +4829,9 @@ fail:
 #ifdef PKT_FILTER_SUPPORT
 			dhd_enable_packet_filter(1, dhd);
 #endif /* PKT_FILTER_SUPPORT */
-#ifdef APF
+#if defined(APF) && defined(APF_SINGLE_IF_SUPPORT)
 			dhd_dev_apf_enable_filter(dhd_linux_get_primary_netdev(dhd));
-#endif /* APF */
+#endif /* APF && APF_SINGLE_IF_SUPPORT */
 		}
 #endif /* BCMDONGLEHOST */
 

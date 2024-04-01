@@ -901,6 +901,12 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 		ret = TRUE;
 	}
 
+	if (dhd_bus_is_coex_bp_down(dhdp)) {
+		DHD_ERROR_RLMT(("%s : coex cpu backplane down, cannot proceed\n",
+			__FUNCTION__));
+		ret = TRUE;
+	}
+
 	return ret;
 }
 
@@ -11972,6 +11978,9 @@ dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int subs
 			break;
 		case DUMP_TYPE_COMMON_BP_DOWN:
 			type_str = "COMMON_BP_DOWN";
+			break;
+		case DUMP_TYPE_COEXCPU_BP_DOWN:
+			type_str = "COEX_CPU_BP_DOWN";
 			break;
 		default:
 			type_str = "Unknown_type";

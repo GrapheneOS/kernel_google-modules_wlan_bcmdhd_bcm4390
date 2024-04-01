@@ -790,6 +790,9 @@ uint32 tpoweron_scale = FORCE_TPOWERON_50US; /* default 50us */
 module_param(tpoweron_scale, uint, 0644);
 #endif /* FORCE_TPOWERON */
 
+bool allow_cons_iovar = FALSE;
+module_param(allow_cons_iovar, bool, 0644);
+
 #ifdef SHOW_LOGTRACE
 #ifdef DHD_LINUX_STD_FW_API
 static char *logstrs_path = "logstrs.bin";
@@ -6562,6 +6565,9 @@ dhd_stop(struct net_device *net)
 #ifdef WL_STATIC_IF
 	struct bcm_cfg80211 *cfg = wl_get_cfg(net);
 #endif /* WL_STATIC_IF */
+#if defined(CONFIG_IPV6) && defined(IPV6_NDO_SUPPORT)
+	int ret = 0;
+#endif /* CONFIG_IPV6 && IPV6_NDO_SUPPORT */
 #endif /* WL_CFG80211 */
 	dhd_info_t *dhd = DHD_DEV_INFO(net);
 	int timeleft = 0;
@@ -6693,6 +6699,14 @@ dhd_stop(struct net_device *net)
 #endif /* ARP_OFFLOAD_SUPPORT */
 #if defined(CONFIG_IPV6) && defined(IPV6_NDO_SUPPORT)
 				if (dhd_inet6addr_notifier_registered) {
+					ret = dhd_ndo_remove_ip(&dhd->pub, ifidx);
+					if (ret < 0) {
+						DHD_ERROR(("%s: clear host ipv6 for NDO failed%d\n",
+							__FUNCTION__, ret));
+					} else {
+						DHD_PRINT(("%s: cleared host ipv6 table for NDO \n",
+							__FUNCTION__));
+					}
 					dhd_inet6addr_notifier_registered = FALSE;
 					unregister_inet6addr_notifier(&dhd_inet6addr_notifier);
 				}
@@ -11445,6 +11459,82 @@ dhd_get_fw_capabilities(dhd_pub_t * dhd)
 
 #ifdef DHD_SPMI
 static int
+dhd_disable_spmi_heb_core(dhd_pub_t *dhd)
+{
+	/* Disable the SPMI HEB core so that we don't get error
+	 * messages on systems without an SPMI master.
+	 */
+	bcm_iov_buf_t *iov_buf_ptr = NULL;
+	uint8 *datap = NULL;
+	int ret = BCME_OK;
+
+	iov_buf_ptr = (bcm_iov_buf_t *)MALLOCZ(dhd->osh, sizeof(bcm_iov_buf_t) + 1);
+
+	if (iov_buf_ptr == NULL) {
+		DHD_ERROR(("couldn't alloc buffer for disable HEB subcommand\n"));
+		ret = BCME_NOMEM;
+		goto done;
+	}
+
+	iov_buf_ptr->version = WL_SPMI_HEB_IOV_VERSION;
+	iov_buf_ptr->id = WL_SPMI_HEB_SUBCMD_ENABLE;
+
+	datap = (uint8 *)iov_buf_ptr->data;
+	iov_buf_ptr->len = sizeof(uint8);
+	*datap = (uint8) 0; /* 0 = disable the core */
+
+	ret = dhd_iovar(dhd, 0, "spmi:heb", (char *)iov_buf_ptr,
+			sizeof(bcm_iov_buf_t) + iov_buf_ptr->len, NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_PRINT(("%s SPMI not supported or HEB disable "
+			"subcommand failed\n", __FUNCTION__));
+	}
+
+	MFREE(dhd->osh, iov_buf_ptr, sizeof(bcm_iov_buf_t) + 1);
+
+done:
+	return ret;
+}
+
+static int
+dhd_disable_spmi_coex_core(dhd_pub_t *dhd)
+{
+	/* Disable the SPMI COEX core so that we don't get error
+	 * messages on systems without an SPMI master.
+	 */
+	bcm_iov_buf_t *iov_buf_ptr = NULL;
+	uint8 *datap = NULL;
+	int ret = BCME_OK;
+
+	iov_buf_ptr = (bcm_iov_buf_t *)MALLOCZ(dhd->osh, sizeof(bcm_iov_buf_t) + 1);
+
+	if (iov_buf_ptr == NULL) {
+		DHD_ERROR(("couldn't alloc buffer for disable HEB subcommand\n"));
+		ret = BCME_NOMEM;
+		goto done;
+	}
+
+	iov_buf_ptr->version = WL_SPMI_COEX_IOV_VERSION;
+	iov_buf_ptr->id = WL_SPMI_COEX_SUBCMD_ENABLE;
+
+	datap = (uint8 *)iov_buf_ptr->data;
+	iov_buf_ptr->len = sizeof(uint8);
+	*datap = (uint8) 0; /* 0 = disable the core */
+
+	ret = dhd_iovar(dhd, 0, "spmi:coex", (char *)iov_buf_ptr,
+			sizeof(bcm_iov_buf_t) + iov_buf_ptr->len, NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_PRINT(("%s SPMI not supported or COEX disable "
+			"subcommand failed\n", __FUNCTION__));
+	}
+
+	MFREE(dhd->osh, iov_buf_ptr, sizeof(bcm_iov_buf_t) + 1);
+
+done:
+	return ret;
+}
+
+static int
 dhd_flush_spmi_coex_fifos(dhd_pub_t *dhd)
 {
 	/* We need to flush all COEX SGT FIFOs because there's no SPMI
@@ -11475,6 +11565,46 @@ dhd_flush_spmi_coex_fifos(dhd_pub_t *dhd)
 			sizeof(bcm_iov_buf_t) + iov_buf_ptr->len, NULL, 0, TRUE);
 	if (ret < 0) {
 		DHD_PRINT(("%s SPMI not supported or flush COEX tx FIFO "
+			"subcommand failed\n", __FUNCTION__));
+	}
+
+	MFREE(dhd->osh, iov_buf_ptr, sizeof(bcm_iov_buf_t) + 1);
+
+done:
+	return ret;
+}
+
+static int
+dhd_disable_spmi_coex_fifos(dhd_pub_t *dhd)
+{
+	/* Disable the COEX SGT FIFOs because there's no SPMI
+	 * device to send messages to on our platform, and keeping
+	 * messages in the FIFOs would cause increased power
+	 * consumption.
+	 */
+	bcm_iov_buf_t *iov_buf_ptr = NULL;
+	uint8 *datap = NULL;
+	int ret = BCME_OK;
+
+	iov_buf_ptr = (bcm_iov_buf_t *)MALLOCZ(dhd->osh, sizeof(bcm_iov_buf_t) + 1);
+
+	if (iov_buf_ptr == NULL) {
+		DHD_ERROR(("couldn't alloc buffer for flush coex tx FIFO subcommand\n"));
+		ret = BCME_NOMEM;
+		goto done;
+	}
+
+	iov_buf_ptr->version = WL_SPMI_COEX_IOV_VERSION;
+	iov_buf_ptr->id = WL_SPMI_COEX_SUBCMD_DISABLE_TX_FIFOS;
+
+	datap = (uint8 *)iov_buf_ptr->data;
+	iov_buf_ptr->len = sizeof(uint8);
+	*datap = (uint8) 1; /* Disable the FIFOs */
+
+	ret = dhd_iovar(dhd, 0, "spmi:coex", (char *)iov_buf_ptr,
+			sizeof(bcm_iov_buf_t) + iov_buf_ptr->len, NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_PRINT(("%s SPMI not supported or disable COEX tx FIFO "
 			"subcommand failed\n", __FUNCTION__));
 	}
 
@@ -12352,6 +12482,30 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 	if (ret != BCME_OK) {
 		/* SPMI FIFO flush failure is not a fatal error. Some platforms do not
 		 * support SPMI.
+		 */
+		ret = BCME_OK;
+	}
+
+	ret = dhd_disable_spmi_coex_fifos(dhd);
+	if (ret != BCME_OK) {
+		/* SPMI COEX FIFO disable failure is not a fatal error. Some platforms
+		 * do not support SPMI.
+		 */
+		ret = BCME_OK;
+	}
+
+	ret = dhd_disable_spmi_heb_core(dhd);
+	if (ret != BCME_OK) {
+		/* Don't throw a fatal error if spmi:heb enable 0 command fails
+		 * because some platforms may not support SPMI at all.
+		 */
+		ret = BCME_OK;
+	}
+
+	ret = dhd_disable_spmi_coex_core(dhd);
+	if (ret != BCME_OK) {
+		/* Don't throw a fatal error if spmi:coex enable 0 command fails
+		 * because some platforms may not support SPMI at all.
 		 */
 		ret = BCME_OK;
 	}
@@ -14090,6 +14244,30 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 	if (ret != BCME_OK) {
 		/* SPMI FIFO flush failure is not a fatal error. Some platforms do not
 		 * support SPMI.
+		 */
+		ret = BCME_OK;
+	}
+
+	ret = dhd_disable_spmi_coex_fifos(dhd);
+	if (ret != BCME_OK) {
+		/* SPMI COEX FIFO disable failure is not a fatal error. Some platforms
+		 * do not support SPMI.
+		 */
+		ret = BCME_OK;
+	}
+
+	ret = dhd_disable_spmi_heb_core(dhd);
+	if (ret != BCME_OK) {
+		/* Don't throw a fatal error if spmi:heb enable 0 command fails
+		 * because some platforms may not support SPMI at all.
+		 */
+		ret = BCME_OK;
+	}
+
+	ret = dhd_disable_spmi_coex_core(dhd);
+	if (ret != BCME_OK) {
+		/* Don't throw a fatal error if spmi:coex enable 0 command fails
+		 * because some platforms may not support SPMI at all.
 		 */
 		ret = BCME_OK;
 	}
@@ -17959,7 +18137,11 @@ dhd_dev_apf_add_filter(struct net_device *ndev, u8* program,
 	}
 	dhdp->apf_set = TRUE;
 
-	if (dhdp->in_suspend && dhdp->apf_set && !(dhdp->op_mode & DHD_FLAG_HOSTAP_MODE)) {
+	if (dhdp->in_suspend && dhdp->apf_set &&
+#ifdef APF_SINGLE_IF_SUPPORT
+		!(dhdp->op_mode & DHD_FLAG_HOSTAP_MODE) &&
+#endif /* APF_SINGLE_IF_SUPPORT */
+		TRUE) {
 		/* Driver is still in (early) suspend state and during this time Android
 		 * framework updated the filter program. As there will not be another
 		 * early suspend notification, enable back the APF filter with the new
@@ -17984,15 +18166,24 @@ dhd_dev_apf_enable_filter(struct net_device *ndev)
 	dhd_info_t *dhd = DHD_DEV_INFO(ndev);
 	dhd_pub_t *dhdp = &dhd->pub;
 	int ret = 0;
+#if defined(WL_NAN) && defined(APF_SINGLE_IF_SUPPORT)
 	bool nan_dp_active = false;
+#endif /* WL_NAN && APF_SINGLE_IF_SUPPORT */
 
 	DHD_APF_LOCK(ndev);
 
-#ifdef WL_NAN
+#if defined(WL_NAN) && defined(APF_SINGLE_IF_SUPPORT)
 	nan_dp_active = wl_cfgnan_is_dp_active(ndev);
-#endif /* WL_NAN */
+#endif /* WL_NAN && APF_SINGLE_IF_SUPPORT */
 
-	if (dhdp->apf_set && (!(dhdp->op_mode & DHD_FLAG_HOSTAP_MODE) && !nan_dp_active)) {
+	if (dhdp->apf_set &&
+#ifdef APF_SINGLE_IF_SUPPORT
+		!(dhdp->op_mode & DHD_FLAG_HOSTAP_MODE) &&
+#ifdef WL_NAN
+		!nan_dp_active &&
+#endif /* WL_NAN */
+#endif /* APF_SINGLE_IF_SUPPORT */
+	TRUE) {
 		ret = _dhd_apf_config_filter(ndev, PKT_FILTER_APF_ID,
 			PKT_FILTER_MODE_FORWARD_ON_MATCH, TRUE);
 	}
@@ -20501,7 +20692,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 			 "_%.79s_%.79s", pc_fn, lr_fn);
 	} else if (memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) {
 		snprintf(&dhdp->memdump_str[written_len], DHD_MEMDUMP_LONGSTR_LEN - written_len,
-			 "_0x%x", ewp_init_state);
+			 "_0x%x_0x%x_0x%x", ewp_init_state, dhdp->armpc, dhdp->arm_assert_phy_addr);
 	}
 	DHD_PRINT(("%s: dump reason: %s\n", __FUNCTION__, dhdp->memdump_str));
 

@@ -205,6 +205,9 @@ bool force_trap_bad_h2d_phase = 0;
 /* This can be overwritten by module parameter ptm_sync_periodic */
 int ptm_sync_periodic = TRUE;
 
+/* This can be overwritten by module parameter allow_cons_iovar */
+extern bool allow_cons_iovar;
+
 uint32 ltr_latency_scale_ns[6] = {1, 32, 1024, 32768, 1048576, 33554432}; //ns
 int dhd_dongle_ramsize;
 struct dhd_bus *g_dhd_bus = NULL;
@@ -1589,10 +1592,8 @@ dhdpcie_bus_intstatus(dhd_bus_t *bus)
 		intmask = si_corereg(bus->sih, bus->sih->buscoreidx, bus->pcie_mailbox_mask, 0, 0);
 		/* Is device removed. intstatus & intmask read 0xffffffff */
 		if (intstatus == (uint32)-1 || intmask == (uint32)-1) {
-			DHD_ERROR(("%s: INTSTAT : 0x%x INTMASK : 0x%x.\n",
+			DHD_ERROR(("%s: INTSTAT : 0x%x INTMASK : 0x%x ! pcie link down.\n",
 			    __FUNCTION__, intstatus, intmask));
-			dhd_validate_pcie_link_cbp_wlbp(bus);
-			dhd_pcie_debug_info_dump(bus->dhd);
 #ifdef CUSTOMER_HW4_DEBUG
 
 #if defined(OEM_ANDROID)
@@ -3245,6 +3246,9 @@ dhdpcie_advertise_bus_cleanup(dhd_pub_t *dhdp)
 		dhdp->busstate = DHD_BUS_DOWN_IN_PROGRESS;
 		DHD_GENERAL_UNLOCK(dhdp, flags);
 	}
+	/* Wakeup any waiting IOCTL contexts */
+	dhd_os_set_ioctl_resp_timeout(IOCTL_DISABLE_TIMEOUT);
+	dhd_wakeup_ioctl_event(dhdp, IOCTL_RETURN_ON_BUS_STOP);
 
 	timeleft = dhd_os_busbusy_wait_negation(dhdp, &dhdp->dhd_bus_busy_state);
 	if (dhdp->dhd_bus_busy_state != 0) {
@@ -4778,6 +4782,7 @@ _dhdpcie_download_firmware(struct dhd_bus *bus)
 	/* External nvram takes precedence if specified */
 	if ((bcmerror = dhdpcie_download_nvram(bus))) {
 		DHD_ERROR(("%s:%d dongle nvram file download failed\n", __FUNCTION__, __LINE__));
+		bcmerror = BCME_NORESOURCE;
 		goto err;
 	}
 
@@ -4936,6 +4941,8 @@ dhdpcie_chk_cmnbp_status_indirect(dhd_bus_t *bus)
 #define ARMCA7_WAR_REG_OFF 0x1e4u
 #define ARMCA7_WAR_REG_VAL 0xFF00u
 #define CC_BPIND_ACCESS_POLL_TMO_US 10000u
+#define COEXCPU_OFF 0x3000
+#define COEXCPU_WAR_REG_OFF 0x1e4u
 
 #define NCI_HNDSHK_STUCKERR_INTSTATUS 0xa30u
 #define NCI_PWR_ERROR_INTSTATUS_OFFSET 0xa04u
@@ -5068,6 +5075,34 @@ dhdpcie_get_link_state(dhd_bus_t *bus)
 		}
 	}
 
+#ifdef COEX_CPU
+	/* check COEX CPU BP status by reading WAR reg */
+	if (bus->coex_itcm_base) {
+		idx = si_findcoreidx(bus->sih, GCI_CORE_ID, 0);
+		core_addr = si_get_coreaddr(bus->sih, idx);
+		if (!core_addr) {
+			DHD_ERROR(("%s: Failed to get GCI core addr for idx 0x%x !\n",
+				__FUNCTION__, idx));
+			goto exit;
+		}
+		bpaddr = core_addr + COEXCPU_OFF + COEXCPU_WAR_REG_OFF;
+		ret = si_bpind_access(bus->sih, 0, bpaddr, (int32 *)&val,
+			TRUE, CC_BPIND_ACCESS_POLL_TMO_US);
+		if (ret != BCME_OK) {
+			DHD_ERROR(("%s: Failed to read coex cpu war reg!\n",
+				__FUNCTION__));
+			link_state = DHD_PCIE_COEXCPU_BP_DOWN;
+			goto exit;
+		}
+		if (val == (uint32)-1) {
+			DHD_ERROR(("%s: coex cpu bp down! war reg reads 0x%x !\n",
+				__FUNCTION__, val));
+			link_state = DHD_PCIE_COEXCPU_BP_DOWN;
+			goto exit;
+		}
+	}
+#endif /* COEX_CPU */
+
 	/* Restore back to original core */
 	si_setcoreidx(bus->sih, origidx);
 
@@ -5131,7 +5166,8 @@ dhd_validate_pcie_link_cbp_wlbp(dhd_bus_t *bus)
 		}
 #endif /* DHD_SSSR_DUMP */
 #endif /* DHD_FW_COREDUMP */
-	} else if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+	} else if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		bus->link_state == DHD_PCIE_COEXCPU_BP_DOWN) {
 		DHD_ERROR(("%s : Set do_chip_bighammer\n", __FUNCTION__));
 		bus->dhd->do_chip_bighammer = TRUE;
 #if defined(DHD_FW_COREDUMP)
@@ -5140,7 +5176,11 @@ dhd_validate_pcie_link_cbp_wlbp(dhd_bus_t *bus)
 		bus->dhd->collect_sssr = TRUE;
 		dhdpcie_set_collect_fis(bus);
 		if (!bus->dhd->memdump_type) {
-			bus->dhd->memdump_type = DUMP_TYPE_WL_BP_DOWN;
+			if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+				bus->dhd->memdump_type = DUMP_TYPE_WL_BP_DOWN;
+			} else if (bus->link_state == DHD_PCIE_COEXCPU_BP_DOWN) {
+				bus->dhd->memdump_type = DUMP_TYPE_COEXCPU_BP_DOWN;
+			}
 		}
 #endif /* DHD_SSSR_DUMP */
 #endif /* DHD_FW_COREDUMP */
@@ -5587,6 +5627,10 @@ dhdpcie_get_coex_mem_dump(dhd_bus_t *bus)
 	comb_hdr->len = len;
 
 	dhd_validate_pcie_link_cbp_wlbp(bus);
+	if (bus->link_state == DHD_PCIE_COEXCPU_BP_DOWN) {
+		DHD_ERROR(("%s: coex cpu bp down!, skip coex dump collection \n", __FUNCTION__));
+		return BCME_NOTUP;
+	}
 
 	/* ITCM portion */
 	tlv = comb_hdr->tlv;
@@ -5656,6 +5700,7 @@ dhdpcie_get_mem_dump(dhd_bus_t *bus)
 	dhd_validate_pcie_link_cbp_wlbp(bus);
 
 	if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		bus->link_state == DHD_PCIE_COEXCPU_BP_DOWN ||
 		bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
 		DHD_ERROR(("%s: link_state(%u) not good, return success and "
 			"collect only FIS if set\n", __FUNCTION__, bus->link_state));
@@ -6017,11 +6062,17 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 	bus->dhd->memdump_success = TRUE;
 #endif	/* DHD_DEBUG_UART */
 
-	if (timeout && (bus->link_state == DHD_PCIE_ALL_GOOD)) {
-		/* print ARMCA7 PC, SR engine regs and nci wrapper dump for timeout cases */
-		dhd_bus_get_armca7_pc(dhdp->bus, TRUE);
-		dhdpcie_dump_sreng_regs(bus);
-		dhd_pcie_nci_wrapper_dump(dhdp, FALSE);
+	if (bus->link_state == DHD_PCIE_ALL_GOOD) {
+		if (timeout) {
+			/* print ARMCA7 PC, SR engine regs and
+			 * nci wrapper dump for timeout cases
+			 */
+			dhd_bus_get_armca7_pc(dhdp->bus, TRUE);
+			dhdpcie_dump_sreng_regs(bus);
+			dhd_pcie_nci_wrapper_dump(dhdp, FALSE);
+		} else if (dhdp->memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) {
+			dhdp->armpc = dhd_bus_get_armca7_pc(dhdp->bus, TRUE);
+		}
 	}
 
 
@@ -6584,7 +6635,8 @@ int dhd_bus_console_in(dhd_pub_t *dhd, uchar *msg, uint msglen)
 	unsigned long flags = 0;
 #endif /* PCIE_INB_DW */
 
-	if (bus->sih->buscorerev >= 133) {
+	/* allow_cons_iovar flag is to override buscorerev check. Disabled by default */
+	if ((!allow_cons_iovar) && (bus->sih->buscorerev >= 133)) {
 		DHD_ERROR(("%s: not supported for bus corerev %u\n", __FUNCTION__,
 			bus->sih->buscorerev));
 		return BCME_UNSUPPORTED;
@@ -8258,6 +8310,7 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 					__FUNCTION__, bcmerror));
 				/* NORESOURCE means oob irq init failed
 				 * NOMEM means host memory alloc failed
+				 * NOTFOUND means fw img open failed
 				 * in these cases retain the error code
 				 * so that caller can take decision based
 				 * on it to not collect debug_dump
@@ -8266,7 +8319,8 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 				 * should be avoided.
 				 */
 				if ((bcmerror != BCME_NORESOURCE) &&
-					(bcmerror != BCME_NOMEM)) {
+					(bcmerror != BCME_NOMEM) &&
+					(bcmerror != BCME_NOTFOUND)) {
 					bcmerror = BCME_NOTUP;
 				}
 				goto done;
@@ -11015,10 +11069,11 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 
 			dhd_validate_pcie_link_cbp_wlbp(bus);
 			if (bus->link_state != DHD_PCIE_ALL_GOOD) {
-				DHD_ERROR(("%s: bus->link_state:%d\n",
+				DHD_ERROR(("%s: bus link state (%d) is not good !\n",
 					__FUNCTION__, bus->link_state));
-				if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
-					/* need to collect FIS dumps for WLAN BP down case */
+				if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+					bus->link_state == DHD_PCIE_COEXCPU_BP_DOWN) {
+					/* need to collect FIS dumps for WLAN/COEX BP down case */
 					DHD_ERROR(("%s : Set do_chip_bighammer\n", __FUNCTION__));
 					bus->dhd->do_chip_bighammer = TRUE;
 #if defined(DHD_FW_COREDUMP)
@@ -11027,7 +11082,11 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 					bus->dhd->collect_sssr = TRUE;
 					dhdpcie_set_collect_fis(bus);
 #endif /* DHD_SSSR_DUMP */
-					bus->dhd->memdump_type = DUMP_TYPE_WL_BP_DOWN;
+					if (bus->link_state == DHD_PCIE_WLAN_BP_DOWN) {
+						bus->dhd->memdump_type = DUMP_TYPE_WL_BP_DOWN;
+					} else if (bus->link_state == DHD_PCIE_COEXCPU_BP_DOWN) {
+						bus->dhd->memdump_type = DUMP_TYPE_COEXCPU_BP_DOWN;
+					}
 					dhdpcie_mem_dump(bus);
 #endif /* DHD_FW_COREDUMP */
 				}
@@ -11862,6 +11921,7 @@ dhdpcie_bus_download_fw_signature(dhd_bus_t *bus, bool *do_write)
 	/* check if sboot is enabled, if not write flops */
 	(void) dhd_bus_get_security_status(bus, &security_status);
 	DHD_PRINT(("%s: security_status = 0x%x\n", __FUNCTION__, security_status));
+	bus->security_status = security_status;
 
 	if ((security_status & DAR_SEC_SBOOT_MASK) && (bus->bootloader_filename[0] != 0)) {
 		DHD_ERROR(("%s: **** FLOPS Vector is secured, "
@@ -14702,6 +14762,8 @@ dhdpcie_wait_readshared_area_addr(dhd_bus_t *bus, uint32 *share_addr)
 		if (timeleft == 0 && !bus->fw_boot_intr) {
 			DHD_ERROR(("%s: no boot intr recd. shared addr=%x\n",
 				__FUNCTION__, addr));
+			dhdpcie_bus_intr_disable(bus); /* Disable interrupt using IntMask!! */
+			dhdpcie_disable_irq_nosync(bus); /* Disable interrupt!! */
 		}
 		dhdpcie_print_amni_regs(bus);
 	} else {
@@ -14800,6 +14862,7 @@ dhdpcie_wait_readshared_area_addr(dhd_bus_t *bus, uint32 *share_addr)
 		DHD_PRINT(("%s: address (0x%08x) of pciedev_shared invalid\n",
 			__FUNCTION__, addr));
 		DHD_PRINT(("Waited %llu usec, dongle is not ready\n", elapsed));
+		bus->dhd->arm_assert_phy_addr = (uint32)-1;
 #ifndef OEM_ANDROID
 		if (addr != (uint32)-1) {	/* skip further PCIE reads if read this addr */
 #ifdef DHD_SSSR_DUMP
@@ -14843,6 +14906,9 @@ dhdpcie_wait_readshared_area_addr(dhd_bus_t *bus, uint32 *share_addr)
 				NSEC_PER_USEC)));
 		DHD_PRINT(("PCIe shared addr (0x%08x) read took %llu usec "
 			"before dongle is ready\n", addr, elapsed));
+		dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1,
+			addr + OFFSETOF(pciedev_shared_t, assert_exp_addr),
+			(uint8 *)&bus->dhd->arm_assert_phy_addr, sizeof(uint32));
 	}
 
 done:
@@ -16579,6 +16645,12 @@ dhd_bus_is_common_bp_down(dhd_pub_t *dhdp)
 	return (dhdp->bus->link_state == DHD_PCIE_COMMON_BP_DOWN);
 }
 
+bool
+dhd_bus_is_coex_bp_down(dhd_pub_t *dhdp)
+{
+	return (dhdp->bus->link_state == DHD_PCIE_COEXCPU_BP_DOWN);
+}
+
 void
 dhd_bus_reset_link_state(dhd_pub_t *dhdp)
 {
@@ -17372,11 +17444,16 @@ dhd_bus_get_armca7_pc(struct dhd_bus *bus, bool loop_print)
 	volatile uint32 *ccregs = NULL;
 	uint idx = 0;
 	uint curidx = si_coreidx(sih);
-	uint val = 0;
+	uint val = 0, prev_val = 0;
 	uint32 pwrval = 0;
 
 	/* if not ARMCA7, return */
 	if (si_setcore(sih, ARMCA7_CORE_ID, 0) == NULL) {
+		return -1;
+	}
+
+	if (bus->security_status & DAR_SEC_ARM_DBG_MASK) {
+		DHD_ERROR(("%s: security is enabled, cannot read ARMCA7 !\n", __FUNCTION__));
 		return -1;
 	}
 
@@ -17417,11 +17494,13 @@ dhd_bus_get_armca7_pc(struct dhd_bus *bus, bool loop_print)
 	}
 
 	for (idx = 0; idx < ARMCA7_PC_LOOP_CNT; idx++) {
-		DHD_PRINT(("[%u]ARMCA7-PC=0x%x\n", idx, val));
+		if (val != prev_val) {
+			DHD_PRINT(("[%u]ARMCA7-PC=0x%x\n", idx, val));
+		}
+		prev_val = val;
 		serialized_backplane_access(bus, debug_base + CA7_REG_OFF(ProgramCounterSampling),
 			4, &val, TRUE);
 	}
-
 
 exit:
 	/* lock back OsLockCtrl register to prevent access to ARMCA7 debug registers */
@@ -17433,8 +17512,7 @@ exit:
 	/* restore earlier pwr req value */
 	DHD_PRINT(("%s: restore prev pwr req val 0x%x \n", __FUNCTION__, pwrval));
 	si_srpwr_request(sih, pwrval, pwrval);
-
-	return val;
+	return prev_val;
 }
 
 #ifdef BTLOG

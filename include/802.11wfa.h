@@ -187,7 +187,6 @@ BWL_PRE_PACKED_STRUCT struct dot11_sae_pk_element {
 typedef struct dot11_sae_pk_element dot11_sae_pk_element_t;
 
 /* WPA3 Transition Mode bits */
-#define TRANSISION_MODE_WPA3_PSK		BCM_BIT(0)
 #define TRANSITION_MODE_WPA3_PSK		BCM_BIT(0)
 #define TRANSITION_MODE_SAE_PK			BCM_BIT(1)
 #define TRANSITION_MODE_WPA3_ENTERPRISE		BCM_BIT(2)
