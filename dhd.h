@@ -693,7 +693,8 @@ enum dhd_dongledump_type {
 	DUMP_TYPE_ESCAN_SYNCID_MISMATCH		= 37,
 	DUMP_TYPE_COREDUMP_BY_USER		= 38,
 	DUMP_TYPE_WL_BP_DOWN			= 39,
-	DUMP_TYPE_COMMON_BP_DOWN		= 40
+	DUMP_TYPE_COMMON_BP_DOWN		= 40,
+	DUMP_TYPE_COEXCPU_BP_DOWN		= 41
 };
 
 enum dhd_hang_reason {
@@ -2112,6 +2113,8 @@ typedef struct dhd_pub {
 	uint badaddr_pkt_cnt;
 	uint badaddr_pkt_copy_fail_cnt;
 #endif /* DHD_VALIDATE_PKT_ADDRESS */
+	uint32 armpc;
+	uint32 arm_assert_phy_addr;
 } dhd_pub_t;
 
 #if defined(__linux__)

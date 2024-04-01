@@ -710,6 +710,66 @@ typedef struct wl_bss_info_v115 {
 	uint8		RSVD5[2];
 } wl_bss_info_v115_t;
 
+/**
+ * BSS info structure
+ * Applications MUST CHECK ie_offset field and length field to access IEs and
+ * next bss_info structure in a vector (in wl_scan_results_t)
+ */
+typedef struct wl_bss_info_v116 {
+	uint32		version;		/**< version field */
+	uint32		length;			/**< byte length of data in this record,
+						 * starting at version and including IEs
+						 */
+	struct ether_addr BSSID;
+	uint16		beacon_period;		/**< units are Kusec */
+	uint16		capability;		/**< Capability information */
+	uint8		SSID_len;
+	uint8		SSID[32];		/* values can be short ssid or ssid indicates
+						 * in flags2 WL_BSS2_FLAGS_SHORT_SSID
+						 */
+	uint8		bcnflags;		/* additional flags w.r.t. beacon */
+	struct {
+		uint32	count;			/**< # rates in this set */
+		uint8	rates[16];		/**< rates in 500kbps units w/hi bit set if basic */
+	} rateset;				/**< supported rates */
+	chanspec_t	chanspec;		/**< chanspec for bss */
+	uint16		atim_window;		/**< units are Kusec */
+	uint8		dtim_period;		/**< DTIM period */
+	uint8		accessnet;		/* from beacon interwork IE (if bcnflags) */
+	int16		RSSI;			/**< receive signal strength (in dBm) */
+	int8		phy_noise;		/**< noise (in dBm) */
+	uint8		n_cap;			/**< BSS is 802.11N Capable */
+	uint8		he_cap;			/**< BSS is he capable */
+	uint8		load;			/**< BSS Load (channel utilization of BSSLoad IE) */
+	uint32		nbss_cap;		/**< 802.11N+AC BSS Capabilities */
+	uint8		ctl_ch;			/**< 802.11N BSS control channel number */
+	uint8		RSVD1[3];
+	uint16		vht_rxmcsmap;		/**< VHT rx mcs map (802.11ac) */
+	uint16		vht_txmcsmap;		/**< VHT tx mcs map (802.11ac) */
+	uint8		flags;			/**< flags */
+	uint8		vht_cap;		/**< BSS is vht capable */
+	uint8		flags2;			/**< extended flags */
+	uint8		reginfo6g;		/**< regulatory info of 6GHz BSS */
+	uint8		basic_mcs[MCSSET_LEN];	/**< 802.11N BSS required MCS set */
+	uint16		ie_offset;		/**< offset at which IEs start, from beginning */
+	uint8		RSVD3[2];		/* making implicit padding explicit */
+	uint32		ie_length;		/**< byte length of Information Elements */
+	int16		SNR;			/**< average SNR of during frame reception */
+	uint16		vht_mcsmap;		/**< STA's Associated vhtmcsmap */
+	uint16		vht_mcsmap_prop;	/**< STA's Associated prop vhtmcsmap */
+	uint16		vht_txmcsmap_prop;	/**< prop VHT tx mcs prop */
+	uint32		he_mcsmap;		/**< STA's Associated hemcsmap */
+	uint32		he_rxmcsmap;		/**< HE rx mcs map (802.11ax) */
+	uint32		he_txmcsmap;		/**< HE tx mcs map (802.11ax) */
+	uint32		timestamp[2];		/* Beacon Timestamp for FAKEAP req */
+	uint8		eht_cap;		/* BSS is EHT capable */
+	uint8		RSVD4[1];
+	wl_eht_mcsmap_t	eht_mcsmap_sta;		/* EHT-MCS Map for the STA in associated state */
+	wl_eht_mcsmap_t	eht_mcsmap;		/* EHT-MCS Map for the BSS operating chan width */
+	struct ether_addr mld_addr;		/* AP MLD address */
+	uint8		RSVD5[2];
+} wl_bss_info_v116_t;
+
 #define WL_GSCAN_FULL_RESULT_VERSION	2	/* current version of wl_gscan_result_t struct */
 
 typedef struct wl_gscan_bss_info_v2 {
@@ -13750,16 +13810,18 @@ typedef enum {
 	 */
 	/* WPA3 CTT testbed specific requirement. refer to WFA CAPI command list */
 	WL_WSEC_INFO_TEST_UNUSED = (WL_WSEC_INFO_TEST_BASE),	/* reserved for future use */
-	WL_WSEC_INFO_TEST_SAE_GROUP_REJ = (WL_WSEC_INFO_TEST_BASE + 1), /* rejected group ID */
-	WL_WSEC_INFO_TEST_SAE_INVALID_VEC = (WL_WSEC_INFO_TEST_BASE + 2), /* test SAE vector */
-	WL_WSEC_INFO_TEST_PMK = (WL_WSEC_INFO_TEST_BASE + 3),		/* query PMK */
-	WL_WSEC_INFO_TEST_UNUSED1 = (WL_WSEC_INFO_TEST_BASE + 4),	/* reserved for future */
-	WL_WSEC_INFO_TEST_INVALID_OCI = (WL_WSEC_INFO_TEST_BASE + 5),	/* OCV invalid OCI */
-	WL_WSEC_INFO_TEST_PMKSA_CACHE = (WL_WSEC_INFO_TEST_BASE + 6),	/* PMKSA cache on/off */
-	WL_WSEC_INFO_TEST_IGNORE_CSA = (WL_WSEC_INFO_TEST_BASE + 7),	/* Ignore CSA */
-	WL_WSEC_INFO_TEST_IGNORE_ASSOCRESP = (WL_WSEC_INFO_TEST_BASE + 8), /* Ignore reassoc_resp */
-	WL_WSEC_INFO_TEST_DISASSOC_MFP_TMO = (WL_WSEC_INFO_TEST_BASE + 0xA),
+	WL_WSEC_INFO_TEST_SAE_GROUP_REJ = (WL_WSEC_INFO_TEST_BASE + 1u), /* rejected group ID */
+	WL_WSEC_INFO_TEST_SAE_INVALID_VEC = (WL_WSEC_INFO_TEST_BASE + 2u), /* test SAE vector */
+	WL_WSEC_INFO_TEST_PMK = (WL_WSEC_INFO_TEST_BASE + 3u),		/* query PMK */
+	WL_WSEC_INFO_TEST_UNUSED1 = (WL_WSEC_INFO_TEST_BASE + 4u),	/* reserved for future */
+	WL_WSEC_INFO_TEST_INVALID_OCI = (WL_WSEC_INFO_TEST_BASE + 5u),	/* OCV invalid OCI */
+	WL_WSEC_INFO_TEST_PMKSA_CACHE = (WL_WSEC_INFO_TEST_BASE + 6u),	/* PMKSA cache on/off */
+	WL_WSEC_INFO_TEST_IGNORE_CSA = (WL_WSEC_INFO_TEST_BASE + 7u),	/* Ignore CSA */
+	WL_WSEC_INFO_TEST_IGNORE_ASSOCRESP = (WL_WSEC_INFO_TEST_BASE + 8u), /* Ignore ReassocResp */
 	/* sending disassoc frame when MFP query timed out */
+	WL_WSEC_INFO_TEST_DISASSOC_MFP_TMO = (WL_WSEC_INFO_TEST_BASE + 10u),
+	/* get Pairwise Key (Temporal Key) */
+	WL_WSEC_INFO_TEST_TK = (WL_WSEC_INFO_TEST_BASE + 11u),
 
 	/* add per-BSS properties above */
 	WL_WSEC_INFO_MAX = 0xffff
@@ -17580,13 +17642,6 @@ typedef struct dynsar_var_info {
 	uint32 off; /* hysterysis offset applied to variance while optimized */
 } dynsar_var_info_t;
 
-
-typedef struct dynsar_sar_dist_fact {
-	uint8 sardist_main;
-	uint8 sardist_aux;
-	uint8 sardist_bt;
-} dynsar_sar_dist_fact_t;
-
 typedef struct dynsar_status_v3 {
 	uint16 ver;
 	uint16 len;		/* length of this structure */
@@ -17652,9 +17707,7 @@ typedef struct dynsar_opt_profile_v2 {
 	uint8 avg_txdc_th;   /* mean txdc threshold for throttling txdc */
 	uint8 opt_txdc_tgt; /* target txdc */
 	uint8 twin; /* Twin in seconds */
-	uint8 sardist_main; /* sar budget percentage in 5g */
-	uint8 sardist_aux;  /* sar budget percentage in 2g */
-	uint8 sardist_bt;   /* sar budget percentage in bt */
+	uint8 pad[3];
 } dynsar_opt_profile_v2_t;
 
 typedef struct dynsar_opt_profiles_v1 {
@@ -19087,6 +19140,7 @@ enum {
 	WL_HE_CMD_ULMU_DISABLE_NS_TXPWR		= 21u,
 	WL_HE_CMD_ULMU_FAKE_NS_TXPWR		= 22u,
 	WL_HE_CMD_RXMPDU_MAXLEN_4K_ENAB		= 23u,
+	WL_HE_CMD_ULMU_DISABLE_CONFIG		= 24u,
 	WL_HE_CMD_LAST
 };
 
@@ -19714,6 +19768,7 @@ enum {
 	WL_MLO_CMD_EPCS_ENAB_REQ	= 0x1006u,	/* send a EPCS Pri Access Req Enab frame */
 	WL_MLO_CMD_EPCS_TEARDN		= 0x1007u,	/* send a EPCS Pri Access Teardown frame */
 	WL_MLO_CMD_MAX_CST		= 0x1008u,	/* send a MCST IE in the bcn frame */
+	WL_MLO_CMD_TEST			= 0x1009u,	/* invoke an internal test case */
 	WL_MLO_CMD_MLOSIM		= 0x2000u,	/* to set mlo simulation option */
 };
 
@@ -19733,6 +19788,16 @@ enum {
 #define WL_MLO_UPDATE_CHANNELS		(1u << 2u) /* channels are present in the config req */
 #define WL_MLO_LINK_INTERFACES		(1u << 3u) /* link existing interfaces as mlo links */
 #define WL_MLO_MLSR_MODE_ENAB		(1u << 4u) /* Enable MLSR mode */
+
+/* Enable this bit for the Wi-Fi 7 certification purposes.
+ * If this flag is enabled, firmware sets the following:
+ *    Assoc Request: MLD capabilities:
+ *    -- Set Maximum Number of Simultaneous Links to 0
+ *    Assoc Request: Basic Multi-link element, Per STA Profile, STA Control:
+ *    -- Set NSTR Link Pair Present to 0
+ */
+#define WL_MLO_MLSR_CERT_ENAB		(1u << 5u)
+
 
 typedef struct wl_mlo_link_config_v1 {
 	struct ether_addr link_addr;	/* Link specific address */
@@ -23404,10 +23469,14 @@ typedef struct wl_omi_req_v2 {
 #define OMI_ULMU_DISABLED_VLP			0x200u	/* Disabled due to VLP  */
 #define OMI_ULMU_DISABLED_DUALSTA		0x400u	/* Disabled due to dualsta */
 #define OMI_ULMU_DISABLED_UNSUPPORTED_TXPWR	0x800u	/* Disabled due to unsupported tx power */
+#define OMI_ULMU_DISABLED_2G_NPLINK	0x1000u	/* Disabled due to 2G as non-preferred link */
 
 /* Bits for DLMU Resound Recommendation reason */
 #define OMI_DLMU_RSD_RCM_HOST	(0x1u << 0u)	/* Host directly set the bit */
 #define OMI_DLMU_RSD_RCM_MPF	(0x1u << 1u)	/* Set on MPF state change */
+
+/* UL-OFDMA disable configurations */
+#define OMI_ULMU_DISABLE_CONFIG_2G_NPLINK	0x0001u	/* disable due to 2G as non-pref link */
 
 #define WL_OMI_STATUS_VERSION_1	1u
 typedef struct wl_omi_status {
@@ -24745,6 +24814,7 @@ typedef enum wlc_sta_pm_sc_ofld_exit_reason {
 	STA_PM_SC_OFLD_EXIT_MLO			= 22u,	/* Exit due to high priority MLO link */
 	STA_PM_SC_OFLD_EXIT_TDLS		= 23u,	/* Exit due to TDLS active */
 	STA_PM_SC_OFLD_EXIT_EMLSR_ML_MODE_CHANGE = 24u,	/* Exit due to EMLSR ML mode change */
+	STA_PM_SC_OFLD_EXIT_AP_RCFG_IN_PROG	 = 25u,	/* Exit due to AP reconfig in progress */
 	STA_PM_SC_OFLD_EXIT_MAX			= 255u	/* Max, uint8 for now */
 } wlc_sta_pm_sc_ofld_exit_reason_t;
 
@@ -27295,5 +27365,38 @@ typedef struct wl_antgain6g_list {
 	uint8	pad[3];
 	wl_antgain6g_t antgain[];	/* list of antenna gain values */
 } wl_antgain6g_list_t;
+
+/* for bcm_iov_buf version */
+#define WL_MPF_SCAN_IOV_VERSION_1 1u
+
+/* iovar subcmd ids */
+enum {
+	IOV_MPF_SCAN_ENABLE      = 1u, /* enable/disable feature */
+	IOV_MPF_SCAN_CONFIG      = 2u, /* config scan parameters */
+	IOV_MPF_SCAN_LAST
+};
+
+/* XTLV ids for all subcommands */
+enum {
+	MPF_SCAN_XTLV_ID_ENABLE       = 100u, /* uint32 */
+	MPF_SCAN_XTLV_ID_CONFIG_V1    = 200u,
+	MPF_SCAN_XTLV_ID_LAST
+};
+
+typedef struct wl_mpf_scan_config_v1 {
+	uint16 active_time; /* 0 means use default */
+	uint16 passive_time; /* 0 means use default */
+	uint32 flags; /* bit 0: prohibited, bit 1: no 6g followup */
+	uint16 chanspec_num; /* 0 means using all chanspecs */
+	uint16 chanspec_list[WL_NUMCHANNELS];
+	uint16 pad;
+} wl_mpf_scan_config_v1_t;
+
+#define WL_MPF_SCAN_PROHIBITTED_MASK        0x1u /* bit 0 */
+#define WL_MPF_SCAN_NO_6GHZ_FOLLOWUP_MASK   0x2u /* bit 1 */
+#define MPF_SCAN_ACTIVE_TIME_MIN            20u
+#define MPF_SCAN_ACTIVE_TIME_MAX            110u
+#define MPF_SCAN_PASSIVE_TIME_MIN           110u
+#define MPF_SCAN_PASSIVE_TIME_MAX           440u
 
 #endif /* _wlioctl_h_ */

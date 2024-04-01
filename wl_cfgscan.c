@@ -1595,7 +1595,7 @@ wl_cfgscan_get_dynamic_chan_info(struct bcm_cfg80211 *cfg,
 	u8 ioctl_buf[WLC_IOCTL_SMLEN];
 
 	/* If channel information doesn't change dynamic, retrieve it
-	 * from cfg80211 cache. But if its radar/indoor channel it could
+	 * from cfg80211 cache. But if its radar/indoor/p2p_restricted channel it could
 	 * change dynamically based on STA connection.
 	 */
 	if (wl_cfgscan_get_chan_info(cfg,
@@ -1745,15 +1745,6 @@ wl_cfgscan_populate_scan_channels(struct bcm_cfg80211 *cfg,
 					continue;
 				}
 			}
-
-#ifdef WL_UNII4_CHAN
-			/* Skip UNII-4 frequencies */
-			if (CHSPEC_IS5G(chanspec) &&
-				IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chanspec))) {
-				WL_DBG(("Skip UNII-4 chanspec 0x%x\n", chanspec));
-				continue;
-			}
-#endif /* WL_UNII4_CHAN */
 		}
 
 		if (use_chanspecs) {
@@ -6818,19 +6809,16 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 			}
 		}
 
-#ifdef WL_UNII4_CHAN
-		/* Skip UNII-4 frequencies */
+		/* Skip restricted frequencies */
 		if (CHSPEC_IS5G(chspeclist[j])) {
-			if (IS_UNII4_CHANNEL(wf_chspec_center_channel(chspeclist[j])) ||
-				((wl_cfgscan_get_dynamic_chan_info(cfg,
+			if (((wl_cfgscan_get_dynamic_chan_info(cfg,
 				&chan_info, chspeclist[j], WL_CHAN_INDOOR_ONLY) == BCME_OK) &&
 				wl_is_chan_info_restricted(chan_info, chspeclist[j]))) {
-				WL_DBG_MEM(("Skipped UNII-4/restricted chanspec 0x%x\n",
+				WL_DBG_MEM(("Skipped restricted chanspec 0x%x\n",
 					chspeclist[j]));
 				continue;
 			}
 		}
-#endif /* WL_UNII4_CHAN */
 
 		if (CHSPEC_IS2G(chspeclist[j])) {
 			if ((wl_cfgscan_get_dynamic_chan_info(cfg,
@@ -7514,20 +7502,11 @@ wl_is_6g_restricted(struct bcm_cfg80211 *cfg, chanspec_t chspec)
 bool
 wl_is_5g_restricted(struct bcm_cfg80211 *cfg, chanspec_t chspec)
 {
-	bool is_5g_restricted = FALSE;
-
 	if (!wf_chspec_valid(chspec)) {
 		return TRUE;
 	}
 
-	is_5g_restricted = (wl_is_chanspec_restricted(cfg, chspec) ||
-#ifdef WL_UNII4_CHAN
-		(CHSPEC_IS5G(chspec) &&
-		IS_UNII4_CHANNEL(wf_chspec_primary20_chan(chspec))) ||
-#endif /* WL_UNII4_CHAN */
-			FALSE);
-
-	return is_5g_restricted;
+	return wl_is_chanspec_restricted(cfg, chspec);
 }
 
 bool

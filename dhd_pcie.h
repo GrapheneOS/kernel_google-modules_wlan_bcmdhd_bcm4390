@@ -264,7 +264,8 @@ typedef enum dhd_pcie_link_state {
 	DHD_PCIE_LINK_DOWN = 1,
 	DHD_PCIE_COMMON_BP_DOWN = 2,
 	DHD_PCIE_WLAN_BP_DOWN = 3,
-	DHD_PCIE_LINK_RESET = 4
+	DHD_PCIE_COEXCPU_BP_DOWN = 4,
+	DHD_PCIE_LINK_RESET = 5
 } dhd_pcie_link_state_type_t;
 
 /* PCIe bus memory mapped regions for device memory accees */
@@ -746,6 +747,7 @@ typedef struct dhd_bus {
 	bool ptm_host_ready_adopt_rx; /* rx: some systems host PTM gets reset on host sleep/wake */
 	bool ptm_host_ready_adopt_tx; /* tx: some systems host PTM gets reset on host sleep/wake */
 
+	uint32 security_status;
 } dhd_bus_t;
 
 #ifdef DHD_PCIE_WRAPPER_DUMP

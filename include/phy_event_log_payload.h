@@ -4344,10 +4344,14 @@ typedef struct phy_periodic_log_cmn_v17 {
 	uint8	dig_gain;
 	uint8	dcest_overflow_cnt;
 
+	uint8	tiadccal_i_retry;
+	uint8	tiadccal_q_retry;
+	uint8	femtemp_retry_cnt;
+	int8	cal_ctsdur_ms;
+
 	/* Misc general purpose debug counters (will be used for future debugging) */
 	uint8	debug_01;
 	uint16	debug_02;
-	uint32	debug_03;
 } phy_periodic_log_cmn_v17_t;
 
 // Trunk version
@@ -5979,7 +5983,7 @@ typedef struct phy_periodic_vcocal_stats_v1 {
 	uint8	force_pu_cnt_fbc;		/* force PU retry cnt as part of FBC cal */
 } phy_periodic_vcocal_stats_v1_t;
 
-typedef struct phy_periodic_fbcx_stats_v1 {
+typedef struct wlc_fbcx_stats_phy_logging_v1 {
 	uint32	fbcx_ovd_cnt;		/**< # of times FBC override applied */
 	uint32	fbcx_last_ovd_start_ts;	/**< last FBC ovd start TS */
 	uint32	fbcx_last_ovd_end_ts;	/**< last FBC ovd end TS */

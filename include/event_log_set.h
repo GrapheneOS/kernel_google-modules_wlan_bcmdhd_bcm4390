@@ -83,8 +83,15 @@
  * In such case, ecounters could be mapped to any set that host
  * configures. They may or may not use set 5.
  */
-#define EVENT_LOG_SET_5			(5u)
-#define EVENT_LOG_SET_ECOUNTERS		(EVENT_LOG_SET_5)
+#define EVENT_LOG_SET_5				(5u)
+#define EVENT_LOG_SET_ECOUNTERS			(EVENT_LOG_SET_5)
+#ifndef EVENT_LOG_SET_ECOUNTER_NUM_BLOCKS
+#define EVENT_LOG_SET_ECOUNTER_NUM_BLOCKS	(2u)
+#endif
+#ifndef EVENT_LOG_SET_ECOUNTER_BLOCK_SIZE
+#define EVENT_LOG_SET_ECOUNTER_BLOCK_SIZE	(EVENT_LOG_MAX_BLOCK_SIZE)
+#endif
+
 #define EVENT_LOG_SET_6			(6u)
 #define EVENT_LOG_SET_7			(7u)
 

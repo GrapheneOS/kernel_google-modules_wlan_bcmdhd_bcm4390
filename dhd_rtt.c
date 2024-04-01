@@ -264,7 +264,7 @@ ftm_cmdid_to_str(uint16 cmdid);
 #ifdef WL_CFG80211
 static int dhd_rtt_start(dhd_pub_t *dhd);
 static int dhd_rtt_create_failure_result(rtt_status_info_t *rtt_status,
-	struct ether_addr *addr);
+	struct ether_addr *addr, rtt_reason_t report_status);
 static void dhd_rtt_handle_rtt_session_end(dhd_pub_t *dhd);
 static void dhd_rtt_timeout_work(struct work_struct *work);
 static bool dhd_rtt_get_report_header(rtt_status_info_t *rtt_status,
@@ -3179,7 +3179,8 @@ dhd_rtt_timeout(dhd_pub_t *dhd)
 					}
 				}
 				dhd_rtt_create_failure_result(rtt_status,
-					&rtt_target->cmn_tgt_info.addr);
+					&rtt_target->cmn_tgt_info.addr,
+					RTT_STATUS_FAIL_TM_TIMEOUT);
 			}
 		}
 		dhd_rtt_handle_rtt_session_end(dhd);
@@ -3201,7 +3202,8 @@ dhd_rtt_timeout(dhd_pub_t *dhd)
 			MAC2STRDBG(&rtt_target->cmn_tgt_info.addr)));
 		/* For Legacy RTT */
 		dhd_rtt_delete_session(dhd, FTM_DEFAULT_SESSION);
-		dhd_rtt_create_failure_result(rtt_status, &rtt_target->cmn_tgt_info.addr);
+		dhd_rtt_create_failure_result(rtt_status, &rtt_target->cmn_tgt_info.addr,
+			RTT_STATUS_FAIL_TM_TIMEOUT);
 		dhd_rtt_handle_rtt_session_end(dhd);
 	}
 #endif /* DHD_DUMP_ON_RTT_TIMEOUT */
@@ -4833,10 +4835,13 @@ dhd_rtt_convert_results_to_host_v2(rtt_mc_az_result_t *rtt_result, const uint8 *
 			p_data_info->num_meas, p_data_info->num_valid_rtt,
 			p_data_info->flags));
 	} else {
-		DHD_RTT((">\tTarget(%s) session state=%d(%s), status=%d(%s)\n",
-		eabuf, session_state,
-		ftm_session_state_value_to_logstr(session_state),
-		proxd_status, ftm_status_value_to_logstr(proxd_status)));
+		DHD_RTT_ERR((">\tTarget(%s) session state=%d(%s), status=%d(%s) "
+			"num_meas_ota %d num_valid_rtt %d result_flags %x\n",
+			eabuf, session_state,
+			ftm_session_state_value_to_logstr(session_state),
+			proxd_status, ftm_status_value_to_logstr(proxd_status),
+			p_data_info->num_meas, p_data_info->num_valid_rtt,
+			p_data_info->flags));
 	}
 	/* show avg_dist (1/256m units), burst_num */
 	avg_dist = ltoh32_ua(&p_data_info->avg_dist);
@@ -5617,7 +5622,7 @@ dhd_rtt_handle_rtt_session_end(dhd_pub_t *dhd)
 #ifdef WL_CFG80211
 static int
 dhd_rtt_create_failure_result(rtt_status_info_t *rtt_status,
-	struct ether_addr *addr)
+	struct ether_addr *addr, rtt_reason_t report_status)
 {
 	rtt_results_header_t *rtt_results_header = NULL;
 	rtt_mc_az_target_info_t *rtt_target_info;
@@ -5657,7 +5662,7 @@ dhd_rtt_create_failure_result(rtt_status_info_t *rtt_status,
 		rtt_result->u.mc_result.report.type = rtt_target_info->cmn_tgt_info.tgt_type;
 		DHD_RTT(("report->ftm_num : %d\n", rtt_result->u.mc_result.report.ftm_num));
 		rtt_result->u.mc_result.report_len = RTT_MC_REPORT_SIZE;
-		rtt_result->u.mc_result.report.status = RTT_STATUS_FAIL_NO_RSP;
+		rtt_result->u.mc_result.report.status = report_status;
 		/* same src and dest len */
 		(void)memcpy_s(&rtt_result->u.mc_result.report.addr, ETHER_ADDR_LEN,
 			&rtt_target_info->cmn_tgt_info.addr, ETHER_ADDR_LEN);
@@ -5700,7 +5705,7 @@ dhd_rtt_handle_nan_rtt_session_end(dhd_pub_t *dhd, struct ether_addr *peer)
 	is_new = !dhd_rtt_get_report_header(rtt_status, NULL, peer);
 
 	if (is_new) { /* no FTM result..create failure result */
-		dhd_rtt_create_failure_result(rtt_status, peer);
+		dhd_rtt_create_failure_result(rtt_status, peer, RTT_STATUS_FAILURE);
 	}
 	DHD_RTT_MEM(("RTT Session End for NAN peer "MACDBG"\n", MAC2STRDBG(peer)));
 	dhd_rtt_handle_rtt_session_end(dhd);
@@ -6124,6 +6129,9 @@ dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data)
 	rtt_mc_az_target_info_t *target = NULL;
 	rtt_event_data_info_t rtt_event_data_info;
 	wl_proxd_ftm_session_status_t *session_status = NULL;
+	rtt_reason_t report_status = RTT_STATUS_SUCCESS;
+
+	BCM_REFERENCE(report_status);
 
 	DHD_RTT(("Enter %s \n", __FUNCTION__));
 	NULL_CHECK(dhd, "dhd is NULL", ret);
@@ -6305,6 +6313,9 @@ dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data)
 			ret = bcm_unpack_xtlv_buf((void *) &rtt_event_data_info,
 				(uint8 *)&p_event->tlvs[0], tlvs_len,
 				BCM_XTLV_OPTION_ALIGN32, rtt_unpack_xtlv_cbfn);
+			report_status =
+				ftm_get_statusmap_info(rtt_event_data_info.session_status->status,
+					&ftm_status_map_info[0], ARRAYSIZE(ftm_status_map_info));
 			MFREE(dhd->osh, rtt_event_data_info.session_status,
 					sizeof(wl_proxd_ftm_session_status_t));
 			if (ret != BCME_OK) {
@@ -6317,7 +6328,7 @@ dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data)
 		/* In case of no result for the peer device, make fake result for error case */
 		if ((is_new) && ((target->cmn_tgt_info.tgt_type == RTT_TWO_WAY_MC) ||
 				(target->cmn_tgt_info.tgt_type == RTT_ONE_WAY))) {
-			dhd_rtt_create_failure_result(rtt_status, &event->addr);
+			dhd_rtt_create_failure_result(rtt_status, &event->addr, report_status);
 		}
 		DHD_RTT_MEM(("RTT Session End for Legacy peer "MACDBG"\n",
 			MAC2STRDBG(&event->addr)));

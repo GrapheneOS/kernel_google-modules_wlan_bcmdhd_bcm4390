@@ -11886,8 +11886,9 @@ dhd_msgbuf_query_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len,
 	}
 
 	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COEXCPU_BP_DOWN ||
 		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
-		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u). return\n",
+		DHD_ERROR(("%s : wlan/coex/common backplane is down (link_state=%u). return\n",
 			__FUNCTION__, dhd->bus->link_state));
 		return -EIO;
 	}
@@ -12093,11 +12094,12 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 		dhd_dump_ds_trace_console(dhd);
 		dhd_validate_pcie_link_cbp_wlbp(dhd->bus);
 		/* need to collect FIS dumps for wlan bp down case,
-		 * so do not bail out if WL BP is down
+		 * so do not bail out if WL/COEX BP is down
 		 */
 		if (dhd->bus->link_state != DHD_PCIE_ALL_GOOD &&
-			dhd->bus->link_state != DHD_PCIE_WLAN_BP_DOWN) {
-			DHD_ERROR(("%s: bus->link_state:%d\n",
+			dhd->bus->link_state != DHD_PCIE_WLAN_BP_DOWN &&
+			dhd->bus->link_state != DHD_PCIE_COEXCPU_BP_DOWN) {
+			DHD_ERROR(("%s: bus link state is bad(%d)\n",
 				__FUNCTION__, dhd->bus->link_state));
 			ret = -EREMOTEIO;
 			goto out;
@@ -12128,7 +12130,8 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 		/* Collect socram dump */
 		if (dhd->memdump_enabled) {
 			/* collect core dump */
-			if (dhd->bus->link_state != DHD_PCIE_WLAN_BP_DOWN) {
+			if (dhd->bus->link_state != DHD_PCIE_WLAN_BP_DOWN &&
+				dhd->bus->link_state != DHD_PCIE_COEXCPU_BP_DOWN) {
 				dhd->memdump_type = DUMP_TYPE_RESUMED_ON_TIMEOUT;
 			}
 			dhd_bus_mem_dump(dhd);
@@ -12203,8 +12206,9 @@ dhd_msgbuf_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, u
 	}
 
 	if (dhd->bus->link_state == DHD_PCIE_WLAN_BP_DOWN ||
+		dhd->bus->link_state == DHD_PCIE_COEXCPU_BP_DOWN ||
 		dhd->bus->link_state == DHD_PCIE_COMMON_BP_DOWN) {
-		DHD_ERROR(("%s : wlan/common backplane is down (link_state=%u). return\n",
+		DHD_ERROR(("%s : wlan/coex/common backplane is down (link_state=%u). return\n",
 			__FUNCTION__, dhd->bus->link_state));
 		return -EIO;
 	}
@@ -15183,6 +15187,11 @@ void dhd_prot_print_info(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 		prot->event_wakeup_pkt, prot->rx_wakeup_pkt,
 		prot->info_wakeup_pkt);
 
+}
+
+void
+dhd_prot_print_traces(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
+{
 #ifdef DHD_MMIO_TRACE
 	dhd_dump_bus_mmio_trace(dhd->bus, strbuf);
 #endif /* DHD_MMIO_TRACE */

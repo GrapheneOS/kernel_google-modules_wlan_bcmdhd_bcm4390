@@ -785,7 +785,7 @@ do {									\
 #define WL_AF_SEARCH_TIME_MAX			450u
 #define WL_AF_TX_EXTRA_TIME_MAX			200u
 
-#define WL_SCAN_TIMER_INTERVAL_MS		10000u /* Scan timeout */
+#define WL_SCAN_TIMER_INTERVAL_MS		14000u /* Scan timeout */
 
 /* For devices in non-rsdb mode , need to add 2G scan time also */
 #define WL_SCAN_TIMER_INTERVAL_MS_NON_RSDB	2000u
@@ -3516,12 +3516,14 @@ extern s32 wl_cfg80211_resume_sdo(struct net_device *dev, struct bcm_cfg80211 *c
 #define CHANSPEC_BUF_SIZE	2048
 #define CHAN_SEL_IOCTL_DELAY	300
 #define CHAN_SEL_RETRY_COUNT	15
+
+#define CHANNEL_IS_P2P_PROHIBITED(channel)	((channel & WL_CHAN_P2P_PROHIBITED) ? TRUE : FALSE)
 #define CHANNEL_IS_RADAR(channel)	(((channel & WL_CHAN_RADAR) || \
-	(channel & WL_CHAN_PASSIVE)) ? true : false)
+	(channel & WL_CHAN_PASSIVE)) ? TRUE : FALSE)
 #define CHANNEL_IS_2G(channel)	(((channel >= 1) && (channel <= 14)) ? \
-	true : false)
+	TRUE : FALSE)
 #define CHANNEL_IS_5G(channel)	(((channel >= 36) && (channel <= 165)) ? \
-	true : false)
+	TRUE : FALSE)
 extern s32 wl_cfg80211_get_best_channels(struct net_device *dev, char* command,
 	int total_len);
 #endif /* WL_SUPPORT_AUTO_CHANNEL */
@@ -3615,14 +3617,7 @@ struct net_device *wl_cfg80211_get_remain_on_channel_ndev(struct bcm_cfg80211 *c
 #ifdef WL_UNII4_CHAN
 #define IS_5G_UNII4_165_CHANNEL(chspec) (CHSPEC_IS5G(chspec) && \
 	       (wf_chspec_primary20_chan(chspec) == 165))
-#define UINII4_169 169
-#define UINII4_173 173
-#define UINII4_177 177
-#define IS_UNII4_CHANNEL(channel) ((channel == UINII4_169) || \
-	(channel == UINII4_173) || \
-	(channel == UINII4_177))
 #endif /* WL_UNII4_CHAN */
-
 
 extern int wl_cfg80211_get_ioctl_version(void);
 extern int wl_cfg80211_enable_roam_offload(struct net_device *dev, int enable);
