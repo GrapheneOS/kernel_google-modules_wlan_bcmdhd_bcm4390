@@ -916,8 +916,7 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 		return;
 	}
 
-	if (!is_irq_on_big_core && (resched_streak_max >= RESCHED_STREAK_MAX_HIGH) &&
-		!has_recent_affinity_update) {
+	if (!is_irq_on_big_core && (resched_streak_max >= RESCHED_STREAK_MAX_HIGH)) {
 		err = set_affinity(pdev->irq, cpumask_of(affinity_big_core));
 		if (!err) {
 			is_irq_on_big_core = TRUE;
@@ -934,7 +933,7 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 		}
 	}
 	if (is_plat_pcie_resume ||
-		(is_irq_on_big_core && (resched_streak_max <= RESCHED_STREAK_MAX_LOW) &&
+		(is_irq_on_big_core && (resched_streak_max < RESCHED_STREAK_MAX_LOW) &&
 		!has_recent_affinity_update)) {
 		err = set_affinity(pdev->irq, cpumask_of(affinity_small_core));
 		if (!err) {
