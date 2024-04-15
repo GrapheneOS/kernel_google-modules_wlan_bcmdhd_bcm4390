@@ -27145,6 +27145,7 @@ typedef uint16 wl_eds_iov_xtlv_t;
 enum wl_eds_capability {
 	WL_EDS_CAP_BITPOS_FILTER_FRAMETYPESUBTYPE	= 0u,
 	WL_EDS_CAP_BITPOS_FILTER_PKT_FILTER		= 1u,
+	WL_EDS_CAP_BITPOS_FILTER_FTYPE_ONLY_FILTER	= 2u,
 	WL_EDS_CAP_BITPOS_MAX
 };
 typedef uint16 wl_eds_capablity_t;

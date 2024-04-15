@@ -785,6 +785,7 @@ typedef struct _pktts {
 #define BCMPCIE_INVALID_DATA		22
 #define BCMPCIE_NO_RESPONSE		23
 #define BCMPCIE_NO_CLOCK		24
+#define BCMPCIE_NO_IFIDX		25
 
 /** IOCTL completion response */
 typedef struct ioctl_compl_resp_msg {

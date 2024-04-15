@@ -2670,6 +2670,7 @@ enum {
 	WL_REINIT_RC_TXE_SHARED_ERR	  = 58, /* TXE shared error */
 	WL_REINIT_RC_TXDMA_ERR		  = 59, /* Tx DMA errors */
 	WL_REINIT_RC_RX_HW_ERR		  = 60, /* Rx HW error */
+	WL_REINIT_RC_URB_LEN_ERROR	  = 61, /* URB LEN error */
 	WL_REINIT_RC_SUPPORTED_LAST	/* Use for app ONLY, DONOT use this in wlc code.
 					 * For wlc, use WL_REINIT_RC_VERSIONED_LAST
 					 */

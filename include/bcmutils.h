@@ -839,10 +839,10 @@ DECLARE_MAP_API(8, 2, 3, 3u, 0x00FFu) /* setbit8() and getbit8() */
 
 #ifdef DONGLEBUILD
 #define PMKIDDBG		"%08x%08x%08x%08x"
-#define PMKID2STRDBG(pmkid)	(uint32)HTON32(*((const uint32*)&(pmkid)[ 0])), \
-				(uint32)HTON32(*((const uint32*)&(pmkid)[ 4])), \
-				(uint32)HTON32(*((const uint32*)&(pmkid)[ 8])), \
-				(uint32)HTON32(*((const uint32*)&(pmkid)[12]))
+#define PMKID2STRDBG(pmkid)	(uint32)HTON32(*((const uint32 *)&(pmkid)[ 0])), \
+				(uint32)HTON32(*((const uint32 *)&(pmkid)[ 4])), \
+				(uint32)HTON32(*((const uint32 *)&(pmkid)[ 8])), \
+				(uint32)HTON32(*((const uint32 *)&(pmkid)[12]))
 #else
 #define PMKIDDBG		"%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x"
 #define PMKID2STRDBG(pmkid)	(pmkid)[ 0], (pmkid)[ 1], (pmkid)[ 2], (pmkid)[ 3], \
@@ -850,6 +850,11 @@ DECLARE_MAP_API(8, 2, 3, 3u, 0x00FFu) /* setbit8() and getbit8() */
 				(pmkid)[ 8], (pmkid)[ 9], (pmkid)[10], (pmkid)[11], \
 				(pmkid)[12], (pmkid)[13], (pmkid)[14], (pmkid)[15]
 #endif /* DONGLEBUILD */
+
+#define PMKID_IS_NULL(pmkid)	(((*((const uint32 *)&(pmkid)[ 0])) | \
+				  (*((const uint32 *)&(pmkid)[ 4])) | \
+				  (*((const uint32 *)&(pmkid)[ 8])) | \
+				  (*((const uint32 *)&(pmkid)[12]))) == 0)
 
 /* bcm_format_flags() bit description structure */
 typedef struct bcm_bit_desc {

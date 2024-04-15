@@ -39,6 +39,10 @@
 #include <wl_cfg80211.h>
 #endif /* WL_CFG80211 */
 
+#ifdef DHD_SSSR_DUMP
+#include <dhd_pcie_sssr_dump.h>
+#endif /* DHD_SSSR_DUMP */
+
 #ifdef SHOW_LOGTRACE
 extern dhd_pub_t* g_dhd_pub;
 static int dhd_proc_open(struct inode *inode, struct file *file);
@@ -832,6 +836,33 @@ set_fis_enab(struct dhd_info *dev, const char *buf, size_t count)
 
 	return count;
 }
+
+static ssize_t
+set_fis_recover(struct dhd_info *dev, const char *buf, size_t count)
+{
+	unsigned long onoff;
+	dhd_info_t *dhd = (dhd_info_t *)dev;
+	dhd_pub_t *dhdp;
+
+	if (!dhd) {
+		DHD_ERROR(("%s: dhd is NULL\n", __FUNCTION__));
+		return count;
+	}
+	dhdp = &dhd->pub;
+
+	onoff = bcm_strtoul(buf, NULL, 10);
+
+	sscanf(buf, "%lu", &onoff);
+	if (onoff != 0 && onoff != 1) {
+		return -EINVAL;
+	}
+
+	dhdp->iovar_timeout_occured = TRUE;
+	dhdpcie_fis_recover(dhdp);
+	dhd_bus_fis_dump(dhdp);
+
+	return count;
+}
 #endif /* DHD_SSSR_DUMP */
 
 #define FMT_BUFSZ	32
@@ -1359,6 +1390,8 @@ static struct dhd_attr dhd_attr_sssr_enab =
 	__ATTR(sssr_enab, 0660, show_sssr_enab, set_sssr_enab);
 static struct dhd_attr dhd_attr_fis_enab =
 	__ATTR(fis_enab, 0660, show_fis_enab, set_fis_enab);
+static struct dhd_attr dhd_attr_fis_recover =
+	__ATTR(fis_recover, 0660, NULL, set_fis_recover);
 #endif /* DHD_SSSR_DUMP */
 
 static struct dhd_attr dhd_attr_firmware_path =
@@ -2937,6 +2970,7 @@ static struct attribute *default_file_attrs[] = {
 #ifdef DHD_SSSR_DUMP
 	&dhd_attr_sssr_enab.attr,
 	&dhd_attr_fis_enab.attr,
+	&dhd_attr_fis_recover.attr,
 #endif /* DHD_SSSR_DUMP */
 	&dhd_attr_firmware_path.attr,
 	&dhd_attr_nvram_path.attr,

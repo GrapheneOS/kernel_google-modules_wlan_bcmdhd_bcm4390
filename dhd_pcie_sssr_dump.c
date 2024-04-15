@@ -2004,13 +2004,105 @@ dhdpcie_clear_pmu_debug_mode(dhd_pub_t *dhd)
 #define CHIPCOMMON_WAR_SIGNATURE	0xabcdu
 #define FIS_DONE_DELAY			(100 * 1000) /* 100ms */
 
+int
+dhdpcie_fis_recover(dhd_pub_t *dhd)
+{
+	uint32 FISCtrlStatus = 0;
+	uint32 FISTrigRsrcState, RsrcState, MinResourceMask;
+
+#ifdef FIS_WITH_CMN
+	uint32 cfg_status_cmd;
+	uint32 cfg_pmcsr;
+	/*
+	 * For android built-in platforms need to perform REG ON/OFF
+	 * to restore pcie link.
+	 * dhd_download_fw_on_driverload will be FALSE for built-in.
+	 */
+	if (!dhd_download_fw_on_driverload) {
+		DHD_PRINT(("%s: Toggle REG_ON and restore config space\n", __FUNCTION__));
+		dhdpcie_bus_stop_host_dev(dhd->bus);
+		dhd_wifi_platform_set_power(dhd, FALSE);
+		dhd_wifi_platform_set_power(dhd, TRUE);
+		dhd_bus_reset_link_state(dhd);
+		dhdpcie_bus_start_host_dev(dhd->bus);
+		/* Restore inited pcie cfg from pci_load_saved_state */
+		dhdpcie_bus_enable_device(dhd->bus);
+	}
+
+	/* Use dhd restore function instead of kernel api */
+	dhdpcie_config_restore(dhd->bus, TRUE);
+
+	cfg_status_cmd = dhd_pcie_config_read(dhd->bus, PCIECFGREG_STATUS_CMD, sizeof(uint32));
+	cfg_pmcsr = dhd_pcie_config_read(dhd->bus, PCIE_CFG_PMCSR, sizeof(uint32));
+	DHD_PRINT(("after restore: Status Command(0x%x)=0x%x PCIE_CFG_PMCSR(0x%x)=0x%x\n",
+		PCIECFGREG_STATUS_CMD, cfg_status_cmd, PCIE_CFG_PMCSR, cfg_pmcsr));
+
+	DHD_PRINT(("after restore: PCI_BAR0_WIN(0x%x)=0x%x PCI_BAR1_WIN(0x%x)=0x%x\n",
+		PCI_BAR0_WIN, dhd_pcie_config_read(dhd->bus, PCI_BAR0_WIN, sizeof(uint32)),
+		PCI_BAR1_WIN, dhd_pcie_config_read(dhd->bus, PCI_BAR1_WIN, sizeof(uint32))));
+
+	DHD_PRINT(("after restore: PCIE2_BAR0_WIN2(0x%x)=0x%x"
+		" PCIE2_BAR0_CORE2_WIN(0x%x)=0x%x PCIE2_BAR0_CORE2_WIN2(0x%x)=0x%x\n",
+		PCIE2_BAR0_WIN2, dhd_pcie_config_read(dhd->bus, PCIE2_BAR0_WIN2, sizeof(uint32)),
+		PCIE2_BAR0_CORE2_WIN,
+		dhd_pcie_config_read(dhd->bus, PCIE2_BAR0_CORE2_WIN, sizeof(uint32)),
+		PCIE2_BAR0_CORE2_WIN2,
+		dhd_pcie_config_read(dhd->bus, PCIE2_BAR0_CORE2_WIN2, sizeof(uint32))));
+
+	/*
+	 * To-Do: below is debug code, remove this if EP is in D0 after REG-ON restore
+	 * in both MSM and LSI RCs
+	 */
+	if ((cfg_pmcsr & PCIE_CFG_DSTATE_MASK) != 0) {
+		int ret = dhdpcie_set_master_and_d0_pwrstate(dhd->bus);
+		if (ret != BCME_OK) {
+			DHD_ERROR(("%s: Setting D0 failed, ABORT FIS collection\n", __FUNCTION__));
+			return ret;
+		}
+		cfg_status_cmd =
+			dhd_pcie_config_read(dhd->bus, PCIECFGREG_STATUS_CMD, sizeof(uint32));
+		cfg_pmcsr = dhd_pcie_config_read(dhd->bus, PCIE_CFG_PMCSR, sizeof(uint32));
+		DHD_PRINT(("after force-d0: Status Command(0x%x)=0x%x PCIE_CFG_PMCSR(0x%x)=0x%x\n",
+			PCIECFGREG_STATUS_CMD, cfg_status_cmd, PCIE_CFG_PMCSR, cfg_pmcsr));
+	}
+
+	FISCtrlStatus = PMU_REG(dhd->bus->sih, FISCtrlStatus, 0, 0);
+	FISTrigRsrcState = PMU_REG(dhd->bus->sih, FISTrigRsrcState, 0, 0);
+	RsrcState = PMU_REG(dhd->bus->sih, RsrcState, 0, 0);
+	MinResourceMask = PMU_REG(dhd->bus->sih, MinResourceMask, 0, 0);
+	DHD_PRINT(("%s: After trigger & %u us delay: FISCtrlStatus=0x%x, FISTrigRsrcState=0x%x,"
+		" RsrcState=0x%x MinResourceMask=0x%x\n",
+		__FUNCTION__, FIS_DONE_DELAY, FISCtrlStatus, FISTrigRsrcState,
+		RsrcState, MinResourceMask));
+#endif /* FIS_WITH_CMN */
+
+#ifdef FIS_WITHOUT_CMN
+	FISCtrlStatus = PMU_REG(dhd->bus->sih, FISCtrlStatus, 0, 0);
+	FISTrigRsrcState = PMU_REG(dhd->bus->sih, FISTrigRsrcState, 0, 0);
+	RsrcState = PMU_REG(dhd->bus->sih, RsrcState, 0, 0);
+	MinResourceMask = PMU_REG(dhd->bus->sih, MinResourceMask, 0, 0);
+	DHD_PRINT(("%s: After trigger & %u us delay: FISCtrlStatus=0x%x, FISTrigRsrcState=0x%x,"
+		" RsrcState=0x%x MinResourceMask=0x%x\n",
+		__FUNCTION__, FIS_DONE_DELAY, FISCtrlStatus, FISTrigRsrcState,
+		RsrcState, MinResourceMask));
+#endif /* FIS_WITHOUT_CMN */
+
+	if ((FISCtrlStatus & PMU_CLEAR_FIS_DONE_MASK) == 0) {
+		DHD_ERROR(("%s: FIS Done bit not set. exit\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	dhdpcie_clear_pmu_debug_mode(dhd);
+
+	/* Clear fis_triggered as REG OFF/ON recovered link */
+	dhd->fis_triggered = FALSE;
+
+	return BCME_OK;
+}
+
 static int
 dhdpcie_fis_trigger(dhd_pub_t *dhd)
 {
-	uint32 FISCtrlStatus = 0;
-#if defined(FIS_WITH_CMN) || defined(FIS_WITHOUT_CMN)
-	uint32 FISTrigRsrcState, RsrcState, MinResourceMask;
-#endif /* FIS_WITH_CMN | FIS_WITHOUT_CMN */
 	uint32 cfg_status_cmd;
 	uint32 cfg_pmcsr;
 
@@ -2066,67 +2158,6 @@ dhdpcie_fis_trigger(dhd_pub_t *dhd)
 	si_corereg(dhd->bus->sih, dhd->bus->sih->buscoreidx,
 		DAR_FIS_CTRL(dhd->bus->sih->buscorerev), ~0, DAR_FIS_START_MASK);
 	OSL_DELAY(FIS_DONE_DELAY);
-
-	/*
-	 * For android built-in platforms need to perform REG ON/OFF
-	 * to restore pcie link.
-	 * dhd_download_fw_on_driverload will be FALSE for built-in.
-	 */
-	if (!dhd_download_fw_on_driverload) {
-		DHD_PRINT(("%s: Toggle REG_ON and restore config space\n", __FUNCTION__));
-		dhdpcie_bus_stop_host_dev(dhd->bus);
-		dhd_wifi_platform_set_power(dhd, FALSE);
-		dhd_wifi_platform_set_power(dhd, TRUE);
-		dhdpcie_bus_start_host_dev(dhd->bus);
-		/* Restore inited pcie cfg from pci_load_saved_state */
-		dhdpcie_bus_enable_device(dhd->bus);
-	}
-
-	/* Use dhd restore function instead of kernel api */
-	dhdpcie_config_restore(dhd->bus, TRUE);
-
-	DHD_PRINT(("after restore: Status Command(0x%x)=0x%x PCIE_CFG_PMCSR(0x%x)=0x%x\n",
-		PCIECFGREG_STATUS_CMD, cfg_status_cmd, PCIE_CFG_PMCSR, cfg_pmcsr));
-	cfg_status_cmd = dhd_pcie_config_read(dhd->bus, PCIECFGREG_STATUS_CMD, sizeof(uint32));
-	cfg_pmcsr = dhd_pcie_config_read(dhd->bus, PCIE_CFG_PMCSR, sizeof(uint32));
-
-	DHD_PRINT(("after restore: PCI_BAR0_WIN(0x%x)=0x%x PCI_BAR1_WIN(0x%x)=0x%x\n",
-		PCI_BAR0_WIN, dhd_pcie_config_read(dhd->bus, PCI_BAR0_WIN, sizeof(uint32)),
-		PCI_BAR1_WIN, dhd_pcie_config_read(dhd->bus, PCI_BAR1_WIN, sizeof(uint32))));
-
-	DHD_PRINT(("after restore: PCIE2_BAR0_WIN2(0x%x)=0x%x"
-		" PCIE2_BAR0_CORE2_WIN(0x%x)=0x%x PCIE2_BAR0_CORE2_WIN2(0x%x)=0x%x\n",
-		PCIE2_BAR0_WIN2, dhd_pcie_config_read(dhd->bus, PCIE2_BAR0_WIN2, sizeof(uint32)),
-		PCIE2_BAR0_CORE2_WIN,
-		dhd_pcie_config_read(dhd->bus, PCIE2_BAR0_CORE2_WIN, sizeof(uint32)),
-		PCIE2_BAR0_CORE2_WIN2,
-		dhd_pcie_config_read(dhd->bus, PCIE2_BAR0_CORE2_WIN2, sizeof(uint32))));
-
-	/*
-	 * To-Do: below is debug code, remove this if EP is in D0 after REG-ON restore
-	 * in both MSM and LSI RCs
-	 */
-	if ((cfg_pmcsr & PCIE_CFG_DSTATE_MASK) != 0) {
-		int ret = dhdpcie_set_master_and_d0_pwrstate(dhd->bus);
-		if (ret != BCME_OK) {
-			DHD_ERROR(("%s: Setting D0 failed, ABORT FIS collection\n", __FUNCTION__));
-			return ret;
-		}
-		cfg_status_cmd =
-			dhd_pcie_config_read(dhd->bus, PCIECFGREG_STATUS_CMD, sizeof(uint32));
-		cfg_pmcsr = dhd_pcie_config_read(dhd->bus, PCIE_CFG_PMCSR, sizeof(uint32));
-		DHD_PRINT(("after force-d0: Status Command(0x%x)=0x%x PCIE_CFG_PMCSR(0x%x)=0x%x\n",
-			PCIECFGREG_STATUS_CMD, cfg_status_cmd, PCIE_CFG_PMCSR, cfg_pmcsr));
-	}
-
-	FISCtrlStatus = PMU_REG(dhd->bus->sih, FISCtrlStatus, 0, 0);
-	FISTrigRsrcState = PMU_REG(dhd->bus->sih, FISTrigRsrcState, 0, 0);
-	RsrcState = PMU_REG(dhd->bus->sih, RsrcState, 0, 0);
-	MinResourceMask = PMU_REG(dhd->bus->sih, MinResourceMask, 0, 0);
-	DHD_PRINT(("%s: After trigger & %u us delay: FISCtrlStatus=0x%x, FISTrigRsrcState=0x%x,"
-		" RsrcState=0x%x MinResourceMask=0x%x\n",
-		__FUNCTION__, FIS_DONE_DELAY, FISCtrlStatus, FISTrigRsrcState,
-		RsrcState, MinResourceMask));
 #endif /* FIS_WITH_CMN */
 
 #ifdef FIS_WITHOUT_CMN
@@ -2144,28 +2175,9 @@ dhdpcie_fis_trigger(dhd_pub_t *dhd)
 	 */
 	si_corereg(dhd->bus->sih, dhd->bus->sih->buscoreidx,
 		PCIE_REG_OFF(dar_errorlog), DAR_ERRLOG_MASK, DAR_ERRLOG_MASK);
-
-	FISCtrlStatus = PMU_REG(dhd->bus->sih, FISCtrlStatus, 0, 0);
-	FISTrigRsrcState = PMU_REG(dhd->bus->sih, FISTrigRsrcState, 0, 0);
-	RsrcState = PMU_REG(dhd->bus->sih, RsrcState, 0, 0);
-	MinResourceMask = PMU_REG(dhd->bus->sih, MinResourceMask, 0, 0);
-	DHD_PRINT(("%s: After trigger & %u us delay: FISCtrlStatus=0x%x, FISTrigRsrcState=0x%x,"
-		" RsrcState=0x%x MinResourceMask=0x%x\n",
-		__FUNCTION__, FIS_DONE_DELAY, FISCtrlStatus, FISTrigRsrcState,
-		RsrcState, MinResourceMask));
 #endif /* FIS_WITHOUT_CMN */
 
-	if ((FISCtrlStatus & PMU_CLEAR_FIS_DONE_MASK) == 0) {
-		DHD_ERROR(("%s: FIS Done bit not set. exit\n", __FUNCTION__));
-		return BCME_ERROR;
-	}
-
-	dhdpcie_clear_pmu_debug_mode(dhd);
-
-	/* Clear fis_triggered as REG OFF/ON recovered link */
-	dhd->fis_triggered = FALSE;
-
-	return BCME_OK;
+	return dhdpcie_fis_recover(dhd);
 }
 
 int
@@ -2291,11 +2303,6 @@ dhdpcie_fis_dump(dhd_pub_t *dhd)
 
 	if (!dhd->sssr_inited) {
 		DHD_ERROR(("%s: SSSR not inited\n", __FUNCTION__));
-		return BCME_ERROR;
-	}
-
-	if (dhd->bus->is_linkdown) {
-		DHD_ERROR(("%s: PCIe link is down\n", __FUNCTION__));
 		return BCME_ERROR;
 	}
 

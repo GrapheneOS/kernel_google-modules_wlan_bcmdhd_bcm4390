@@ -96,7 +96,8 @@ enum hnd_ioctl_cmd {
 	BUS_SET_BUS_CSO_CAP = 17,	/* Update the CSO cap from wl layer to bus layer */
 	BUS_DUMP_RX_DMA_STALL_RELATED_INFO = 18,
 	BUS_UPDATE_RESVPOOL_STATE = 19,	/* Update resvpool state */
-	BUS_GET_MAX_RING_NUM = 20 /* Get the Max num of the Tx rings */
+	BUS_GET_MAX_RING_NUM = 20, /* Get the Max num of the Tx rings */
+	BUS_M2M_LOW_PRIO_DESCR = 21 /* enable/disable m2m low prio descriptor */
 };
 
 #define SDPCMDEV_SET_MAXTXPKTGLOM	1

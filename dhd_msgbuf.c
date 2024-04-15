@@ -9427,6 +9427,12 @@ BCMFASTPATH(dhd_prot_txstatus_process_aggr_wi)(dhd_pub_t *dhd, void *msg)
 	msgbuf_ring_t *ring = &dhd->prot->d2hring_tx_cpln;
 	host_txbuf_cmpl_aggr_t * txstatus;
 
+	if (DHD_AGGR_TXCPL_ENAB(dhd->bus) == 0) {
+		DHD_ERROR(("%s: wrong msgtype as AGGR_TXCPL not enabled\n",
+			__FUNCTION__));
+		return;
+	}
+
 	txstatus = (host_txbuf_cmpl_aggr_t *)msg;
 	ring->pending_pkt = txstatus->cmn_aggr_hdr.aggr_cnt;
 
