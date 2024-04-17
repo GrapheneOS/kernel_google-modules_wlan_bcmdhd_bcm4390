@@ -485,6 +485,7 @@ BCMFASTPATH(__dhd_sendpkt)(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 			ifp->stats.tx_packets++;
 			ifp->tx_pkts++;
 			ifp->stats.tx_bytes += datalen;
+			dhd_plat_tx_pktcount(dhdp->plat_info, dhdp->tx_packets);
 		}
 		dhdp->actual_tx_pkts++;
 	}

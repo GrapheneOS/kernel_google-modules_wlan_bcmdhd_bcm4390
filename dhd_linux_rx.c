@@ -1038,6 +1038,7 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 			ifp->stats.rx_bytes += skb->len;
 			ifp->stats.rx_packets++;
 			ifp->rx_pkts++;
+			dhd_plat_rx_pktcount(dhdp->plat_info, dhdp->rx_packets);
 		}
 #if defined(DHD_TCP_WINSIZE_ADJUST)
 		if (dhd_use_tcp_window_size_adjust) {
