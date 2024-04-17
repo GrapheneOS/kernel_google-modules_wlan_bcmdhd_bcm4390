@@ -375,8 +375,9 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
     # Tasklet load detection and balancing
     DHDCFLAGS += -DRESCHED_CNT_CHECK_PERIOD_SEC=2
     DHDCFLAGS += -DAFFINITY_UPDATE_MIN_PERIOD_SEC=6
-    DHDCFLAGS += -DPKT_COUNT_HIGH=10000
-    DHDCFLAGS += -DPKT_COUNT_LOW=8000
+    DHDCFLAGS += -DPKT_COUNT_HIGH=60000
+    DHDCFLAGS += -DPKT_COUNT_MID=5000
+    DHDCFLAGS += -DPKT_COUNT_LOW=3000
     DHDCFLAGS += -DCLEAN_IRQ_AFFINITY_HINT
     DHDCFLAGS += -DIRQ_AFFINITY_SMALL_CORE=1
     DHDCFLAGS += -DIRQ_AFFINITY_BIG_CORE=7
@@ -415,9 +416,9 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
     # Skip coredump for continousy pkt drop health check
     DHDCFLAGS += -DSKIP_COREDUMP_PKTDROP_RXHC
     # Boost host cpufreq to max for peak tput. default is false
-    #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST
+    DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST
     # Boost host cpufreq to max for peak tput. default is true
-    #DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST_DEFAULT_ENAB
+    DHDCFLAGS += -DDHD_HOST_CPUFREQ_BOOST_DEFAULT_ENAB
     # Force all CPUs to run at MAX frequencies
     #DHDCFLAGS += -DDHD_FORCE_MAX_CPU_FREQ
   endif
