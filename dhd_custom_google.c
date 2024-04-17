@@ -77,8 +77,12 @@ static int wlan_host_wake_irq = 0;
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
 #define WIFI_WLAN_HOST_WAKE_PROPNAME    "wl_host_wake"
 
-static int resched_streak = 0;
-static int resched_streak_max = 0;
+static uint64 tx_pkt_cnt = 0;
+static uint64 rx_pkt_cnt = 0;
+static uint64 tx_pkt_timestamp = 0;
+static uint64 rx_pkt_timestamp = 0;
+static uint64 tx_pkt_delta = 0;
+static uint64 rx_pkt_delta = 0;
 static uint64 last_resched_cnt_check_time_ns = 0;
 static uint64 last_affinity_update_time_ns = 0;
 static uint hw_stage_val = 0;
@@ -904,7 +908,7 @@ void dhd_set_max_cpufreq(void)
 #endif /* DHD_HOST_CPUFREQ_BOOST */
 
 static void
-irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
+irq_affinity_hysteresis_control(struct pci_dev *pdev,
 	uint64 curr_time_ns)
 {
 	int err = 0;
@@ -916,7 +920,9 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 		return;
 	}
 
-	if (!is_irq_on_big_core && (resched_streak_max >= RESCHED_STREAK_MAX_HIGH)) {
+	if (!is_irq_on_big_core &&
+	   ((tx_pkt_delta > PKT_COUNT_HIGH)||(rx_pkt_delta > PKT_COUNT_HIGH))
+	   ) {
 		err = set_affinity(pdev->irq, cpumask_of(affinity_big_core));
 		if (!err) {
 			is_irq_on_big_core = TRUE;
@@ -933,7 +939,8 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev, int resched_streak_max,
 		}
 	}
 	if (is_plat_pcie_resume ||
-		(is_irq_on_big_core && (resched_streak_max < RESCHED_STREAK_MAX_LOW) &&
+		(is_irq_on_big_core &&
+		((tx_pkt_delta < PKT_COUNT_LOW)&&(rx_pkt_delta < PKT_COUNT_LOW)) &&
 		!has_recent_affinity_update)) {
 		err = set_affinity(pdev->irq, cpumask_of(affinity_small_core));
 		if (!err) {
@@ -978,6 +985,77 @@ static void dhd_force_affinity_cpufreq(struct pci_dev *pdev)
 
 }
 
+void dhd_plat_tx_pktcount(void *plat_info, uint cnt)
+{
+	uint64 time_delta_s = 0;
+
+	if (!tx_pkt_cnt || cnt < tx_pkt_cnt) {
+		tx_pkt_cnt = cnt;
+		tx_pkt_timestamp = OSL_SYSUPTIME_US();
+		return;
+	}
+
+	/* covert time unit from usec to sec, and use bit shift to
+	 * approximate the operation of divide 10^6
+	 * BIT20 = 1048576
+	 * This way we can reduce computations in isr
+	 */
+	time_delta_s = (OSL_SYSUPTIME_US() - tx_pkt_timestamp) >> 20;
+	if ( time_delta_s > 1) {
+
+	/*
+	 * When Tput goes up, pkt will be fired more frequently, then
+	 * we only update intr_freq every 2 sec
+	 * So we divide pkt_delta by 2 and shift 1 bit right
+	 * When Tput is low, then time_delta_s might be longer than 2 sec
+	 * Which means pkt_delta won't reach reach PKT_COUNT_HIGH anyway
+	 * In this case, we don't need the actual pkt_delta,
+	 * so if we keep pkt_delta divided by 2 for simplicity
+	 *
+	 */
+		tx_pkt_delta = (cnt - tx_pkt_cnt) >> 1;
+		tx_pkt_cnt = cnt;
+		tx_pkt_timestamp = OSL_SYSUPTIME_US();
+		DHD_ERROR(("TestLogs: tx pkt_delta: %llu, cnt = %u\n",
+				tx_pkt_delta, cnt));
+         }
+}
+
+void dhd_plat_rx_pktcount(void *plat_info, uint cnt)
+{
+	uint64 time_delta_s = 0;
+
+	if (!rx_pkt_cnt || cnt < rx_pkt_cnt) {
+		rx_pkt_cnt = cnt;
+		rx_pkt_timestamp = OSL_SYSUPTIME_US();
+		return;
+	}
+
+	/* covert time unit from usec to sec, and use bit shift to
+	 * approximate the operation of divide 10^6
+	 * BIT20 = 1048576
+	 * This way we can reduce computations in isr
+	 */
+	time_delta_s = (OSL_SYSUPTIME_US() - rx_pkt_timestamp) >> 20;
+	if ( time_delta_s > 1) {
+
+	/*
+	 * When Tput goes up, pkt will be fired more frequently, then
+	 * we only update intr_freq every 2 sec
+	 * So we divide pkt_delta by 2 and shift 1 bit right
+	 * When Tput is low, then time_delta_s might be longer than 2 sec
+	 * Which means pkt_delta won't reach reach PKT_COUNT_HIGH anyway
+	 * In this case, we don't need the actual pkt_delta,
+	 * so if we keep pkt_delta divided by 2 for simplicity
+	 *
+	 */
+		rx_pkt_delta = (cnt - rx_pkt_cnt) >> 1;
+		rx_pkt_cnt = cnt;
+		rx_pkt_timestamp = OSL_SYSUPTIME_US();
+		DHD_ERROR(("TestLogs: rx pkt_delta: %llu, cnt = %u\n",
+				rx_pkt_delta, cnt));
+         }
+}
 /*
  * DHD Core layer reports whether the bottom half is getting rescheduled or not
  * resched = 1, BH is getting rescheduled.
@@ -995,18 +1073,6 @@ void dhd_plat_report_bh_sched(void *plat_info, int resched)
 		return;
 	}
 
-	if (resched > 0) {
-		resched_streak++;
-		if (resched_streak <= RESCHED_STREAK_MAX_HIGH) {
-			return;
-		}
-	}
-
-	if (resched_streak > resched_streak_max) {
-		resched_streak_max = resched_streak;
-	}
-	resched_streak = 0;
-
 	curr_time_ns = OSL_LOCALTIME_NS();
 	time_delta_ns = curr_time_ns - last_resched_cnt_check_time_ns;
 	if (time_delta_ns < (RESCHED_CNT_CHECK_PERIOD_SEC * NSEC_PER_SEC)) {
@@ -1014,12 +1080,7 @@ void dhd_plat_report_bh_sched(void *plat_info, int resched)
 	}
 	last_resched_cnt_check_time_ns = curr_time_ns;
 
-	DHD_INFO(("%s resched_streak_max=%d\n",
-		__FUNCTION__, resched_streak_max));
-
-	irq_affinity_hysteresis_control(p->pdev, resched_streak_max, curr_time_ns);
-
-	resched_streak_max = 0;
+	irq_affinity_hysteresis_control(p->pdev, curr_time_ns);
 	return;
 }
 

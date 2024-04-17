@@ -77,6 +77,8 @@ extern void dhd_plat_pcie_deregister_event(void *plat_info);
 extern void dhd_plat_report_bh_sched(void *plat_info, int resched);
 extern int dhd_plat_pcie_suspend(void *plat_info);
 extern int dhd_plat_pcie_resume(void *plat_info);
+extern void dhd_plat_tx_pktcount(void *plat_info, uint cnt);
+extern void dhd_plat_rx_pktcount(void *plat_info, uint cnt);
 extern void dhd_plat_pcie_register_dump(void *plat_info);
 extern void dhd_plat_pin_dbg_show(void *plat_info);
 extern void dhd_plat_get_rc_port_dev_details(void *plat_info, void *ep_pdev);
