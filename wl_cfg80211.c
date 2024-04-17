@@ -4243,8 +4243,8 @@ wl_cfg80211_del_iface(struct wiphy *wiphy, struct wireless_dev *wdev)
 		return -EINVAL;
 	}
 
-	WL_DBG(("del interface. bssidx:%d cfg_iftype:%d wl_iftype:%d",
-		bsscfg_idx, ndev->ieee80211_ptr->iftype, wl_iftype));
+	WL_INFORM_MEM(("del interface. iface_name %s bssidx:%d cfg_iftype:%d wl_iftype:%d",
+		ndev->name, bsscfg_idx, ndev->ieee80211_ptr->iftype, wl_iftype));
 	/* Delete the firmware interface. "interface_remove" command
 	 * should go on the interface to be deleted
 	 */
@@ -4270,6 +4270,12 @@ wl_cfg80211_del_iface(struct wiphy *wiphy, struct wireless_dev *wdev)
 		 */
 		WL_ERR(("ifdel role mismatch:%d\n", ret));
 		ret = -EBADTYPE;
+		goto exit;
+	} else if (ret == BCME_OUTOFRANGECHAN) {
+		/* existent ndev with non matching iface name iface remove req */
+		WL_ERR(("IFDEL on wrong interface:%s, bsscfg_idx %d\n",
+			ndev->name, bsscfg_idx));
+		ret = BCME_OK;
 		goto exit;
 	} else if (ret < 0) {
 		WL_ERR(("Interface DEL failed ret:%d \n", ret));
@@ -4577,6 +4583,7 @@ wl_set_wpa_version(struct net_device *dev, struct cfg80211_connect_params *sme)
 		return BCME_ERROR;
 	}
 
+	WL_DBG_MEM(("wpa_version:0x%x\n", sme->crypto.wpa_versions));
 	if (sme->crypto.wpa_versions & NL80211_WPA_VERSION_1) {
 		val = WPA_AUTH_PSK |
 			WPA_AUTH_UNSPECIFIED;
@@ -5546,7 +5553,9 @@ wl_set_key_mgmt(struct net_device *dev, struct cfg80211_connect_params *sme,
 	if (sme->crypto.n_akm_suites) {
 		WL_INFORM_MEM(("No of akms %d 0x%x 0x%x\n", sme->crypto.n_akm_suites,
 			sme->crypto.akm_suites[0], sme->crypto.akm_suites[1]));
-		if (sme->crypto.n_akm_suites > 1) {
+		/* Multi akm support only for WPA2-PSK and beyond */
+		if ((sme->crypto.n_akm_suites > 1u) &&
+				(sme->crypto.wpa_versions != NL80211_WPA_VERSION_1)) {
 			err = wl_set_multi_akm(dev, cfg, sme, assoc_info);
 			if (unlikely(err)) {
 				WL_ERR(("Failed to set multi akm key mgmt err = %d\n", err));
@@ -7052,8 +7061,9 @@ wl_config_assoc_security(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		}
 	}
 #endif /* WL_FILS */
-	/* Avoid cipher setting for multi-AKM, cipher combinations for multi-AKM predefined */
-	if (!(sme->crypto.n_akm_suites > 1)) {
+	/* Avoid cipher setting for multi-AKM. cipher combinations for multi-AKM predefined */
+	if (!(sme->crypto.n_akm_suites > 1u) ||
+			(sme->crypto.wpa_versions == NL80211_WPA_VERSION_1)) {
 		err = wl_set_set_cipher(dev, sme);
 		if (unlikely(err)) {
 			WL_ERR(("Invalid ciper\n"));
@@ -14623,8 +14633,9 @@ wl_handle_link_down(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 	WL_INFORM_MEM(("Link down Reason: %s\n", bcmevent_get_name(as->event_type)));
 	if (!wl_cfgvif_bssid_match_found(cfg, as->ndev->ieee80211_ptr, as->addr)) {
 		WL_ERR(("BSSID of event is not the connected BSSID"
-			"(ignore it) event_mac: " MACDBG"\n",
-			MAC2STRDBG((const u8*)(&as->addr))));
+			"(ignore it) event_mac: " MACDBG" current BSSSID: " MACDBG"\n",
+			MAC2STRDBG((const u8*)(&as->addr)),
+			MAC2STRDBG((const u8*)(&as->ndev->ieee80211_ptr))));
 		return -1;
 	}
 
@@ -16325,10 +16336,13 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	dhd_if_t *ifp = NULL;
 #endif /* DHD_POST_EAPOL_M1_AFTER_ROAM_EVT */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)) || defined(WL_MLO_BKPORT)
-	struct net_info *mld_netinfo = NULL;
 	struct wlc_ssid *ssid = NULL;
 	u8 i;
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0) || WL_MLO_BKPORT */
+#ifdef WL_MLO
+	struct net_info *mld_netinfo = NULL;
+#endif /* WL_MLO */
+
 #ifdef WLFBT
 	uint32 data_len = 0;
 	if (data)
@@ -16363,6 +16377,17 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	}
 #endif /* LINUX_VERSION > 2.6.39 || WL_COMPAT_WIRELESS */
 #endif /* BCM4359 CHIP */
+
+#ifdef WL_MLO
+	mld_netinfo = wl_get_netinfo_by_wdev(cfg, ndev->ieee80211_ptr);
+	if (mld_netinfo && mld_netinfo->mlinfo.num_links) {
+		wl_update_prof(cfg, ndev, NULL,
+			(const void *)(mld_netinfo->mlinfo.peer_mld_addr),
+			WL_PROF_PEER_MLD_ADDR);
+	} else {
+		wl_update_prof(cfg, ndev, NULL, NULL, WL_PROF_PEER_MLD_ADDR);
+	}
+#endif /* WL_MLO */
 
 	wl_update_prof(cfg, ndev, NULL, (const void *)(e->addr.octet), WL_PROF_BSSID);
 	if ((err = wl_get_assoc_ies(cfg, ndev)) != BCME_OK) {
@@ -16806,6 +16831,9 @@ wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	u32 event_type = ntoh32(e->event_type);
 	struct cfg80211_bss *bss = NULL;
 	u32 assoc_status = 0;
+#ifdef WL_MLO
+	struct net_info *mld_netinfo;
+#endif /* WL_MLO */
 #ifdef BCMDONGLEHOST
 	dhd_pub_t *dhdp;
 	dhdp = (dhd_pub_t *)(cfg->pub);
@@ -16845,6 +16873,16 @@ wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 
 	if (completed) {
 		wl_get_assoc_ies(cfg, ndev);
+#ifdef WL_MLO
+		mld_netinfo = wl_get_netinfo_by_wdev(cfg, ndev->ieee80211_ptr);
+		if (mld_netinfo && mld_netinfo->mlinfo.num_links) {
+			wl_update_prof(cfg, ndev, NULL,
+				(const void *)(mld_netinfo->mlinfo.peer_mld_addr),
+				WL_PROF_PEER_MLD_ADDR);
+		} else {
+			wl_update_prof(cfg, ndev, NULL, NULL, WL_PROF_PEER_MLD_ADDR);
+		}
+#endif /* WL_MLO */
 		wl_update_prof(cfg, ndev, NULL, (const void *)(e->addr.octet),
 			WL_PROF_BSSID);
 		curbssid = wl_read_prof(cfg, ndev, WL_PROF_BSSID);
@@ -17170,11 +17208,6 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 #endif /* BCMDONGLEHOST && TDLS_MSG_ONLY_WFD && WLTDLS */
 
-	if (ntoh32(e->datalen) < sizeof(wl_event_rx_frame_data_t)) {
-		WL_ERR(("wrong datalen:%d\n", ntoh32(e->datalen)));
-		return -EINVAL;
-	}
-
 	rxframe = (wl_event_rx_frame_data_t *)data;
 	if (!rxframe) {
 		WL_ERR(("rxframe: NULL\n"));
@@ -17183,9 +17216,19 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 
 	/* Handle different versions of Rx frame data */
 	if (ntoh16(rxframe->version) == BCM_RX_FRAME_DATA_VERSION_1) {
+		if (ntoh32(e->datalen) < sizeof(wl_event_rx_frame_data_v1_t)) {
+			WL_ERR(("wrong datalen:%d for rxframe v1:%lu\n",
+				ntoh32(e->datalen), sizeof(wl_event_rx_frame_data_v1_t)));
+			return -EINVAL;
+		}
 		mgmt_frame_len = ntoh32(e->datalen) - (uint32)sizeof(wl_event_rx_frame_data_v1_t);
 		rx_event_data = (u8 *) ((wl_event_rx_frame_data_v1_t *)rxframe + 1);
 	} else if (ntoh16(rxframe->version) == BCM_RX_FRAME_DATA_VERSION_2) {
+		if (ntoh32(e->datalen) < sizeof(wl_event_rx_frame_data_v2_t)) {
+			WL_ERR(("wrong datalen:%d for rxframe v2:%lu\n",
+				ntoh32(e->datalen), sizeof(wl_event_rx_frame_data_v2_t)));
+			return -EINVAL;
+		}
 		mgmt_frame_len = ntoh32(e->datalen) - (uint32)sizeof(wl_event_rx_frame_data_v2_t);
 		rx_event_data = (u8 *) ((wl_event_rx_frame_data_v2_t *)rxframe + 1);
 	} else {
@@ -21254,6 +21297,9 @@ void *wl_read_prof(struct bcm_cfg80211 *cfg, struct net_device *ndev, s32 item)
 	case WL_PROF_ASSOC_STATUS:
 		rptr = &profile->assoc_status;
 		break;
+	case WL_PROF_PEER_MLD_ADDR:
+		rptr = profile->peer_mld_addr;
+		break;
 	}
 	WL_CFG_DRV_UNLOCK(&cfg->cfgdrv_lock, flags);
 	if (!rptr)
@@ -21283,11 +21329,11 @@ wl_update_prof(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		break;
 	case WL_PROF_BSSID:
 		if (data) {
-			memcpy(profile->bssid, data, ETHER_ADDR_LEN);
+			eacopy(data, profile->bssid);
 		} else {
 			bzero(profile->bssid, ETHER_ADDR_LEN);
 		}
-		WL_INFORM_MEM(("prof_bssid: "MACDBG"\n", MAC2STRDBG(profile->latest_bssid)));
+		WL_INFORM_MEM(("prof_bssid: "MACDBG"\n", MAC2STRDBG(profile->bssid)));
 		break;
 	case WL_PROF_SEC:
 		memcpy(&profile->sec, data, sizeof(profile->sec));
@@ -21317,6 +21363,16 @@ wl_update_prof(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		}
 		WL_INFORM_MEM(("auth_bssid:"MACDBG"\n", MAC2STRDBG(profile->latest_bssid)));
 		break;
+#ifdef WL_MLO
+	case WL_PROF_PEER_MLD_ADDR:
+		if (data) {
+			eacopy(data, profile->peer_mld_addr);
+		} else {
+			bzero(profile->peer_mld_addr, ETHER_ADDR_LEN);
+		}
+		WL_INFORM_MEM(("peer mld addr: "MACDBG"\n", MAC2STRDBG(profile->peer_mld_addr)));
+		break;
+#endif /* WL_MLO */
 	default:
 		err = -EOPNOTSUPP;
 		break;

@@ -2496,59 +2496,64 @@ dhd_bus_get_etb_config_cmn(dhd_bus_t *bus, uint32 etb_config_info_addr)
 {
 	int ret = 0;
 	int i = 0;
-	etb_config_info_t etb_config_info;
-	etb_config_info_t *etb_cfg = NULL;
+	etb_config_info_cmn_t etb_hdr;
 	etb_block_t *etb = NULL;
+	uint eblk_offset = 0;
 	uint max_etb_size[ETB_USER_MAX] = {ETB_USER_SDTC_MAX_SIZE,
 		ETB_USER_ETM_MAX_SIZE, ETB_USER_ETMCOEX_MAX_SIZE};
 	uint size = 0, total_blksize = 0;
 
-	bzero(&etb_config_info, sizeof(etb_config_info));
+	bzero(&etb_hdr, sizeof(etb_hdr));
 	ret = dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1,
-			(ulong)etb_config_info_addr, (uint8 *)&etb_config_info,
-			sizeof(etb_config_info_t));
+			(ulong)etb_config_info_addr, (uint8 *)&etb_hdr,
+			sizeof(etb_hdr));
 	if (ret < 0) {
-		DHD_ERROR(("%s: Error reading etb_config_info structure from dongle \n",
+		DHD_ERROR(("%s: Error reading etb_config_info_cmn_t(etb_hdr)"
+			"structure from dongle \n",
 			__FUNCTION__));
 		return BCME_ERROR;
 	}
 
-	/* validate */
-	if (etb_config_info.version != EWP_ETB_CONFIG_INFO_VER) {
-		DHD_ERROR(("%s: Bad version (%u) ! Expected %u \n",
-			__FUNCTION__, etb_config_info.version,
+	/* validate and get offset of eblk */
+	if (etb_hdr.version == EWP_ETB_CONFIG_INFO_VER_1) {
+		eblk_offset = OFFSETOF(etb_config_info_v1_t, eblk);
+	} else if (etb_hdr.version == EWP_ETB_CONFIG_INFO_VER_2) {
+		eblk_offset = OFFSETOF(etb_config_info_v2_t, eblk);
+	} else {
+		DHD_ERROR(("%s: Unsupported version (%u) ! Expected <= %u \n",
+			__FUNCTION__, etb_hdr.version,
 			EWP_ETB_CONFIG_INFO_VER));
 		return BCME_VERSION;
 	}
-	if (etb_config_info.num_etb > ETB_USER_MAX)  {
+
+	if (etb_hdr.num_etb > ETB_USER_MAX)  {
 		DHD_ERROR(("%s: Bad num_etb (%u) ! max %u \n",
-			__FUNCTION__, etb_config_info.num_etb,
+			__FUNCTION__, etb_hdr.num_etb,
 			ETB_USER_MAX));
 		return BCME_BADLEN;
 	}
 
-	if (!bus->etb_config_info) {
-		DHD_ERROR(("%s: No mem alloc'd for etb_config_info and etb blocks !\n",
+	if (!bus->eblk_buf) {
+		DHD_ERROR(("%s: No mem alloc'd for etb blocks !\n",
 			__FUNCTION__));
 		return BCME_NOMEM;
 	}
 
 	/* copy contents */
-	bzero(bus->etb_config_info, bus->etb_config_size);
-	size = sizeof(etb_config_info_t) + (etb_config_info.num_etb * sizeof(etb_block_t));
+	size = (etb_hdr.num_etb * sizeof(etb_block_t));
+	bzero(bus->eblk_buf, size);
 	ret = dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1,
-			(ulong)etb_config_info_addr, (uint8 *)bus->etb_config_info, size);
+			(ulong)(etb_config_info_addr + eblk_offset), (uint8 *)bus->eblk_buf, size);
 	if (ret < 0) {
-		DHD_ERROR(("%s: Error reading etb_config_info and etb blocks"
-			" from dongle \n", __FUNCTION__));
+		DHD_ERROR(("%s: Error reading etb blocks from dongle,"
+			" ETB CONFIG VER - %u \n", __FUNCTION__, etb_hdr.version));
 		return BCME_ERROR;
 	}
 
 	/* validate the contents of each etb block */
-	etb_cfg = bus->etb_config_info;
-	for (i = 0; i < etb_config_info.num_etb; ++i) {
+	for (i = 0; i < etb_hdr.num_etb; ++i) {
 		bus->etb_validity[i] = TRUE;
-		etb = &etb_cfg->eblk[i];
+		etb = &bus->eblk_buf[i];
 		if (!etb->inited) {
 			DHD_ERROR(("%s: ETB%u not inited !\n", __FUNCTION__, i));
 			bus->etb_validity[i] = FALSE;
@@ -2581,11 +2586,11 @@ dhd_bus_get_etb_config_cmn(dhd_bus_t *bus, uint32 etb_config_info_addr)
 	}
 
 	/* check if atleast one block is valid */
-	for (i = 0; i < etb_config_info.num_etb; ++i) {
+	for (i = 0; i < etb_hdr.num_etb; ++i) {
 		if (bus->etb_validity[i])
 			break;
 	}
-	if (i >= etb_config_info.num_etb) {
+	if (i >= etb_hdr.num_etb) {
 		DHD_ERROR(("%s:No valid etb blocks found !\n", __FUNCTION__));
 		return BCME_BADARG;
 	}
@@ -2600,7 +2605,7 @@ dhd_bus_get_etb_config_cmn(dhd_bus_t *bus, uint32 etb_config_info_addr)
 
 	DHD_PRINT(("%s: read etb_config_info and etb blocks(%d) info"
 		" (%u bytes) from dongle \n", __FUNCTION__,
-		etb_config_info.num_etb, size));
+		etb_hdr.num_etb, size));
 
 	return BCME_OK;
 }
@@ -2919,13 +2924,15 @@ dhd_bus_get_sdtc_etb(dhd_pub_t *dhd, uint8 *sdtc_etb_mempool, uint addr, uint re
 int
 dhd_bus_alloc_ewp_etb_config_mem(dhd_bus_t *bus)
 {
-	/* allocate the required memory for etb block info */
-	bus->etb_config_size = sizeof(etb_config_info_t) + (ETB_USER_MAX * sizeof(etb_block_t));
-	bus->etb_config_info = MALLOCZ(bus->osh, bus->etb_config_size);
-	if (!bus->etb_config_info) {
-		DHD_ERROR(("%s: Failed to alloc mem for etb_config_info and etb blocks !\n",
-			__FUNCTION__));
-		return BCME_NOMEM;
+	if (!bus->eblk_buf) {
+		/* allocate the required memory for etb block info */
+		bus->eblk_buf_size = (ETB_USER_MAX * sizeof(etb_block_t));
+		bus->eblk_buf = MALLOCZ(bus->osh, bus->eblk_buf_size);
+		if (!bus->eblk_buf) {
+			DHD_ERROR(("%s: Failed to alloc mem for eblk_buf !\n",
+				__FUNCTION__));
+			return BCME_NOMEM;
+		}
 	}
 	return BCME_OK;
 }
@@ -2933,9 +2940,28 @@ dhd_bus_alloc_ewp_etb_config_mem(dhd_bus_t *bus)
 void
 dhd_bus_dealloc_ewp_etb_config_mem(dhd_bus_t *bus)
 {
-	if (bus->etb_config_info) {
-		MFREE(bus->osh, bus->etb_config_info, bus->etb_config_size);
+	if (bus->eblk_buf) {
+		MFREE(bus->osh, bus->eblk_buf, bus->eblk_buf_size);
 	}
+}
+
+/* Provides FW/DHD shared etb_config_info_t size based on version */
+static int
+dhd_bus_get_etb_cfg_size(dhd_bus_t *bus, uint8 ver, uint *size)
+{
+	int ret = BCME_OK;
+
+	if (ver == EWP_ETB_CONFIG_INFO_VER_1) {
+		*size = sizeof(etb_config_info_v1_t);
+	} else if (ver == EWP_ETB_CONFIG_INFO_VER_2) {
+		*size = sizeof(etb_config_info_v2_t);
+	} else {
+		DHD_ERROR(("%s: unsupported ETB config version %u\n",
+			__FUNCTION__, ver));
+		ret = BCME_VERSION;
+	}
+
+	return ret;
 }
 
 int
@@ -3114,8 +3140,11 @@ int
 dhd_bus_get_etb_dump_cmn(dhd_bus_t *bus, uint8 *buf, uint bufsize, uint32 etb_config_info_addr)
 {
 	int ret = 0, i = 0;
-	etb_config_info_t *etb_cfg = bus->etb_config_info;
-	etb_block_t *etb = NULL;
+	uint8 *etb_cfg_buf = NULL;
+	uint etb_cfg_size = 0;
+	etb_config_info_cmn_t etb_hdr;
+	etb_block_t *etb = NULL; /* Points to single element of eblk[] */
+	uint eblk_offset = 0;
 	uint8 *ptr = buf;
 	int totsize = 0;
 	uint32 rwpaddr = 0;
@@ -3132,14 +3161,50 @@ dhd_bus_get_etb_dump_cmn(dhd_bus_t *bus, uint8 *buf, uint bufsize, uint32 etb_co
 
 	BCM_REFERENCE(chipcregs);
 
-	if (!buf || !bufsize || (bufsize < sizeof(*etb_cfg))) {
+	/* read etb common hdr */
+	bzero(&etb_hdr, sizeof(etb_hdr));
+	ret = dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1,
+			(ulong)etb_config_info_addr, (uint8 *)&etb_hdr,
+			sizeof(etb_hdr));
+	if (ret < 0) {
+		DHD_ERROR(("%s: Error reading etb_config_info structure from dongle \n",
+			__FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	/* Get ETB cfg size based on ETB cfg version */
+	ret = dhd_bus_get_etb_cfg_size(bus, etb_hdr.version, &etb_cfg_size);
+	if (ret != BCME_OK) {
+		/* Unsupported version */
+		return ret;
+	}
+
+	if (!buf || !bufsize || (bufsize < etb_cfg_size)) {
 		return BCME_BADARG;
 	}
 
+	etb_cfg_buf = MALLOCZ(bus->osh, etb_cfg_size);
+	if (!etb_cfg_buf) {
+		DHD_ERROR(("%s: Failed to alloc mem for etb_config_info and etb blocks !\n",
+			__FUNCTION__));
+		return BCME_NOMEM;
+	}
+
+	/* read etm header */
+	ret = dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1,
+		(ulong)etb_config_info_addr, (uint8 *)etb_cfg_buf, etb_cfg_size);
+	if (ret < 0) {
+		DHD_ERROR(("%s: error reading ETB config header during dump\n",
+			__FUNCTION__));
+	}
+
 	/* first write the etb_config_info_t structure */
-	memcpy(ptr, etb_cfg, sizeof(*etb_cfg));
-	ptr += sizeof(*etb_cfg);
-	totsize += sizeof(*etb_cfg);
+	memcpy_s(ptr, etb_cfg_size, etb_cfg_buf, etb_cfg_size);
+	ptr += etb_cfg_size;
+	totsize += etb_cfg_size;
+
+	/* etb_cfg_buf is valid; free it here */
+	MFREE(bus->osh, etb_cfg_buf, etb_cfg_size);
 
 	/* get chipcommon revision */
 	curcore = si_coreid(bus->sih);
@@ -3156,6 +3221,21 @@ dhd_bus_get_etb_dump_cmn(dhd_bus_t *bus, uint8 *buf, uint bufsize, uint32 etb_co
 	 skip_flush_and_rwp_update = dhdp->fis_triggered;
 #endif /* FIS_WITH_CMN */
 
+	/* version already validated */
+	if (etb_hdr.version == EWP_ETB_CONFIG_INFO_VER_1) {
+		eblk_offset = OFFSETOF(etb_config_info_v1_t, eblk);
+	} else if (etb_hdr.version == EWP_ETB_CONFIG_INFO_VER_2) {
+		eblk_offset = OFFSETOF(etb_config_info_v2_t, eblk);
+	}
+
+	ret = dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1,
+		(ulong)(etb_config_info_addr + eblk_offset), (uint8 *)bus->eblk_buf,
+		bus->eblk_buf_size);
+	if (ret < 0) {
+		DHD_ERROR(("%s: error reading ETB config header during dump\n",
+			__FUNCTION__));
+	}
+
 	if (skip_flush_and_rwp_update) {
 		DHD_PRINT(("%s: skip DAP TMC flush and RWP update due to FIS\n", __FUNCTION__));
 	} else if (ccrev >= EWP_ETB_DAP_TMC_FLUSH_CCREV) {
@@ -3165,7 +3245,7 @@ dhd_bus_get_etb_dump_cmn(dhd_bus_t *bus, uint8 *buf, uint bufsize, uint32 etb_co
 		 * DAP - Debug Access Protocol
 		 * TMC - Trace Memory Controller
 		 */
-		for (i = 0; i < etb_cfg->num_etb; ++i) {
+		for (i = 0; i < etb_hdr.num_etb; ++i) {
 			if (bus->etb_validity[i]) {
 				ret = dhd_bus_flush_dap_tmc(bus, i);
 				if (ret != BCME_OK) {
@@ -3182,12 +3262,12 @@ dhd_bus_get_etb_dump_cmn(dhd_bus_t *bus, uint8 *buf, uint bufsize, uint32 etb_co
 	}
 
 	/* write each individual etb */
-	for (i = 0; i < etb_cfg->num_etb; ++i) {
+	for (i = 0; i < etb_hdr.num_etb; ++i) {
 		if (bus->etb_validity[i]) {
 			uint idx = 0, debug_base = 0, addr = 0, val = 0;
 			int j = 0;
 			uint32 *etbdata = NULL;
-			etb = &etb_cfg->eblk[i];
+			etb = &bus->eblk_buf[i];
 
 			if ((totsize + etb->size + sizeof(*etb)) > bufsize) {
 				DHD_ERROR(("%s: insufficient buffer space !\n",
@@ -3212,7 +3292,7 @@ dhd_bus_get_etb_dump_cmn(dhd_bus_t *bus, uint8 *buf, uint bufsize, uint32 etb_co
 				 * config info
 				 */
 				rwpaddr = etb_config_info_addr +
-					sizeof(etb_config_info_t) +
+					etb_cfg_size +
 					(i * sizeof(etb_block_t)) +
 					OFFSETOF(etb_block_t, rwp);
 				ret = dhdpcie_bus_membytes(bus, FALSE, DHD_PCIE_MEM_BAR1,

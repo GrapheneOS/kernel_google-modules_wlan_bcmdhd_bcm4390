@@ -2047,6 +2047,7 @@ dhdpcie_config_restore(dhd_bus_t *bus, bool restore_pmcsr)
 	osl_t *osh = bus->osh;
 
 	if (BCME_OK != dhdpcie_config_check(bus)) {
+		DHD_ERROR(("%s: failed\n", __FUNCTION__));
 		return BCME_ERROR;
 	}
 
@@ -2102,6 +2103,7 @@ dhdpcie_config_save(dhd_bus_t *bus)
 	osl_t *osh = bus->osh;
 
 	if (BCME_OK != dhdpcie_config_check(bus)) {
+		DHD_ERROR(("%s: failed\n", __FUNCTION__));
 		return BCME_ERROR;
 	}
 
@@ -2639,13 +2641,11 @@ dhdpcie_dongle_attach(dhd_bus_t *bus)
 		goto fail;
 	}
 
-#if defined(DHD_EFI) || defined(NDIS)
 	/* Save good copy of PCIe config space */
 	if (BCME_OK != dhdpcie_config_save(bus)) {
 		DHD_ERROR(("%s : failed to save PCI configuration space!\n", __FUNCTION__));
 		goto fail;
 	}
-#endif /* DHD_EFI */
 
 	DHD_PRINT(("%s: before si_attach\n", __FUNCTION__));
 	dhdpcie_print_amni_regs(bus);
@@ -5003,8 +5003,9 @@ dhdpcie_get_link_state(dhd_bus_t *bus)
 		goto exit;
 	}
 
-	/* Read NCI error intstatus registers and dump them if WL BP is down */
-	if (CHIPTYPE(bus->sih->socitype) == SOCI_NCI) {
+	/* Read NCI error intstatus registers for 4390 and dump them if WL BP is down */
+	if (((uint16)bus->sih->chip == BCM4390_CHIP_ID) ||
+		((uint16)bus->sih->chip == BCM4399_CHIP_ID)) {
 		idx = si_findcoreidx(bus->sih, GCI_CORE_ID, 0);
 		core_addr = si_get_coreaddr(bus->sih, idx);
 		if (!core_addr) {
@@ -5112,10 +5113,13 @@ dhdpcie_get_link_state(dhd_bus_t *bus)
 
 exit:
 	if (link_state == DHD_PCIE_WLAN_BP_DOWN) {
-		DHD_ERROR(("%s: nci_hndshk_stuckerr_intstatus=0x%x "
-			"nci_pwr_error_intstatus_offset:0x%x\n",
-			__FUNCTION__, nci_hndshk_stuckerr_intstatus,
-			nci_pwr_error_intstatus_offset));
+		if (((uint16)bus->sih->chip == BCM4390_CHIP_ID) ||
+		((uint16)bus->sih->chip == BCM4399_CHIP_ID)) {
+			DHD_ERROR(("%s: nci_hndshk_stuckerr_intstatus=0x%x "
+				"nci_pwr_error_intstatus_offset:0x%x\n",
+				__FUNCTION__, nci_hndshk_stuckerr_intstatus,
+				nci_pwr_error_intstatus_offset));
+		}
 	}
 	return link_state;
 }
@@ -6090,6 +6094,10 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 #ifdef DHD_SSSR_DUMP
 sched_memdump:
 #endif /* DHD_SSSR_DUMP */
+	if (dhdp->memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) {
+		DHD_PRINT(("%s : Set do_chip_bighammer on INIT_FAIL\n", __FUNCTION__));
+		dhdp->do_chip_bighammer = TRUE;
+	}
 	dhd_schedule_memdump(dhdp, dhdp->soc_ram, dhdp->soc_ram_length);
 	/* buf, actually soc_ram free handled in dhd_{free,clear} */
 
@@ -16655,6 +16663,7 @@ void
 dhd_bus_reset_link_state(dhd_pub_t *dhdp)
 {
 	dhdp->bus->link_state = DHD_PCIE_ALL_GOOD;
+	dhdp->bus->is_linkdown = 0;
 }
 
 int

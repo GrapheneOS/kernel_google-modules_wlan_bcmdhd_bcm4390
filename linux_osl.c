@@ -434,20 +434,6 @@ osl_pci_read_config(osl_t *osh, uint offset, uint size)
 	/* only 4byte access supported */
 	ASSERT(size == 4);
 
-#ifdef NIC_REG_ACCESS_LEGACY
-		/*
-		 * If the Config Write is to update the BAR0 window, ensure that
-		 * the address is cached and updated in osl_reg_access_pcie_window.bp_addr
-		 * One could call R_REG, W_REG and the NIC_REG_ACCESS_LEGACY option ensures
-		 * that the BAR window value is cached. But one could directly call
-		 * OSL_PCI_WRITE_CONFIG to update BAR windows, in that case too, bp_addr
-		 * should be updated.
-		 */
-		if ((offset == PCI_BAR0_WIN) && (val != osl_reg_access_pcie_window.bp_addr)) {
-			osl_reg_access_pcie_window.bp_addr = val;
-		}
-#endif /* NIC_REG_ACCESS_LEGACY */
-
 	do {
 		pci_read_config_dword(osh->pdev, offset, &val);
 		if (val != 0xffffffff)
@@ -483,8 +469,22 @@ osl_pci_write_config(osl_t *osh, uint offset, uint size, uint val)
 		 */
 		if (offset != PCI_BAR0_WIN && offset != PCI_BAR1_WIN)
 			break;
-		if (osl_pci_read_config(osh, offset, size) == val)
+		if (osl_pci_read_config(osh, offset, size) == val) {
+#ifdef NIC_REG_ACCESS_LEGACY
+			/*
+			 * If the Config Write is to update the BAR0 window, ensure that
+			 * the address is cached and updated in osl_reg_access_pcie_window.bp_addr
+			 * One could call R_REG, W_REG and the NIC_REG_ACCESS_LEGACY option ensures
+			 * that the BAR window value is cached. But one could directly call
+			 * OSL_PCI_WRITE_CONFIG to update BAR windows, in that case too, bp_addr
+			 * should be updated.
+			 */
+			if (offset == PCI_BAR0_WIN) {
+				osl_reg_access_pcie_window.bp_addr = val;
+			}
+#endif /* NIC_REG_ACCESS_LEGACY */
 			break;
+		}
 	} while (retry--);
 
 #ifdef BCMDBG

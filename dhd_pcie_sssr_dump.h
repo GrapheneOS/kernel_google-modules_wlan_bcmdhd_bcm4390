@@ -32,6 +32,7 @@ int dhd_bus_fis_dump(dhd_pub_t *dhd);
 bool dhd_bus_fis_fw_triggered_check(dhd_pub_t *dhd);
 bool dhdpcie_set_collect_fis(struct dhd_bus *bus);
 int dhdpcie_sssr_dump(dhd_pub_t *dhd);
+int dhdpcie_fis_recover(dhd_pub_t *dhd);
 int dhd_append_sssr_tlv(uint8 *buf_dst, int type_idx, int buf_remain);
 
 #define SSSR_REG_INFO_VER_MAX	128u

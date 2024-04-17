@@ -688,8 +688,8 @@ typedef struct dhd_bus {
 #ifdef EWP_DACS
 	ewp_hw_info_t ewp_hw_info;
 #endif /* EWP_DACS */
-	etb_config_info_t *etb_config_info;
-	uint etb_config_size;
+	etb_block_t *eblk_buf;
+	uint eblk_buf_size;
 	bool etb_validity[ETB_USER_MAX];
 #ifdef DHD_AGGR_WI
 	/* Aggregation bits : 0 = TXPOST | 1 = RXPOST | 2 = TXCPL | 3 = RXCPL */

@@ -294,6 +294,7 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
   # Enabled for internal Android platforms HIKEY and STB
   ifeq ($(CONFIG_SOC_GOOGLE),)
     DHDCFLAGS += -DDHD_SSSR_DUMP_BEFORE_SR
+    DHDCFLAGS += -DDHD_TRIGGER_SSR_ON_STATE_MISMATCH
   endif
   # Enable System Debug Trace Controller, Embedded Trace Buffer
   DHDCFLAGS += -DDHD_SDTC_ETB_DUMP
