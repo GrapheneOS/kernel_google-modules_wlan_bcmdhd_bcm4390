@@ -4263,9 +4263,8 @@ typedef struct phy_periodic_log_cmn_v17 {
 	uint8	cal_suppressed_cntr_ed;	/* counter including ss, mp cals, MSB is current state */
 	uint8	cal_suppressed_cntr_phymute;	/* Cal suppressed counter due to PHY MUTE */
 	uint8	cal_suppressed_cntr_fullcal;	/* Cal suppressed counter due to no Full cal */
-	uint8	cal_suppressed_cntr_mphase;	/* Cal suppressed counter due to SW */
+	uint16	cal_suppressed_cntr_mphase;	/* Cal suppressed counter due to SW */
 	uint8	cal_suppressed_cntr_reason01;	/* Cal suppressed counter due to reason 1 */
-	uint8	cal_suppressed_cntr_reason02;	/* Cal suppressed counter due to reason 2 */
 	uint8	cal_suppressed_bitmap;		/* Cal suppressed bitmap */
 	uint8   cal_mphase_retry_cnt;	/* mphase cal retry count */
 	uint8	chiptemp_retry_cnt;

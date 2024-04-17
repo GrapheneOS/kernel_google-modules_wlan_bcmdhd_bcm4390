@@ -20507,7 +20507,18 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	}
 
 	/* keep it locally to avoid overwriting in other contexts */
-	memdump_type = dhdp->memdump_type;
+	if (dhdp->memdump_type == DUMP_TYPE_CLEAR && dhdp->usr_trig_dmp) {
+		/* if user/system triggered dump is pre-empted by
+		 * fw trap triggered dump, then memdump_type would
+		 * be cleared, so reset to SYSDUMP type if user/system
+		 * dump had been trigerred. Otherwise memdump filename type
+		 * will come up as UNKNOWN_TYPE
+		 */
+		dhdp->memdump_type = memdump_type = DUMP_TYPE_BY_SYSDUMP;
+	} else {
+		memdump_type = dhdp->memdump_type;
+	}
+
 #ifdef DHD_SSSR_DUMP
 	collect_sssr = dhdp->collect_sssr;
 	collect_fis = dhdp->collect_fis;
@@ -20892,6 +20903,9 @@ exit:
 	}
 #endif /* OEM_ANDROID */
 
+	if (memdump_type == DUMP_TYPE_BY_SYSDUMP) {
+		dhdp->usr_trig_dmp = FALSE;
+	}
 	/* Clear memdump_type and check for the same in logdump
 	 * to avoid racing with other contexts
 	 */

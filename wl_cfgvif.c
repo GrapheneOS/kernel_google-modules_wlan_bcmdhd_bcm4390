@@ -5963,17 +5963,18 @@ wl_notify_connect_status_ap(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		wl_wps_session_update(ndev, WPS_STATE_LINKUP, e->addr.octet);
 #endif /* WL_WPS_SYNC */
 	} else if ((event == WLC_E_DEAUTH_IND) ||
-		((event == WLC_E_DEAUTH) && (reason != DOT11_RC_RESERVED)) ||
-		(event == WLC_E_DISASSOC_IND)) {
-		/*
-		 * WAR: Dongle sends WLC_E_DEAUTH event with DOT11_RC_RESERVED
-		 * to delete flowring in case of PCIE Full dongle.
-		 * By deleting flowring on SoftAP interface we can avoid any issues
-		 * due to stale/bad state of flowring.
-		 * Therefore, we don't need to notify the client dissaociation to Hostapd
-		 * in this case.
-		 * Please refer to the RB:115182 to understand the case more clearly.
-		 */
+		(event == WLC_E_DEAUTH) || (event == WLC_E_DISASSOC_IND)) {
+
+		if ((event == WLC_E_DEAUTH) && (reason == DOT11_RC_RESERVED)) {
+			/* reason DOT11_RC_RESERVED is used for FW generated event to
+			 * clean up flowring and other states for cases where FW receives
+			 * a connection request from an already associated STA. so previous
+			 * auth is no longer valid and fresh connection needs to be attempted.
+			 */
+			WL_INFORM_MEM(("DEAUTH with reason:0. Prev auth no longer valid\n"));
+			reason = DOT11_RC_AUTH_INVAL;
+		}
+
 		WL_INFORM_MEM(("[%s] del sta event for "MACDBG "\n",
 			ndev->name, MAC2STRDBG(e->addr.octet)));
 		cfg80211_del_sta(ndev, e->addr.octet, GFP_ATOMIC);
@@ -9096,6 +9097,9 @@ wl_cfgvif_bssid_match_found(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev,
 	wl_mlo_link_t *link = NULL;
 	u8 curbssid[ETH_ALEN] = {0};
 	unsigned long flags;
+#ifdef WL_MLO
+	u8 *peer_mld_addr = NULL;
+#endif /* WL_MLO */
 
 	if (BCME_OK != wl_get_connected_bssid(cfg, wdev->netdev, curbssid)) {
 		WL_ERR(("bssid not found\n"));
@@ -9106,36 +9110,40 @@ wl_cfgvif_bssid_match_found(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev,
 
 	/* Event handler would map it to the MLD wdev already. so fetch it again and modify */
 	netinfo = _wl_get_netinfo_by_wdev(cfg, wdev);
-	if (!netinfo) {
-		/* Couldn't find netinfo corresponding to mld dev */
-		WL_ERR(("mld interface not found\n"));
-		goto exit;
-	}
-
-	if (netinfo->mlinfo.num_links) {
+	if (netinfo && netinfo->mlinfo.num_links) {
 		/* ML case */
 		for (i = 0; i < MAX_MLO_LINK; i++) {
 			link = &netinfo->mlinfo.links[i];
 			if (link &&
 				!memcmp(link->peer_link_addr, mac_addr, ETHER_ADDR_LEN)) {
-				WL_DBG(("matching bssid found for ifidx:%d bsscfgidx:%d\n",
+				WL_DBG_MEM(("matching bssid found for ifidx:%d bsscfgidx:%d\n",
 					link->if_idx, link->cfg_idx));
 				found = TRUE;
 				break;
 			}
 		}
 	}
+	WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
+
+#ifdef WL_MLO
+	if (found == FALSE) {
+		/* check peer mld address */
+		peer_mld_addr = wl_read_prof(cfg, wdev_to_ndev(wdev), WL_PROF_PEER_MLD_ADDR);
+		if (!memcmp(peer_mld_addr, mac_addr, ETHER_ADDR_LEN)) {
+			found = TRUE;
+			WL_DBG_MEM(("matching peer mld address found\n"));
+		}
+	}
+#endif /* WL_MLO */
 
 	if (found == FALSE) {
 		/* legacy bssid */
 		if (!memcmp(curbssid, mac_addr, ETHER_ADDR_LEN)) {
 			found = TRUE;
-			WL_DBG(("matching bssid found\n"));
+			WL_DBG_MEM(("matching bssid found\n"));
 		}
 	}
 
-exit:
-	WL_CFG_NET_LIST_SYNC_UNLOCK(&cfg->net_list_sync, flags);
 	return found;
 }
 

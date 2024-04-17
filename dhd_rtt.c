@@ -6129,7 +6129,7 @@ dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data)
 	rtt_mc_az_target_info_t *target = NULL;
 	rtt_event_data_info_t rtt_event_data_info;
 	wl_proxd_ftm_session_status_t *session_status = NULL;
-	rtt_reason_t report_status = RTT_STATUS_SUCCESS;
+	rtt_reason_t report_status = RTT_STATUS_FAILURE;
 
 	BCM_REFERENCE(report_status);
 
@@ -6328,6 +6328,11 @@ dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data)
 		/* In case of no result for the peer device, make fake result for error case */
 		if ((is_new) && ((target->cmn_tgt_info.tgt_type == RTT_TWO_WAY_MC) ||
 				(target->cmn_tgt_info.tgt_type == RTT_ONE_WAY))) {
+			if (report_status == RTT_STATUS_SUCCESS) {
+				DHD_RTT_ERR(("%s : Incorrect RTT report status \n",
+					__FUNCTION__));
+				report_status = RTT_STATUS_FAILURE;
+			}
 			dhd_rtt_create_failure_result(rtt_status, &event->addr, report_status);
 		}
 		DHD_RTT_MEM(("RTT Session End for Legacy peer "MACDBG"\n",

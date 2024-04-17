@@ -1151,7 +1151,8 @@ enum wl_prof_list {
 	WL_PROF_BEACONINT,
 	WL_PROF_DTIMPERIOD,
 	WL_PROF_LATEST_BSSID,
-	WL_PROF_ASSOC_STATUS
+	WL_PROF_ASSOC_STATUS,
+	WL_PROF_PEER_MLD_ADDR
 };
 
 /* donlge escan state */
@@ -1351,6 +1352,7 @@ struct wl_profile {
 	u8 dtim_period;
 	bool active;
 	u8 latest_bssid[ETHER_ADDR_LEN];
+	u8 peer_mld_addr[ETHER_ADDR_LEN];
 };
 
 struct wl_wps_ie {
@@ -2453,6 +2455,7 @@ struct bcm_cfg80211 {
 	bool wiphy_lock_held;
 	u8 *chan_info_list;
 	u32 dyn_chan_policy;
+	bool p2p_cleanup;
 };
 
 typedef struct wl_multink_config {

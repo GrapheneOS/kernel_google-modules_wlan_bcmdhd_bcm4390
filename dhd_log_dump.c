@@ -2312,6 +2312,7 @@ dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd)
 	 */
 #if (defined(BCMPCIE) || defined(BCMSDIO)) && defined(DHD_FW_COREDUMP)
 	if (dhdp->memdump_enabled) {
+		dhdp->usr_trig_dmp = TRUE;
 		dhdp->memdump_type = DUMP_TYPE_BY_SYSDUMP;
 		dhd_bus_mem_dump(dhdp);
 	}

@@ -2115,6 +2115,7 @@ typedef struct dhd_pub {
 #endif /* DHD_VALIDATE_PKT_ADDRESS */
 	uint32 armpc;
 	uint32 arm_assert_phy_addr;
+	bool usr_trig_dmp;
 } dhd_pub_t;
 
 #if defined(__linux__)

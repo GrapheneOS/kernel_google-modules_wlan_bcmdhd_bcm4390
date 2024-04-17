@@ -2755,15 +2755,19 @@ wl_cfgp2p_add_p2p_disc_if(struct bcm_cfg80211 *cfg)
 		wl_probe_wdev_all(cfg);
 #ifdef EXPLICIT_DISCIF_CLEANUP
 		/*
-		 * CUSTOMER_HW4 design doesn't delete the p2p discovery
-		 * interface on ifconfig wlan0 down context which comes
-		 * without a preceeding NL80211_CMD_DEL_INTERFACE for p2p
-		 * discovery. But during supplicant crash the DEL_IFACE
-		 * command will not happen and will cause a left over iface
-		 * even after ifconfig wlan0 down. So delete the iface
-		 * first and then indicate the HANG event
+		 * It is seen that sometimes framework doesn't delete the
+		 * p2p discovery interface on wifi off/disable/supp crash and
+		 * if a discovery interface is found during add_p2p_disc, attempt
+		 * to clean up by removing the discovery I/F. But this context
+		 * already holds rtnl_lock + if_sync. so the clean up function
+		 * should not hold any of these locks.
+		 * During supplicant crash/SSR the DEL_IFACE command will not happen
+		 * and will cause a left over iface even after ifconfig wlan0 down.
+		 * So delete the iface first and then indicate the HANG event
 		 */
+		cfg->p2p_cleanup = TRUE;
 		wl_cfgp2p_del_p2p_disc_if(cfg->p2p_wdev, cfg);
+		cfg->p2p_cleanup = FALSE;
 #else
 		dhd->hang_reason = HANG_REASON_IFACE_DEL_FAILURE;
 
@@ -2857,6 +2861,7 @@ wl_cfgp2p_stop_p2p_device(struct wiphy *wiphy, struct wireless_dev *wdev)
 	int ret = 0;
 	struct net_device *ndev = NULL;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	bool lock_reqd = TRUE;
 
 	if (!cfg)
 		return;
@@ -2886,12 +2891,25 @@ wl_cfgp2p_stop_p2p_device(struct wiphy *wiphy, struct wireless_dev *wdev)
 	/* Cancel any on-going listen */
 	wl_cfgp2p_cancel_listen(cfg, bcmcfg_to_prmry_ndev(cfg), wdev, TRUE);
 
-	mutex_lock(&cfg->if_sync);
+	if (cfg->p2p_cleanup) {
+		/* p2p clean up context already holds if_sync lock, so skip it
+		 * to avoid deadlock
+		 */
+		lock_reqd = FALSE;
+	}
+
+	if (lock_reqd) {
+		mutex_lock(&cfg->if_sync);
+	}
+
 	ret = wl_cfgp2p_disable_discovery(cfg);
 	if (unlikely(ret < 0)) {
 		CFGP2P_ERR(("P2P disable discovery failed, ret=%d\n", ret));
 	}
-	mutex_unlock(&cfg->if_sync);
+
+	if (lock_reqd) {
+		mutex_unlock(&cfg->if_sync);
+	}
 
 	p2p_on(cfg) = false;
 
