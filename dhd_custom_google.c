@@ -794,21 +794,26 @@ module_param(dhd_cpufreq_boost, uint, 0660);
 
 #define DHD_CPUFREQ_LITTLE      0u
 #define DHD_CPUFREQ_BIG         4u
-#define DHD_CPUFREQ_BIGGER      8u
+#define DHD_CPUFREQ_BIGGER      7u
+#define DHD_LITTLE_CORE_PERF_FREQ   1425000u
+#define DHD_MID_CORE_PERF_FREQ      1549000u
+#define DHD_BIG_CORE_PERF_FREQ      2363000u
+
 
 typedef struct _dhd_host_cpufreq {
 	uint32 cpuid;
 	uint32 orig_min_freq;
+	uint32 target_freq;
 } dhd_host_cpufreq;
 
 static dhd_host_cpufreq dhd_host_cpufreq_tbl [] =
 {
 	/* Little Core, 0-3 */
-	{DHD_CPUFREQ_LITTLE, 0},
+	{DHD_CPUFREQ_LITTLE, 0, DHD_LITTLE_CORE_PERF_FREQ},
 	/* Big Core, 4-7 */
-	{DHD_CPUFREQ_BIG, 0},
+	{DHD_CPUFREQ_BIG, 0, DHD_MID_CORE_PERF_FREQ},
 	/* Bigger Core, 8-11 */
-	{DHD_CPUFREQ_BIGGER, 0}
+	{DHD_CPUFREQ_BIGGER, 0, DHD_BIG_CORE_PERF_FREQ}
 };
 
 /*
@@ -905,6 +910,101 @@ void dhd_set_max_cpufreq(void)
 		}
 	}
 }
+
+void dhd_set_all_cpufreq(void)
+{
+	struct cpufreq_policy *policy;
+	int i, arr_len;
+	int num_cpus = num_possible_cpus();
+	uint32 cpuid, orig_min_freq;
+
+	//DHD_PRINT(("%s: Sets cpufreq boost mode num_cpus:%d\n", __FUNCTION__, num_cpus));
+	arr_len = sizeof(dhd_host_cpufreq_tbl) / sizeof(dhd_host_cpufreq_tbl[0]);
+
+	for (i = 0; i < arr_len; i++) {
+		cpuid = dhd_host_cpufreq_tbl[i].cpuid;
+		orig_min_freq = dhd_host_cpufreq_tbl[i].orig_min_freq;
+
+		/* cpuid check logic */
+		if (cpuid >= num_cpus) {
+			DHD_ERROR(("%s: cpuid not available cpuid:%d num_cpus:%d\n",
+				__FUNCTION__, cpuid, num_cpus));
+			continue;
+		}
+
+		/* already in boost mode */
+		if (orig_min_freq) {
+			continue;
+		}
+
+		policy = cpufreq_cpu_get(cpuid);
+		if (policy) {
+			/* backup min freq */
+			dhd_host_cpufreq_tbl[i].orig_min_freq = policy->min;
+
+			if (policy->max < dhd_host_cpufreq_tbl[i].target_freq)
+				policy->min = policy->max;
+			else
+				policy->min = dhd_host_cpufreq_tbl[i].target_freq;
+
+			DHD_PRINT(("%s: min to max. policy%d cur:%u orig_min:%u min:%u max:%u\n",
+				__FUNCTION__, cpuid, policy->cur,
+				dhd_host_cpufreq_tbl[i].orig_min_freq,
+				policy->min, policy->max));
+			cpufreq_cpu_put(policy);
+		}
+	}
+}
+
+void dhd_set_little_cpufreq(void)
+{
+	struct cpufreq_policy *policy;
+	int num_cpus = num_possible_cpus();
+	uint32 cpuid, orig_min_freq;
+
+	//DHD_PRINT(("%s: Sets cpufreq boost mode num_cpus:%d\n", __FUNCTION__, num_cpus));
+
+	cpuid = dhd_host_cpufreq_tbl[0].cpuid;
+	orig_min_freq = dhd_host_cpufreq_tbl[0].orig_min_freq;
+
+	/* cpuid check logic */
+	if (cpuid >= num_cpus) {
+		DHD_ERROR(("%s: cpuid not available cpuid:%d num_cpus:%d\n",
+		__FUNCTION__, cpuid, num_cpus));
+		return;
+	}
+
+	/* already in boost mode */
+
+	if (orig_min_freq) {
+		return;
+	}
+
+	policy = cpufreq_cpu_get(cpuid);
+	if (policy) {
+		/* backup min freq */
+		dhd_host_cpufreq_tbl[0].orig_min_freq = policy->min;
+		if (policy->max < dhd_host_cpufreq_tbl[0].target_freq)
+			policy->min = policy->max;
+		else
+			policy->min = dhd_host_cpufreq_tbl[0].target_freq;
+		DHD_PRINT(("%s: min to max. policy%d cur:%u orig_min:%u min:%u max:%u\n",
+			__FUNCTION__, cpuid, policy->cur,
+			dhd_host_cpufreq_tbl[0].orig_min_freq,
+			policy->min, policy->max));
+		cpufreq_cpu_put(policy);
+	}
+}
+
+void dhd_plat_reset_trx_pktcount(void)
+{
+    tx_pkt_cnt = 0;
+    rx_pkt_cnt = 0;
+    tx_pkt_timestamp = 0;
+    rx_pkt_timestamp = 0;
+    tx_pkt_delta = 0;
+    rx_pkt_delta = 0;
+}
 #endif /* DHD_HOST_CPUFREQ_BOOST */
 
 static void
@@ -919,7 +1019,16 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev,
 		DHD_ERROR(("%s : pdev is NULL\n", __FUNCTION__));
 		return;
 	}
-
+#ifdef DHD_HOST_CPUFREQ_BOOST
+	if (!is_irq_on_big_core && !dhd_is_cpufreq_boosted() &&
+	    (((tx_pkt_delta < PKT_COUNT_HIGH) && (tx_pkt_delta > PKT_COUNT_MID)) ||
+	     ((rx_pkt_delta < PKT_COUNT_HIGH) && (rx_pkt_delta > PKT_COUNT_MID)))
+	     ) {
+		if (dhd_cpufreq_boost) {
+			dhd_set_little_cpufreq();
+		}
+	}
+#endif /* DHD_HOST_CPUFREQ_BOOST */
 	if (!is_irq_on_big_core &&
 	   ((tx_pkt_delta > PKT_COUNT_HIGH)||(rx_pkt_delta > PKT_COUNT_HIGH))
 	   ) {
@@ -929,7 +1038,7 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev,
 			last_affinity_update_time_ns = curr_time_ns;
 #ifdef DHD_HOST_CPUFREQ_BOOST
 			if (dhd_cpufreq_boost) {
-				dhd_set_max_cpufreq();
+				dhd_set_all_cpufreq();
 			}
 #endif /* DHD_HOST_CPUFREQ_BOOST */
 			DHD_INFO(("%s switches to big core %u successfully\n",
@@ -1016,8 +1125,6 @@ void dhd_plat_tx_pktcount(void *plat_info, uint cnt)
 		tx_pkt_delta = (cnt - tx_pkt_cnt) >> 1;
 		tx_pkt_cnt = cnt;
 		tx_pkt_timestamp = OSL_SYSUPTIME_US();
-		DHD_ERROR(("TestLogs: tx pkt_delta: %llu, cnt = %u\n",
-				tx_pkt_delta, cnt));
          }
 }
 
@@ -1052,8 +1159,6 @@ void dhd_plat_rx_pktcount(void *plat_info, uint cnt)
 		rx_pkt_delta = (cnt - rx_pkt_cnt) >> 1;
 		rx_pkt_cnt = cnt;
 		rx_pkt_timestamp = OSL_SYSUPTIME_US();
-		DHD_ERROR(("TestLogs: rx pkt_delta: %llu, cnt = %u\n",
-				rx_pkt_delta, cnt));
          }
 }
 /*
@@ -1245,6 +1350,7 @@ int dhd_plat_pcie_resume(void *plat_info)
 	int ret = 0;
 	ret = exynos_pcie_pm_resume(pcie_ch_num);
 	is_plat_pcie_resume = TRUE;
+	dhd_plat_reset_trx_pktcount();
 	return ret;
 }
 
