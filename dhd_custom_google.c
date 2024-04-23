@@ -795,7 +795,7 @@ module_param(dhd_cpufreq_boost, uint, 0660);
 #define DHD_CPUFREQ_LITTLE      0u
 #define DHD_CPUFREQ_BIG         4u
 #define DHD_CPUFREQ_BIGGER      7u
-#define DHD_LITTLE_CORE_PERF_FREQ   1425000u
+#define DHD_LITTLE_CORE_PERF_FREQ   1548000u
 #define DHD_MID_CORE_PERF_FREQ      1549000u
 #define DHD_BIG_CORE_PERF_FREQ      2363000u
 
