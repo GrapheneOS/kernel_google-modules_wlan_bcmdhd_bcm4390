@@ -179,6 +179,11 @@ typedef struct pooluse_info {
 	uint32 urb_main_sz;			/* URB memory used for main core. */
 	uint32 urb_aux_sz;			/* URB memory used for aux core. */
 	uint32 inuse_sz_bm;			/* Total Bootmem size used. */
+
+	uint32 alfragmdata_count;               /* pktpool_shared_alfrag_mdata pkt count */
+	uint32 alfragmdata_available;           /* pktpool_shared_alfrag_mdata pkt left */
+	uint32 alfragmdata_max_pkt_bytes;       /* pktpool_shared_alfrag_mdata max pkt size */
+	uint32 alfragmdata_overhead;            /* pktpool_shared_alfrag_mdata with overhead */
 } pooluse_info_t;
 
 typedef struct memuse_ext_info {

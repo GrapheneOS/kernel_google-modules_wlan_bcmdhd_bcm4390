@@ -7367,6 +7367,12 @@ typedef struct wl_sc_multi_scan_cnts_v1 {
 	uint32  dsss_fcs_pass;
 	uint32  tot_queue_drop;
 	uint32  tot_aborted;
+	uint32	tot_be_busy;		/* Added from dsss and ofdm */
+	uint32	tot_filt_reject;	/* Added from dsss and ofdm */
+	uint32	tot_fifo_drop;		/* Added from dsss and ofdm */
+	uint32	tot_unsupported;	/* Added from dsss and ofdm */
+	uint32	tot_fcs_fail;		/* Added from dsss and ofdm */
+	uint32	tot_fcs_pass;		/* Added from dsss and ofdm */
 	uint32  fe_ofdm_crs_detect[WL_SC_MULTI_SCAN_FES_V1];
 	uint32  fe_ofdm_be_busy[WL_SC_MULTI_SCAN_FES_V1];
 	uint32  fe_ofdm_fcs_fail[WL_SC_MULTI_SCAN_FES_V1];
@@ -7382,6 +7388,9 @@ typedef struct wl_sc_multi_scan_cnts_v1 {
 	uint32  fe_tot_aborted[WL_SC_MULTI_SCAN_FES_V1];
 	uint32  fe_tot_timeout[WL_SC_MULTI_SCAN_FES_V1];
 	uint32  fe_tot_reset[WL_SC_MULTI_SCAN_FES_V1];
+	uint32	fe_tot_be_busy[WL_SC_MULTI_SCAN_FES_V1];	/* Added from dsss and ofdm */
+	uint32	fe_tot_fcs_fail[WL_SC_MULTI_SCAN_FES_V1];	/* Added from dsss and ofdm */
+	uint32	fe_tot_fcs_pass[WL_SC_MULTI_SCAN_FES_V1];	/* Added from dsss and ofdm */
 } wl_sc_multi_scan_cnts_v1_t;
 
 /* LLW stats */
