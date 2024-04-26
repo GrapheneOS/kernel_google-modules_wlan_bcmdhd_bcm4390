@@ -369,6 +369,7 @@ typedef struct dhd_bus {
 	uint32		bus;			/* gSPI or SDIO bus */
 	uint32		intstatus;		/* Intstatus bits (events) pending */
 	bool		dpc_sched;		/* Indicates DPC schedule (intrpt rcvd) */
+	bool		dpc_resched;		/* Indicates DPC rescheduled */
 	bool		fcstate;		/* State of dongle flow-control */
 
 	uint16		cl_devid;		/* cached devid for dhdsdio_probe_attach() */
