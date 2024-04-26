@@ -799,6 +799,12 @@ module_param(dhd_cpufreq_boost, uint, 0660);
 #define DHD_MID_CORE_PERF_FREQ      1549000u
 #define DHD_BIG_CORE_PERF_FREQ      2363000u
 
+enum core_idx {
+	LITTLE = 0,
+	MID = 1,
+	BIG = 2,
+	CORE_IDX_MAX
+};
 
 typedef struct _dhd_host_cpufreq {
 	uint32 cpuid;
@@ -956,16 +962,21 @@ void dhd_set_all_cpufreq(void)
 	}
 }
 
-void dhd_set_little_cpufreq(void)
+void dhd_set_cpufreq(enum core_idx idx)
 {
 	struct cpufreq_policy *policy;
-	int num_cpus = num_possible_cpus();
-	uint32 cpuid, orig_min_freq;
+	int arr_len;
+        int num_cpus = num_possible_cpus();
+        uint32 cpuid, orig_min_freq;
 
-	//DHD_PRINT(("%s: Sets cpufreq boost mode num_cpus:%d\n", __FUNCTION__, num_cpus));
+        arr_len = sizeof(dhd_host_cpufreq_tbl) / sizeof(dhd_host_cpufreq_tbl[0]);
 
-	cpuid = dhd_host_cpufreq_tbl[0].cpuid;
-	orig_min_freq = dhd_host_cpufreq_tbl[0].orig_min_freq;
+        if (idx >= arr_len) {
+		DHD_ERROR(("%s: Invalid core index(%d)\n", __FUNCTION__, idx));
+        }
+
+	cpuid = dhd_host_cpufreq_tbl[idx].cpuid;
+	orig_min_freq = dhd_host_cpufreq_tbl[idx].orig_min_freq;
 
 	/* cpuid check logic */
 	if (cpuid >= num_cpus) {
@@ -983,14 +994,14 @@ void dhd_set_little_cpufreq(void)
 	policy = cpufreq_cpu_get(cpuid);
 	if (policy) {
 		/* backup min freq */
-		dhd_host_cpufreq_tbl[0].orig_min_freq = policy->min;
-		if (policy->max < dhd_host_cpufreq_tbl[0].target_freq)
+		dhd_host_cpufreq_tbl[idx].orig_min_freq = policy->min;
+		if (policy->max < dhd_host_cpufreq_tbl[idx].target_freq)
 			policy->min = policy->max;
 		else
-			policy->min = dhd_host_cpufreq_tbl[0].target_freq;
+			policy->min = dhd_host_cpufreq_tbl[idx].target_freq;
 		DHD_PRINT(("%s: min to max. policy%d cur:%u orig_min:%u min:%u max:%u\n",
 			__FUNCTION__, cpuid, policy->cur,
-			dhd_host_cpufreq_tbl[0].orig_min_freq,
+			dhd_host_cpufreq_tbl[idx].orig_min_freq,
 			policy->min, policy->max));
 		cpufreq_cpu_put(policy);
 	}
@@ -1025,7 +1036,7 @@ irq_affinity_hysteresis_control(struct pci_dev *pdev,
 	     ((rx_pkt_delta < PKT_COUNT_HIGH) && (rx_pkt_delta > PKT_COUNT_MID)))
 	     ) {
 		if (dhd_cpufreq_boost) {
-			dhd_set_little_cpufreq();
+			dhd_set_cpufreq(MID);
 		}
 	}
 #endif /* DHD_HOST_CPUFREQ_BOOST */
