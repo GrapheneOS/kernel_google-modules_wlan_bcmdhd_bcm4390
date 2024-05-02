@@ -3447,9 +3447,9 @@ wl_cfgnan_pairing_request_n_response(struct net_device *ndev, struct bcm_cfg8021
 		pairing_cmd->role = WL_NAN_PAIRING_ROLE_INITIATOR;
 		pairing_cmd->pub_id = cmd_data->req_inst_id;
 
-		WL_INFORM_MEM(("[NAN] Pairing Request cmd rcvd, peer: " MACDBG ", pub_id %d "
+		WL_INFORM_MEM(("[NAN] Pairing Request cmd rcvd, peer: " MACDBG ", type %d pub_id %d"
 			"policy %d caching %d is_oppur %d key_type %d key_len %d \n",
-			MAC2STRDBG(&cmd_data->mac_addr), pairing_cmd->pub_id,
+			MAC2STRDBG(&cmd_data->mac_addr), pairing_cmd->type, pairing_cmd->pub_id,
 			pairing_cmd->pasn_policy, pairing_cmd->flags, cmd_data->is_opportunistic,
 			cmd_data->key_type, cmd_data->key.dlen));
 	} else if (cmd == NAN_WIFI_SUBCMD_PAIRING_RESPONSE) {
@@ -3469,9 +3469,9 @@ wl_cfgnan_pairing_request_n_response(struct net_device *ndev, struct bcm_cfg8021
 		pairing_cmd->response_code = cmd_data->rsp_code;
 		pairing_cmd->pairing_id = cmd_data->inst_id;
 
-		WL_INFORM_MEM(("[NAN] Pairing Response cmd rcvd, pairing_id: %d resp_code %d "
+		WL_INFORM_MEM(("[NAN] Pairing Response cmd rcvd, pairing_id %d type %d resp_code %d"
 			"policy %d caching %d is_oppur %d key_type %d key_len %d \n",
-			pairing_cmd->pairing_id, pairing_cmd->response_code,
+			pairing_cmd->pairing_id, pairing_cmd->type, pairing_cmd->response_code,
 			pairing_cmd->pasn_policy, pairing_cmd->flags, cmd_data->is_opportunistic,
 			cmd_data->key_type, cmd_data->key.dlen));
 	}
