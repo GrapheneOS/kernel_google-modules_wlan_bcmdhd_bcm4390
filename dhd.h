@@ -968,7 +968,8 @@ typedef enum dhd_ring_id {
 	DEBUG_DUMP_RING1_ID = 0x8,
 	DEBUG_DUMP_RING2_ID = 0x9,
 	MEM_DUMP_RING_ID = 0xa,
-	DEBUG_RING_ID_MAX = 0xb
+	ECNTRS_RING_ID = 0xb,
+	DEBUG_RING_ID_MAX = 0xc
 } dhd_ring_id_t;
 
 #define DHD_PCIE_WRAPPER_LEN (20 * 1024)

@@ -16485,6 +16485,9 @@ int wl_cfgvendor_attach(struct wiphy *wiphy, dhd_pub_t *dhd)
 	wiphy->vendor_events	= wl_vendor_events;
 	wiphy->n_vendor_events	= ARRAY_SIZE(wl_vendor_events);
 
+#ifdef DHD_ECNTRS_EXPOSED_DBGRING
+	dhd_os_dbg_register_callback(ECNTRS_RING_ID, wl_cfgvendor_dbg_ring_send_evt);
+#endif /* DHD_ECNTRS_EXPOSED_DBGRING */
 #ifdef DEBUGABILITY
 	dhd_os_dbg_register_callback(FW_VERBOSE_RING_ID, wl_cfgvendor_dbg_ring_send_evt);
 #ifdef DHD_DEBUGABILITY_EVENT_RING

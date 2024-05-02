@@ -17175,6 +17175,7 @@ dhdpcie_bus_get_pcie_inband_dw_state(dhd_bus_t *bus)
 const char *
 dhd_convert_dsval(uint32 val, bool d2h)
 {
+	static char invalid_str[64] = {0};
 	if (d2h) {
 		switch (val) {
 			case D2H_DEV_D3_ACK:
@@ -17188,7 +17189,8 @@ dhd_convert_dsval(uint32 val, bool d2h)
 			case D2HMB_DS_HOST_SLEEP_EXIT_ACK:
 				return "D2HMB_DS_HOST_SLEEP_EXIT_ACK";
 			default:
-				return "INVALID";
+				snprintf(invalid_str, 64, "D2H_INVALID_0x%x", val);
+				return invalid_str;
 		}
 	} else {
 		switch (val) {
@@ -17206,8 +17208,13 @@ dhd_convert_dsval(uint32 val, bool d2h)
 				return "H2D_HOST_CONS_INT";
 			case H2D_FW_TRAP:
 				return "H2D_FW_TRAP";
+			case H2D_HOST_D0_INFORM_IN_USE:
+				return "H2D_HOST_D0_INFORM_IN_USE";
+			case H2D_HOST_D0_INFORM:
+				return "H2D_HOST_D0_INFORM";
 			default:
-				return "INVALID";
+				snprintf(invalid_str, 64, "H2D_INVALID_0x%x", val);
+				return invalid_str;
 		}
 	}
 }
@@ -17218,6 +17225,9 @@ dhd_convert_inb_state_names(enum dhd_bus_ds_state inbstate)
 	switch (inbstate) {
 		case DW_DEVICE_DS_DEV_SLEEP:
 			return "DW_DEVICE_DS_DEV_SLEEP";
+		break;
+		case DW_DEVICE_DS_DEV_SLEEP_PEND:
+			return "DW_DEVICE_DS_DEV_SLEEP_PEND";
 		break;
 		case DW_DEVICE_DS_DISABLED_WAIT:
 			return "DW_DEVICE_DS_DISABLED_WAIT";
