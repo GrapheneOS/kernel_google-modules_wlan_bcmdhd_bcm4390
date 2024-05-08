@@ -8358,6 +8358,10 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 	bool conc_conflict = FALSE;
 	bool attempt_roam_enable = FALSE;
 	bool force_roam_disable = FALSE;
+#ifdef DYN_RSDB_ROAM_DISABLE
+	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
+	bool dyn_rsdb = FW_SUPPORTED(dhd, sdb_modesw);
+#endif /* DYN_RSDB_ROAM_DISABLE */
 
 	if (!cfg || !dev) {
 		WL_ERR(("invalid args\n"));
@@ -8399,8 +8403,10 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		primary_sta = bcmcfg_to_prmry_ndev(cfg);
 	}
 
+#ifdef DYN_RSDB_ROAM_DISABLE
 	/* check states for whether to attempt or disable roam */
 	conc_conflict = wl_get_drv_status_all(cfg, AP_CREATED) ? TRUE : FALSE;
+#endif /* DYN_RSDB_ROAM_DISABLE */
 #if defined(WL_NAN) && defined(ROAM_DISABLE_NAN_STA_CONC)
 	if (!conc_conflict) {
 		conc_conflict = wl_cfgnan_is_enabled(cfg) ? TRUE : FALSE;
@@ -8424,13 +8430,14 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		force_roam_disable = TRUE;
 	} if ((state == ROAM_CONF_LINKDOWN) ||
 		(state == ROAM_CONF_PRIMARY_STA) || (state == ROAM_CONF_LINKUP) ||
-		(state == ROAM_CONF_AP_DISABLE)) {
+		(state == ROAM_CONF_AP_DISABLE) || (state == ROAM_CONF_ROAM_ENAB_REQ)) {
 		attempt_roam_enable = TRUE;
 	}
 
 	/* ROAM_CONF_ROAM_ENABLE/DISAB_REQ are framework commands and expected to
 	 * operate on the interface on which it is applied. Since we support roam
-	 * only on one interface, disable roam on other interface.
+	 * only on one interface, disable roam on other interface and enable only
+	 * on primary interface.
 	 */
 	if (state == ROAM_CONF_ROAM_DISAB_REQ) {
 		/* roam off for incoming ndev interface */
@@ -8440,14 +8447,9 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 #endif /* OEM_ANDROID */
 		wl_roam_off_config(dev, TRUE);
 		return;
-	} else if ((state == ROAM_CONF_ROAM_ENAB_REQ) && !conc_conflict) {
-		/* If roam enable comes with > 1 iface connected, enable it on primary */
+	} else if (state == ROAM_CONF_ROAM_ENAB_REQ) {
+		/* Update fwk roam state and fall through for roam config */
 		cfg->disable_fw_roam = FALSE;
-		if (primary_sta) {
-			/* Enable roam on primary, disable on others */
-			wl_sta_enable_roam(cfg, primary_sta, TRUE);
-			return;
-		}
 	}
 
 	if (cfg->disable_fw_roam && attempt_roam_enable) {
@@ -8456,10 +8458,14 @@ wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		return;
 	}
 
-	if ((attempt_roam_enable) && !conc_conflict) {
+	if (attempt_roam_enable) {
 		/* Enable roam on primary, disable on others */
-		WL_DBG_MEM(("state:%d attempt roam enable\n", state));
-		wl_sta_enable_roam(cfg, primary_sta, TRUE);
+		if (conc_conflict) {
+			WL_DBG_MEM(("state:%d skip roam enable due to concurrency\n", state));
+		} else {
+			WL_DBG_MEM(("state:%d attempt roam enable\n", state));
+			wl_sta_enable_roam(cfg, primary_sta, TRUE);
+		}
 		return;
 	}
 
