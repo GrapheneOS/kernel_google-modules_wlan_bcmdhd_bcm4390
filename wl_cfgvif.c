@@ -1215,6 +1215,8 @@ wl_cfg80211_change_p2prole(struct wiphy *wiphy, struct net_device *ndev, enum nl
 #ifdef BCMDONGLEHOST
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
 #endif /* BCMDONGLEHOST */
+	u16 wl_iftype;
+	u16 wl_mode;
 
 	WL_INFORM_MEM(("Enter. current_role:%d new_role:%d \n", ndev->ieee80211_ptr->iftype, type));
 
@@ -1247,7 +1249,11 @@ wl_cfg80211_change_p2prole(struct wiphy *wiphy, struct net_device *ndev, enum nl
 	 * channel. so retrieve the current channel of primary interface and
 	 * then start the virtual interface on that.
 	 */
-	chspec = wl_cfg80211_get_shared_freq(wiphy);
+	if (cfg80211_to_wl_iftype(type, &wl_iftype, &wl_mode) < 0) {
+		WL_ERR(("Unsupported if type %d\n", type));
+		return BCME_UNSUPPORTED;
+	}
+	chspec = wl_cfg80211_get_shared_freq(wiphy, wl_iftype);
 	if (type == NL80211_IFTYPE_P2P_GO) {
 		/* Dual p2p doesn't support multiple P2PGO interfaces,
 		 * p2p_go_count is the counter for GO creation

@@ -844,6 +844,8 @@ do {									\
 #define WLAN_CIPHER_SUITE_PMK             0x00904C00
 #endif /* WLAN_CIPHER_SUITE_PMK */
 
+#define WLAN_AKM_SUITE_PSK_VER_1          0x0050F202
+
 #ifndef WLAN_AKM_SUITE_FT_8021X
 #define WLAN_AKM_SUITE_FT_8021X	          0x000FAC03
 #endif /* WLAN_AKM_SUITE_FT_8021X */
@@ -1522,7 +1524,7 @@ typedef enum wl_bcnrecv_attr_type {
 #endif /* WL_CHAN_UTIL */
 
 /* association inform */
-#define MAX_REQ_LINE 1024u
+#define MAX_REQ_LINE 1536u
 struct wl_connect_info {
 	u8 req_ie[MAX_REQ_LINE];
 	u32 req_ie_len;
@@ -3831,7 +3833,7 @@ extern u32 wl_log_level;
 extern u32 wl_cfg80211_debug_data_dump(struct net_device *dev, u8 *buf, u32 buf_len);
 extern s32 wl_cfg80211_iface_state_ops(struct wireless_dev *wdev, wl_interface_state_t state,
 	wl_iftype_t wl_iftype, u16 wl_mode);
-extern chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy);
+extern chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy, wl_iftype_t wl_iftype);
 #ifdef SUPPORT_SET_CAC
 extern void wl_cfg80211_set_cac(struct bcm_cfg80211 *cfg, int enable);
 #endif /* SUPPORT_SET_CAC */

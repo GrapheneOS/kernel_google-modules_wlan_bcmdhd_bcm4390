@@ -2774,6 +2774,7 @@ enum wl_cnt_xtlv_id {
 	WL_CNT_XTLV_DATA_BW_STATS = 0x100e,		/* corerev >= 89 DataBW stats */
 	WL_CNT_XTLV_MACST_TX_V4 = 0x100f,		/* corerev >= 88 ucode macstats V4 - tx */
 	WL_CNT_XTLV_MULTI_SCAN_STATS = 0x1010,		/* Multi Scan stats */
+	WL_CNT_XTLV_PHY_RX_STATS = 0x1011,		/* PHY RX stats */
 	/* XLTVs in this gap are available for use */
 	/* scan aux core related additional counters */
 	WL_CNT_XTLV_SCANAUX_UCODE_V1 = 0x1012,

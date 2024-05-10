@@ -83,6 +83,7 @@ static uint64 tx_pkt_timestamp = 0;
 static uint64 rx_pkt_timestamp = 0;
 static uint64 tx_pkt_delta = 0;
 static uint64 rx_pkt_delta = 0;
+
 static uint64 last_resched_cnt_check_time_ns = 0;
 static uint64 last_affinity_update_time_ns = 0;
 static uint hw_stage_val = 0;
@@ -965,14 +966,14 @@ void dhd_set_cpufreq(enum core_idx idx)
 {
 	struct cpufreq_policy *policy;
 	int arr_len;
-        int num_cpus = num_possible_cpus();
-        uint32 cpuid, orig_min_freq;
+	int num_cpus = num_possible_cpus();
+	uint32 cpuid, orig_min_freq;
 
-        arr_len = sizeof(dhd_host_cpufreq_tbl) / sizeof(dhd_host_cpufreq_tbl[0]);
+	arr_len = sizeof(dhd_host_cpufreq_tbl) / sizeof(dhd_host_cpufreq_tbl[0]);
 
-        if (idx >= arr_len) {
+	if (idx >= arr_len) {
 		DHD_ERROR(("%s: Invalid core index(%d)\n", __FUNCTION__, idx));
-        }
+	}
 
 	cpuid = dhd_host_cpufreq_tbl[idx].cpuid;
 	orig_min_freq = dhd_host_cpufreq_tbl[idx].orig_min_freq;
@@ -994,10 +995,11 @@ void dhd_set_cpufreq(enum core_idx idx)
 	if (policy) {
 		/* backup min freq */
 		dhd_host_cpufreq_tbl[idx].orig_min_freq = policy->min;
-		if (policy->max < dhd_host_cpufreq_tbl[idx].target_freq)
+		if (policy->max < dhd_host_cpufreq_tbl[idx].target_freq) {
 			policy->min = policy->max;
-		else
+		} else {
 			policy->min = dhd_host_cpufreq_tbl[idx].target_freq;
+		}
 		DHD_PRINT(("%s: min to max. policy%d cur:%u orig_min:%u min:%u max:%u\n",
 			__FUNCTION__, cpuid, policy->cur,
 			dhd_host_cpufreq_tbl[idx].orig_min_freq,

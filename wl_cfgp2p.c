@@ -3058,7 +3058,7 @@ wl_cfgp2p_if_add(struct bcm_cfg80211 *cfg, wl_iftype_t wl_iftype,
 	 * so retrieve the current channel of primary interface and then start the virtual
 	 * interface on that.
 	 */
-	chspec = wl_cfg80211_get_shared_freq(wiphy);
+	chspec = wl_cfg80211_get_shared_freq(wiphy, wl_iftype);
 
 	/* For P2P mode, use P2P-specific driver features to create the
 	 * bss: "cfg p2p_ifadd"
