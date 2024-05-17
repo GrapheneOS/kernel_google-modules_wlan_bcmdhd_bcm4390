@@ -305,6 +305,9 @@ extern pktpool_t *pktpool_shared_alfrag_mdata;
 /** PCIe SPLITRX related */
 #define SHARED_RXFRAG_POOL	(pktpool_shared_rxlfrag)
 extern pktpool_t *pktpool_shared_rxlfrag;
+/* Pool to allow dma_rxreclaim() to complete even if SHARED_RXFRAG_POOL is empty. */
+#define SHARED_RXRECLAIM_POOL	(pktpool_rxlfrag_reclaim)
+extern pktpool_t *pktpool_rxlfrag_reclaim;
 
 #define SHARED_RXDATA_POOL	(pktpool_shared_rxdata)
 extern pktpool_t *pktpool_shared_rxdata;

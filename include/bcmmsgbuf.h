@@ -73,17 +73,24 @@
  * happens before DHD allocs memory for the flowrings, the workitem
  * size can be dynamic for DHD.
  */
-#define H2DRING_TXPOST_EXT_ITEMSIZE	56
+#if defined(TX_PCIE_APP)
+#define H2DRING_TXPOST_EXT_ITEMSIZE	64u
+#else
+#define H2DRING_TXPOST_EXT_ITEMSIZE	56u
+#endif /* TX_PCIE_APP */
 #if defined(BCMPCIE_EXT_TXPOST_SUPPORT)
 #define H2DRING_TXPOST_ITEMSIZE		H2DRING_TXPOST_EXT_ITEMSIZE
 #else
 #define H2DRING_TXPOST_ITEMSIZE		H2DRING_TXPOST_BASE_ITEMSIZE
 #endif
 #define H2DRING_RXPOST_ITEMSIZE		32
+#define H2DRING_RXPOST_ITEMSIZE_V3	200u
 #define H2DRING_CTRL_SUB_ITEMSIZE	40
 
 #define D2HRING_TXCMPLT_ITEMSIZE	24
 #define D2HRING_RXCMPLT_ITEMSIZE	40
+
+#define D2HRING_RXCMPLT_ITEMSIZE_V3	20u
 
 #define D2HRING_MDCMPLT_ITEMSIZE	80
 
@@ -220,13 +227,13 @@ typedef struct cmn_aggr_msg_hdr {
 	uint8		msg_type;
 	/** aggregation count */
 	uint8		aggr_cnt;
-	/* current phase */
-	uint8		phase;
-	/* flags or sequence number */
+	/* flags & phase bits */
 	union {
-		uint8	flags; /* H2D direction */
-		uint8	epoch; /* D2H direction */
+		uint8		flags;
+		uint8		phase;
 	};
+	/* sequence number */
+	uint8		epoch;
 } cmn_aggr_msg_hdr_t;
 
 /** cmn aggregated completion work item msg hdr */
@@ -296,6 +303,8 @@ typedef enum bcmpcie_msgtype {
 	MSG_TYPE_RXBUF_POST_AGGR	= 0x31,
 	MSG_TYPE_RX_CMPLT_AGGR		= 0x32,
 	MSG_TYPE_MDATA_CPL		= 0x33,
+	MSG_TYPE_RXBUF_POST_V3		= 0x34,
+	MSG_TYPE_RXBUF_CMPLT_V3		= 0x35,
 	MSG_TYPE_API_MAX_RSVD		= 0x3F
 } bcmpcie_msg_type_t;
 
@@ -317,7 +326,8 @@ typedef enum bcmpcie_msgtype_int {
 	MSG_TYPE_PVT_BT_SNAPSHOT_CMPLT  = 0x4D,
 	MSG_TYPE_BT_SNAPSHOT_PYLD       = 0x4E,
 	MSG_TYPE_LPBK_DMAXFER_PYLD_ADDR	= 0x4F,	/* loopback from addr pkt */
-	MSG_TYPE_PCIE_BUS_TPUT		= 0x50	/* payload for pcie bus tput measurements */
+	MSG_TYPE_PCIE_BUS_TPUT		= 0x50,	/* payload for pcie bus tput measurements */
+	MSG_TYPE_RXCMPL_PKTID		= 0x51	/* rxcmpl list pkt id */
 } bcmpcie_msgtype_int_t;
 
 typedef enum bcmpcie_msgtype_u {
@@ -1167,11 +1177,72 @@ typedef struct host_txbuf_post_v2 {
 	uint32 PAD;
 } host_txbuf_post_v2_t;
 
-#if defined(BCMPCIE_EXT_TXPOST_SUPPORT) || defined(TX_CSO)
+/*
+ * The Tuple carries a 64 bit pointer and 32 bit pktid
+ * In future when we are ready to aggregate packets of
+ * different length, we can use the PAD field
+ */
+typedef struct txbuf_aggr_tuple {
+	bcm_addr64_t	data_buf_addr;
+	uint32		pktid;
+	uint8		PAD[4];
+} txbuf_aggr_tuple_t;
+
+#if defined(TX_PCIE_APP)
+#define NUM_TX_PKTS_AGGR_THRESHOLD (27u)
+#define AGGR_TUPLE_SIZE (sizeof(txbuf_aggr_tuple_t))
+#define TX_AGGR_BUF_SIZE (NUM_TX_PKTS_AGGR_THRESHOLD * AGGR_TUPLE_SIZE)
+#endif /* TX_PCIE_APP */
+
+typedef struct host_txbuf_post_v3 {
+	/** common message header */
+	cmn_msg_hdr_t   cmn_hdr;
+	/** eth header */
+	uint8		txhdr[ETHER_HDR_LEN];
+	/** flags */
+	uint8		flags;
+	/** number of segments */
+	uint8		seg_cnt;
+
+	/** provided meta data buffer for txstatus */
+	bcm_addr64_t	metadata_buf_addr;
+	/** provided data buffer containing Tx payload */
+	bcm_addr64_t	data_buf_addr;
+	/** provided meta data buffer len */
+	uint16		metadata_buf_len;
+	/** provided data buffer len */
+	uint16		data_len;
+	struct {
+		/** extended transmit flags */
+		uint8 ext_flags;
+		uint8 scale_factor;
+
+		/** user defined rate */
+		uint8 rate;
+		uint8 exp_time;
+	};
+	/** additional information on the packet required for CSO */
+	pkt_info_cso_t pktinfo;
+	uint8  aggr_flags;     /** Aggr Flags - Optimize to see if we can use ext_flags */
+	uint8  num_aggr_pkts;  /** Number of packets aggregated */
+	uint16 tot_aggr_len;   /** Total length of all aggregated packets
+				 * 2 bytes can store 65535.
+				 * Assuming an MTU of 1500, 65535/1500 = ~42,
+				 * So with 2 bytes allocated for total aggregated length
+				 * we can go upto 42 num_aggr_pkts
+				 */
+	uint16 aggr_buf_offset; /** affset of aggregated buffer from data buffer */
+	uint8  PAD[6];
+} host_txbuf_post_v3_t;
+
+#if defined(TX_PCIE_APP)
+typedef host_txbuf_post_v3_t host_txbuf_post_t;
+#elif defined(BCMPCIE_EXT_TXPOST_SUPPORT) || defined(TX_CSO)
 typedef host_txbuf_post_v2_t host_txbuf_post_t;
 #else
 typedef host_txbuf_post_v1_t host_txbuf_post_t;
 #endif
+
 
 #define BCMPCIE_PKT_FLAGS_FRAME_802_3	0x01
 #define BCMPCIE_PKT_FLAGS_FRAME_802_11	0x02
@@ -1218,6 +1289,9 @@ typedef host_txbuf_post_v1_t host_txbuf_post_t;
 #define BCMPCIE_TXPOST_FLAGS_HOST_SFH_LLC	0x10u
 #define BCMPCIE_TXPOST_RATE_EXT_USAGE		0x80 /* The rate field has extended usage */
 #define BCMPCIE_TXPOST_RATE_PROFILE_IDX_MASK	0x07 /* The Tx profile index in the rate field */
+
+/* Tx Post Ext Flags bit definitions */
+#define BCMPCIE_TXPOST_AGGR_FLAGS_AGGR_PKT	(0x01u)
 
 /* H2D Txpost ring work items */
 typedef union txbuf_submit_item {
@@ -1653,6 +1727,25 @@ typedef struct host_rxbuf_post_aggr {
 	bcm_addr64_t	data_buf_addr[RXBUF_AGGR_CNT];
 } host_rxbuf_post_aggr_t;
 
+/* APPV2 :H2D Rxpost ring aggregated work items */
+#define RXBUF_AGGR_CNT_V3	(16u)
+
+/* aggregated work item of rxpost */
+typedef struct host_rxbuf_post_v3 {
+	cmn_aggr_msg_hdr_t cmn_aggr_hdr;
+	uint32		reserved;
+	/** packet Identifier for the associated host buffer */
+	uint32		request_id[RXBUF_AGGR_CNT_V3];
+
+	/** address of data buffer to receive */
+	bcm_addr64_t	data_buf_addr[RXBUF_AGGR_CNT_V3];
+} host_rxbuf_post_v3_t;
+
+typedef union rxbuf_submit_item_v3 {
+	host_rxbuf_post_v3_t	rxpost;
+	unsigned char		check[H2DRING_RXPOST_ITEMSIZE_V3];
+} rxbuf_submit_item_v3_t;
+
 /* D2H Rxcompletion ring for aggregated work items */
 #define RXCPL_AGGR_CNT		(2u)
 
@@ -1686,6 +1779,40 @@ typedef struct host_rxbuf_cmpl_aggr_ext {
 	/** rxbuffer work item */
 	host_rxbuf_cmpl_item_t	item[RXCPL_AGGR_CNT_EXT];
 } host_rxbuf_cmpl_aggr_ext_t;
+
+/* aggregated work item of rxcpl list */
+typedef struct host_rxbuf_cmpl_v3 {
+	/** common aggregated message header */
+	cmn_aggr_msg_hdr_t cmn_aggr_hdr;
+
+	/** completion aggregated message header */
+	compl_aggr_msg_hdr_t compl_aggr_hdr;
+
+	/** rxbuffer work item */
+	host_rxbuf_cmpl_item_t	item;
+
+	/** TODO: add metadata common to the pkt list */
+
+	/* XOR checksum or a magic number to audit DMA done */
+	dma_done_t marker_ext;
+} host_rxbuf_cmpl_v3_t;
+
+typedef union rxbuf_complete_item_v3 {
+	host_rxbuf_cmpl_v3_t	rxcmpl;
+	unsigned char		check[D2HRING_RXCMPLT_ITEMSIZE_V3];
+} rxbuf_complete_item_v3_t;
+
+/* Host RxStatus to be consumed for chained Rxcmpl - host_rxbuf_cmpl_v3_t */
+typedef struct host_rxstatus {
+	uint16	datalen;	/* Payload bytes to be conusmed */
+	uint16	rsrvd;		/* DMA flags */
+	uint16	ptm_l;		/* 64-bit Rx PTM Timestamp */
+	uint16	ptm_ml;
+	uint16	ptm_mh;
+	uint16	ptm_h;
+	uint16	request_id_l;	/* 32-bit host pktid */
+	uint16	request_id_h;
+} host_rxstatus_t;
 
 /* txpost extended tag types */
 typedef uint8 txpost_ext_tag_type_t;

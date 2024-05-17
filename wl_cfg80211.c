@@ -2192,7 +2192,7 @@ s32 wl_get_tx_power(struct net_device *dev, s32 *dbm)
 	return err;
 }
 
-chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy)
+chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy, wl_iftype_t wl_iftype)
 {
 	chanspec_t chspec;
 	int cur_band, err = 0;
@@ -2245,8 +2245,12 @@ chanspec_t wl_cfg80211_get_shared_freq(struct wiphy *wiphy)
 				((chaninfo & WL_CHAN_RADAR) ||
 				(chaninfo & WL_CHAN_P2P_PROHIBITED)))) {
 			channel = WL_P2P_TEMP_CHAN_5G;
-			chspec = wl_ch_host_to_driver(channel);
+		} else if (CHSPEC_IS5G(chspec) &&
+			((wl_iftype == WL_IF_TYPE_P2P_GO) || (wl_iftype == WL_IF_TYPE_P2P_GO))) {
+			channel = WL_P2P_TEMP_CHAN_5G;
 		}
+		chspec = wl_ch_host_to_driver(channel);
+
 		WL_INFORM_MEM(("Valid BSS Found. chanspec:0x%x \n", chspec));
 	}
 
@@ -4583,7 +4587,7 @@ wl_set_wpa_version(struct net_device *dev, struct cfg80211_connect_params *sme)
 		return BCME_ERROR;
 	}
 
-	WL_DBG_MEM(("wpa_version:0x%x\n", sme->crypto.wpa_versions));
+	WL_INFORM_MEM(("wpa_version:0x%x\n", sme->crypto.wpa_versions));
 	if (sme->crypto.wpa_versions & NL80211_WPA_VERSION_1) {
 		val = WPA_AUTH_PSK |
 			WPA_AUTH_UNSPECIFIED;
@@ -5393,6 +5397,10 @@ wl_find_multiakm_combo_tuples(u32 multi_akm_auth)
 	}
 	if (multi_akm_auth & WPA2_AUTH_PSK) {
 		num_tuples++;
+#ifndef DISABLE_WPAPSK_MULTIAKM
+		/* consider WPA-PSK too when wpa2psk is provided */
+		num_tuples++;
+#endif /* !DISABLE_WPAPSK_MULTIAKM */
 	}
 	if (multi_akm_auth & WPA2_AUTH_PSK_SHA256) {
 		num_tuples++;
@@ -5420,6 +5428,11 @@ wl_update_join_pref_tuple(u32 multi_akm_auth, uint8 **pref)
 	if (multi_akm_auth & WPA2_AUTH_PSK) {
 		wl_prepare_joinpref_tuples(pref, WLAN_AKM_SUITE_PSK,
 			CRYPTO_ALGO_NONE, CRYPTO_ALGO_NONE);
+#ifndef DISABLE_WPAPSK_MULTIAKM
+		/* consider WPA-PSK (wpaie) too when wpa2psk is provided */
+		wl_prepare_joinpref_tuples(pref, WLAN_AKM_SUITE_PSK_VER_1,
+			CRYPTO_ALGO_NONE, CRYPTO_ALGO_NONE);
+#endif /* !DISABLE_WPAPSK_MULTIAKM */
 	}
 
 	if (multi_akm_auth & WPA2_AUTH_PSK_SHA256) {
@@ -5553,9 +5566,12 @@ wl_set_key_mgmt(struct net_device *dev, struct cfg80211_connect_params *sme,
 	if (sme->crypto.n_akm_suites) {
 		WL_INFORM_MEM(("No of akms %d 0x%x 0x%x\n", sme->crypto.n_akm_suites,
 			sme->crypto.akm_suites[0], sme->crypto.akm_suites[1]));
-		/* Multi akm support only for WPA2-PSK and beyond */
 		if ((sme->crypto.n_akm_suites > 1u) &&
-				(sme->crypto.wpa_versions != NL80211_WPA_VERSION_1)) {
+#ifdef DISABLE_WPAPSK_MULTIAKM
+				/* Multi akm support only for WPA2-PSK and beyond */
+				(sme->crypto.wpa_versions != NL80211_WPA_VERSION_1) &&
+#endif /* DISABLE_WPAPSK_MULTIAKM */
+				TRUE) {
 			err = wl_set_multi_akm(dev, cfg, sme, assoc_info);
 			if (unlikely(err)) {
 				WL_ERR(("Failed to set multi akm key mgmt err = %d\n", err));
@@ -6895,10 +6911,11 @@ wl_is_mlo_sec_supported(struct bcm_cfg80211 *cfg, struct net_device *dev,
 			}
 			break;
 #endif /* WL_SAE || WL_CLIENT_SAE || WL_SAE_STD_API */
-
-#ifdef NOT_YET
 		case WLAN_AKM_SUITE_8021X:
 		case WL_AKM_SUITE_SHA256_1X:
+			mlo_sec = TRUE;
+			break;
+#ifdef NOT_YET
 		case WLAN_AKM_SUITE_8021X_SUITE_B:
 		case WLAN_AKM_SUITE_8021X_SUITE_B_192:
 		case WLAN_AKM_SUITE_FT_8021X:
@@ -7063,7 +7080,11 @@ wl_config_assoc_security(struct bcm_cfg80211 *cfg, struct net_device *dev,
 #endif /* WL_FILS */
 	/* Avoid cipher setting for multi-AKM. cipher combinations for multi-AKM predefined */
 	if (!(sme->crypto.n_akm_suites > 1u) ||
-			(sme->crypto.wpa_versions == NL80211_WPA_VERSION_1)) {
+#ifdef DISABLE_WPAPSK_MULTIAKM
+			/* If target AKM ver is WPA_VER_1, follow single AKM path */
+			(sme->crypto.wpa_versions == NL80211_WPA_VERSION_1) ||
+#endif /* DISABLE_WPAPSK_MULTIAKM */
+			FALSE) {
 		err = wl_set_set_cipher(dev, sme);
 		if (unlikely(err)) {
 			WL_ERR(("Invalid ciper\n"));
@@ -16086,7 +16107,7 @@ static s32 wl_get_assoc_ies(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 		} else {
 			WL_ERR(("IE size %d above max %d size \n",
 				conn_info->resp_ie_len, MAX_REQ_LINE));
-			return err;
+			return BCME_BADLEN;
 		}
 
 #if defined(DHD_DSCP_POLICY)
@@ -16557,6 +16578,9 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	return err;
 
 fail:
+	/* Clear driver states on roam failure */
+	wl_clr_drv_status(cfg, CONNECTED, ndev);
+	wl_clr_drv_status(cfg, ROAMING, ndev);
 	/* Trigger a disassoc to avoid state mismatch between driver and upper
 	* layers, since we skip roam indication to upper layers in fail: handling
 	*/

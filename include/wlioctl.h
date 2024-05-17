@@ -26700,17 +26700,53 @@ typedef struct wl_phy_dbg_gci_data_v1 {
 typedef struct wl_phy_dbg_sra_info_v1 {
 	uint32	srmc_init_status_bt;	/* SRCB init_status reg for BT */
 	uint32	srmc_init_status_wl;	/* SRCB init_status reg for WL */
+
 	uint32	sr_crash_counter_bt;	/* BT FW initiated trap notifications count */
 	uint32	sr_crash_counter_wl;	/* WL FW initiated notifications count */
 	uint16	sr_crash_reason_bt;	/* Last BT FW trap reason */
 	uint16	sr_crash_reason_wl;	/* Last WL FW trap reason */
+
 	uint8	sr_boot_count;		/* Critical + Non-critical region boot count */
 	uint8	sr_softrecovery_count;	/* Critical region recoverable boot count */
+
 	uint16	sr_dbg01;		/* not populated yet */
 	uint32	sr_dbg02;		/* not populated yet */
 	uint32	sr_dbg03;		/* BT initiated Temp Req count */
 	uint32	sr_dbg04;		/* BT initiated Cal Req count */
 } wl_phy_dbg_sra_info_v1_t;
+
+#define WL_PHY_DBG_SRA_INFO_VERSION_2	2u
+typedef struct wl_phy_dbg_sra_info_v2 {
+	uint32	srmc_init_status_bt;	    /* SRCB init_status reg for BT */
+	uint32	srmc_init_status_wl;	    /* SRCB init_status reg for WL */
+
+	uint16	sr_notif_counter_bt;	    /* BT FW initiated trap notifications count */
+	uint16	sr_notif_state_bt;	    /* Last BT FW trap reason */
+	uint32	sr_notif_option_bt;	    /* BT initiated Cal Req count */
+
+	uint32	sr_notif_counter_wl;	    /* WL FW initiated notifications count */
+	uint16	sr_notif_state_wl;	    /* Last WL FW trap reason */
+
+	uint16	sr_calreq_counter_bt;	    /* BT initiated Cal Req count */
+	uint16	sr_tempreq_counter_bt;	    /* BT initiated Temp Req count */
+
+	uint16	sr_crit_region_2g_wl;	    /* 2G Sema Crit region counter */
+	uint16	sr_crit_region_5g_wl;	    /* 5G Sema Crit region counter */
+
+	uint16	sr_crit_region_2g_bt;	    /* 2G Sema Crit region counter */
+	uint16	sr_crit_region_5g_bt;	    /* 5G Sema Crit region counter */
+
+	uint8	sr_boot_count;		    /* Critical + Non-critical region boot count */
+	uint8	sr_softrecovery_count;	    /* Critical region recoverable boot count */
+
+	uint32	sr_dbg02;		    /* not populated yet */
+	uint16	sr_dbg03;		    /* not populated yet */
+	uint16	sr_dbg04;		    /* not populated yet */
+	uint8	sr_phy_crash_rc;	    /* Critical region crash reason code */
+	uint8	sr_phy_crash_boot_count;    /* Boot count when critical region crash happened */
+	uint8	sr_dbg07;		    /* not populated yet */
+	uint8	sr_dbg08;		    /* not populated yet */
+} wl_phy_dbg_sra_info_v2_t;
 
 typedef struct wl_phy_dbg_v1 {
 	uint16	subcmd_version;		/* Version of the sub-command */
@@ -26718,6 +26754,7 @@ typedef struct wl_phy_dbg_v1 {
 	union {
 		wl_phy_dbg_gci_data_v1_t gcivals_v1;	/* GCI data */
 		wl_phy_dbg_sra_info_v1_t srainfo_v1;	/* SRA info */
+		wl_phy_dbg_sra_info_v2_t srainfo_v2;	/* SRA info */
 	} u;
 } wl_phy_dbg_v1_t;
 
@@ -27400,5 +27437,21 @@ typedef struct wl_mpf_scan_config_v1 {
 #define MPF_SCAN_ACTIVE_TIME_MAX            110u
 #define MPF_SCAN_PASSIVE_TIME_MIN           110u
 #define MPF_SCAN_PASSIVE_TIME_MAX           440u
+
+#define WL_D11FRAMETX_IOV_VERSION_0		0u
+#define	WL_D11FRAMETX_FLAGS_FIXD_RATESPEC_MASK	(1u << 0)
+#define WLC_D11FRAMETX_MAX_PKT_LEN	1500u
+typedef struct wl_d11txframe_v0 {
+	uint16  version;
+	uint16  length;
+	uint16  fixed_length;
+	uint16	flags;
+	ratespec_t rspec;
+	uint8	prio;
+	uint8	PAD;
+	uint16	data_len;
+	uint8	data[];
+} wl_d11txframe_v0_t;
+#define WL_D11FRAMETX_IOV_FIXED_LEN	OFFSETOF(wl_d11txframe_v0_t, data)
 
 #endif /* _wlioctl_h_ */

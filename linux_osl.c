@@ -52,6 +52,10 @@
 #endif /* BCM_OBJECT_TRACE */
 #include "linux_osl_priv.h"
 
+#ifdef AXI_TIMEOUTS_NIC
+#include "hal_dngl_bp.h"
+#endif
+
 #define PCI_CFG_RETRY		10	/* PR15065: retry count for pci cfg accesses */
 
 #define DUMPBUFSZ 1024
@@ -2025,6 +2029,53 @@ osl_os_image_size(void *image)
 #endif /* DHD_SUPPORT_VFS_CALL */
 
 /* Linux Kernel: File Operations: end */
+
+/* Reads the register and check for possible AXI errors.
+ * The value read could indeed be 0xFFs or due to errors.
+ */
+#if defined(AXI_TIMEOUTS_NIC)
+inline void
+osl_bpt_rreg(osl_t *osh, ulong addr, volatile void *v, ulong r, uint size, bool *chk_rdsts)
+{
+	bool verify = FALSE;
+	BCM_REFERENCE(r);
+	switch (size) {
+	case sizeof(uint8):
+		*(volatile uint8*)v = readb((volatile uint8*)(addr));
+		if (*(volatile uint8*)v == 0xFFu)
+			verify = TRUE;
+		break;
+	case sizeof(uint16):
+		*(volatile uint16*)v = readw((volatile uint16*)(addr));
+		if (*(volatile uint16*)v == 0xFFFFu)
+			verify = TRUE;
+		break;
+	case sizeof(uint32):
+		*(volatile uint32*)v = readl((volatile uint32*)(addr));
+		if (*(volatile uint32*)v == 0xFFFFFFFFu)
+			verify = TRUE;
+		break;
+	case sizeof(uint64):
+		*(volatile uint64*)v = *((volatile uint64*)(addr));
+		if (*(volatile uint64*)v == 0xFFFFFFFFFFFFFFFFu)
+			verify = TRUE;
+		break;
+	}
+	if (verify) {
+		*chk_rdsts = TRUE;
+	}
+}
+
+/* Check and handle for any axi errors seen on current register read */
+void
+osl_bpt_chk_rreg_status(bool read_st)
+{
+	/* log and clear the axi wrapper registers */
+	if (read_st) {
+		(void)hal_dngl_bp_clear_timeout();
+	}
+}
+#endif /* AXI_TIMEOUTS_NIC */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
 void
