@@ -16578,9 +16578,12 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	return err;
 
 fail:
-	/* Clear driver states on roam failure */
+	/* clear the connection states so that no other context use stale data */
 	wl_clr_drv_status(cfg, CONNECTED, ndev);
 	wl_clr_drv_status(cfg, ROAMING, ndev);
+
+	/* Notify the upper layer to notify connection drop */
+	CFG80211_DISCONNECTED(ndev, 0, NULL, 0, false, GFP_KERNEL);
 	/* Trigger a disassoc to avoid state mismatch between driver and upper
 	* layers, since we skip roam indication to upper layers in fail: handling
 	*/
