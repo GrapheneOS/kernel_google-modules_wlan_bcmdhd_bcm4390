@@ -909,6 +909,14 @@ typedef struct wl_nancfg
 	nan_bootstrapping_entry_t *nan_bs_entries;
 	uint16 bs_txs_pend_token;	  /* Bootstrapping Tx-fup is waiting for TXS with token */
 	uint8 pairing_cfm_pend_cnt;	  /* Pending cnt for pairing confirm */
+	/* nan timestamps for latency calculation */
+	uint64  rng_nan_enab_start_ts;
+	uint64  rng_nan_enabled_ts;
+	uint64	rng_nan_merge_ts;
+	uint64  rng_subscribe_ts;
+	uint64  rng_subscribe_match_ts;
+	uint64  rng_start_ts;
+	uint64  rng_end_ts;
 } wl_nancfg_t;
 
 #define NAN_RTT_ENABLED(cfg) (wl_cfgnan_is_enabled(cfg) && \

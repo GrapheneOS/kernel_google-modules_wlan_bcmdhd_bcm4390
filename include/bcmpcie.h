@@ -42,6 +42,7 @@ typedef struct {
 #define BCMPCIE_MAX_TX_FLOWS	40
 #endif /* ! BCMPCIE_MAX_TX_FLOWS */
 
+#define PCIE_SHARED_VERSION_10		0x0000A
 #define PCIE_SHARED_VERSION_9		0x00009
 #define PCIE_SHARED_VERSION_8		0x00008
 #define PCIE_SHARED_VERSION_7		0x00007
@@ -352,7 +353,10 @@ typedef struct {
 	uint8	rxpost_max;	/* max aggregated work items in rxpost, filled by host */
 	uint8	txcpl_max;	/* max aggregated work items in txcpl, filled by dongle */
 	uint8	rxcpl_max;	/* max aggregated work items in rxcpl, filled by dongle */
-	uint16	resvd;		/* reserved */
+	union {
+		uint16  resvd;		/* reserved in rev9   */
+		uint16	rxbuf_len;	/* host rxbuf_post_len in rev10 */
+	};
 } pcie_aggr_sh_t;
 
 /**
@@ -432,7 +436,7 @@ typedef struct {
 	/* Pointer to ewp_info_t data structure [ipc v9] */
 	uint32		PHYS_ADDR_N(ewp_info_addr);
 
-	/* aggregated work item shared information [ipc v9] */
+	/* aggregated work item shared information [ipc v9 & v10] */
 	pcie_aggr_sh_t	aggr_sh_info;
 } pciedev_shared_t;
 

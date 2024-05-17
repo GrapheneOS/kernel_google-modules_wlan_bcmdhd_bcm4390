@@ -7467,4 +7467,26 @@ typedef struct wl_llw_rx_info {
 	ratespec_t rspec;
 	/* more info can be added later */
 } wl_llw_rx_info_t;
+
+/* PHY RX counters in WL counters. SW based counters */
+typedef struct wl_cnt_phy_rx_stats_block_v1 {
+	uint8 stats_block_idx;
+	uint8 pad[3];
+	/* chup_mode0 and chup_mode1 need to be next to each other */
+	uint32 chup_mode0;
+	uint32 chup_mode1;
+	/* dmd_mode0 and dmd_mode1 need to be next to each other */
+	uint32 dmd_mode0;
+	uint32 dmd_mode1;
+} wl_cnt_phy_rx_stats_block_v1_t;
+
+#define WL_CNT_PHY_RX_STATS_V1		(1u)
+typedef struct wl_cnt_phy_rx_stats_v1_t {
+	uint16	version;
+	uint16	len;
+	uint8	num_stats_blocks; /* Number of stats blocks supported on slice */
+	uint8	pad[3];
+	/* Per ML Link PHY RX counters (esp. eMLSR) */
+	uint8	counters[];
+} wl_cnt_phy_rx_stats_v1_t;
 #endif /* _wlioctl_counters_h_ */

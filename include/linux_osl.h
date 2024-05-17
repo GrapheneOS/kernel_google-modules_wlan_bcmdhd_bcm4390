@@ -343,6 +343,11 @@ extern void osl_preempt_enable(osl_t *osh);
 	#define OSL_PREFETCH(ptr)		BCM_REFERENCE(ptr)
 #endif /* !__ARM_ARCH_7A__ */
 
+#ifdef AXI_TIMEOUTS_NIC
+extern void osl_bpt_rreg(osl_t *osh, ulong addr, volatile void *v, ulong r,
+	uint size, bool *chk_rdsts);
+#endif /* AXI_TIMEOUTS_NIC */
+
 /* register access macros */
 #if defined(BCMSDIO)
 	#include <bcmsdh.h>
@@ -502,6 +507,22 @@ extern uintptr __osl_v;
 		OSL_READ_REG(osh, r)) \
 )
 #else
+#ifdef AXI_TIMEOUTS_NIC
+/* Besides reading the register.. this checks if their is a possible read failure
+ * due to axi timeout and accordingly invoke a handler to capture err info
+ */
+#define NO_WIN_CHECK_R_REG(osh, r, addr, read_st) (\
+	SELECT_BUS_READ(osh, \
+		({ \
+			__typeof(*(r)) __osl_v = 0; \
+			os_l1_exit_io; \
+			osl_bpt_rreg(osh, (uintptr)(addr), &__osl_v, (uintptr)r, \
+				sizeof(*(r)), read_st); \
+			__osl_v; \
+		}), \
+		OSL_READ_REG(osh, r)) \
+)
+#else
 #define NO_WIN_CHECK_R_REG(osh, r, addr) (\
 	SELECT_BUS_READ(osh, \
 		({ \
@@ -522,6 +543,7 @@ extern uintptr __osl_v;
 		}), \
 		OSL_READ_REG(osh, r)) \
 )
+#endif /* AXI_TIMEOUTS_NIC */
 #endif /* NIC_PCIE_DEDICATED_WINDOWS */
 #else /* !CONFIG_64BIT */
 #define R_REG(osh, r) (\
@@ -927,6 +949,21 @@ volatile void *osl_update_pcie_win(osl_t *osh, volatile void *reg_addr);
 #define BAR0_WINDOW_OFFSET_MASK		0xFFFu
 #define BAR0_WINDOW_ADDRESS_MASK	~BAR0_WINDOW_OFFSET_MASK
 
+#ifdef AXI_TIMEOUTS_NIC
+/* Read the register and check the status only after releasing the spinlock.
+ * There would be further register accesses to check possible axi errors
+ */
+#define WIN_CHECK_R_REG(osh, r) ({ \
+	unsigned long _lock_flags_r_ = osl_spin_lock(osl_reg_access_pcie_window.bp_access_lock_r); \
+	volatile void *_bar_addr_r_ = osl_update_pcie_win(osh, (volatile void *)r); \
+	bool rd_status = FALSE; \
+	typeof(*r) _retval_; \
+	_retval_ = (typeof(*r))NO_WIN_CHECK_R_REG(osh, r, _bar_addr_r_, &rd_status); \
+	osl_spin_unlock(osl_reg_access_pcie_window.bp_access_lock_r, _lock_flags_r_); \
+	osl_bpt_chk_rreg_status(rd_status); \
+	_retval_; \
+})
+#else
 #define WIN_CHECK_R_REG(osh, r) ({ \
 	unsigned long _lock_flags_r_ = osl_spin_lock(osl_reg_access_pcie_window.bp_access_lock_r); \
 	volatile void *_bar_addr_r_ = osl_update_pcie_win(osh, (volatile void *)r); \
@@ -935,6 +972,7 @@ volatile void *osl_update_pcie_win(osl_t *osh, volatile void *reg_addr);
 	osl_spin_unlock(osl_reg_access_pcie_window.bp_access_lock_r, _lock_flags_r_); \
 	_retval_; \
 })
+#endif /* AXI_TIMEOUTS_NIC */
 
 #define WIN_CHECK_W_REG(osh, r, v) ({ \
 	unsigned long _lock_flags_w_ = osl_spin_lock(osl_reg_access_pcie_window.bp_access_lock_w); \
@@ -1015,6 +1053,7 @@ extern unsigned long osl_spin_lock_irq(void *lock);
 extern void osl_spin_unlock_irq(void *lock, unsigned long flags);
 extern unsigned long osl_spin_lock_bh(void *lock);
 extern void osl_spin_unlock_bh(void *lock, unsigned long flags);
+extern void osl_bpt_chk_rreg_status(bool read_st);
 
 extern void *osl_mutex_lock_init(osl_t *osh);
 extern void osl_mutex_lock_deinit(osl_t *osh, void *lock);

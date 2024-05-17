@@ -1737,6 +1737,7 @@ pktpool_t *pktpool_resv_alfrag_data = NULL;
 #endif /* BCMRESVFRAGPOOL */
 
 pktpool_t *pktpool_shared_rxlfrag = NULL;
+pktpool_t *pktpool_rxlfrag_reclaim = NULL;
 
 /* Rx data pool w/o rxfrag structure */
 pktpool_t *pktpool_shared_rxdata = NULL;
@@ -1834,6 +1835,18 @@ BCMATTACHFN(hnd_pktpool_init)(osl_t *osh)
 		goto error;
 	}
 #endif /* defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED) */
+
+#ifdef BCM_RXRECLAIM_POOL
+	/* Allocate the packet pool used for dma_rxreclaim() operations on dma instances
+	 * that need to allocate lfrags to return resources.
+	 */
+	pktpool_rxlfrag_reclaim = MALLOCZ(osh, sizeof(pktpool_t));
+	if (pktpool_rxlfrag_reclaim == NULL) {
+		ASSERT(0);
+		err = BCME_NOMEM;
+		goto error;
+	}
+#endif // BCM_RXRECLAIM_POOL
 
 #if defined(BCMRXDATAPOOL) && !defined(BCMRXDATAPOOL_DISABLE)
 	pktpool_shared_rxdata = MALLOCZ(osh, sizeof(pktpool_t));
@@ -1974,6 +1987,19 @@ BCMATTACHFN(hnd_pktpool_init)(osl_t *osh)
 	pktpool_setmaxlen(pktpool_shared_rxlfrag, SHARED_RXFRAG_POOL_LEN);
 #endif /* defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED) */
 
+#ifdef BCM_RXRECLAIM_POOL
+	/* Init the packet pool used for dma_rxreclaim() operations on dma instances
+	 * that need to allocate lfrags to return resources.
+	 */
+	n = 1;
+	if ((err = pktpool_init(osh, pktpool_rxlfrag_reclaim, &n, 0, FALSE, lbuf_rxfrag,
+			FALSE, 0, 0)) != BCME_OK) {
+		ASSERT(0);
+		goto error;
+	}
+	pktpool_setmaxlen(pktpool_rxlfrag_reclaim, 1);
+#endif // BCM_RXRECLAIM_POOL
+
 #if defined(BCMFRWDPOOLREORG) && !defined(BCMFRWDPOOLREORG_DISABLED)
 	/* Attach poolreorg module */
 	if ((frwd_poolreorg_info = poolreorg_attach(osh,
@@ -2017,6 +2043,17 @@ BCMATTACHFN(hnd_pktpool_deinit)(osl_t *osh)
 		poolreorg_detach(frwd_poolreorg_info);
 	}
 #endif /* defined(BCMFRWDPOOLREORG) && !defined(BCMFRWDPOOLREORG_DISABLED) */
+
+#ifdef BCM_RXRECLAIM_POOL
+	if (pktpool_rxlfrag_reclaim != NULL) {
+		if (pktpool_rxlfrag_reclaim->inited) {
+			pktpool_deinit(osh, pktpool_rxlfrag_reclaim);
+		}
+
+		hnd_free(pktpool_rxlfrag_reclaim);
+		pktpool_rxlfrag_reclaim = (pktpool_t *)NULL;
+	}
+#endif // BCM_RXRECLAIM_POOL
 
 #if defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)
 	if (pktpool_shared_rxlfrag != NULL) {

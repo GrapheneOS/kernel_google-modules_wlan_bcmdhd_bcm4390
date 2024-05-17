@@ -5888,8 +5888,6 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 	if (bus->is_linkdown) {
 		DHD_ERROR(("%s: PCIe link is down so skip\n", __FUNCTION__));
-		/* panic only for DUMP_MEMFILE_BUGON */
-		ASSERT(bus->dhd->memdump_enabled != DUMP_MEMFILE_BUGON);
 		ret = BCME_ERROR;
 		goto exit;
 	}
@@ -14521,7 +14519,7 @@ dhdpci_bus_read_frames(dhd_bus_t *bus)
 		DHD_RPM(("%s: Bus is in power save state (%d). "
 			"Skip processing rest of ring buffers.\n",
 			__FUNCTION__, bus->bus_low_power_state));
-		return FALSE;
+		return more;
 	}
 
 	/* update the flow ring cpls */

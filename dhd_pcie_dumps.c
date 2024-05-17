@@ -140,12 +140,15 @@ dhd_bus_dump_imp_cfg_registers(struct dhd_bus *bus)
 	uint32 devctl2 = dhd_pcie_config_read(bus, PCIECFGGEN_DEV_STATUS_CTRL2, sizeof(uint32));
 	uint32 uc_err_status = dhd_pcie_config_read(bus, PCIE_CFG_UC_ERR_STS, sizeof(uint32));
 	uint32 corr_err_status = dhd_pcie_config_read(bus, PCIE_CFG_CORR_ERR_STS, sizeof(uint32));
+	uint32 err_cap_ctrl = dhd_pcie_config_read(bus, PCI_ERR_CAP_CTRL, sizeof(uint32));
+	uint32 lane_err_status =
+		dhd_pcie_config_read(bus, PCIECFGREG_LANE_ERR_STAT, sizeof(uint32));
 
 	DHD_PRINT(("PCIE CFG regs: status_cmd(0x%x)=0x%x, pmcsr(0x%x)=0x%x "
 		"base_addr0(0x%x)=0x%x base_addr1(0x%x)=0x%x "
 		"linkctl(0x%x)=0x%x linkctl2(0x%x)=0x%x l1ssctrl(0x%x)=0x%x "
 		"devctl(0x%x)=0x%x devctl2(0x%x)=0x%x uc_err_status(0x%x)=0x%x "
-		"corr_err_status(0x%x)=0x%x\n",
+		"corr_err_status(0x%x)=0x%x err_cap_ctrl(0x%x)=0x%x lane_err_status(0x%x)=0x%x\n",
 		PCIECFGREG_STATUS_CMD, status_cmd,
 		PCIE_CFG_PMCSR, pmcsr,
 		PCIECFGREG_BASEADDR0, base_addr0,
@@ -156,7 +159,9 @@ dhd_bus_dump_imp_cfg_registers(struct dhd_bus *bus)
 		PCIECFGREG_DEV_STATUS_CTRL, devctl,
 		PCIECFGGEN_DEV_STATUS_CTRL2, devctl2,
 		PCIE_CFG_UC_ERR_STS, uc_err_status,
-		PCIE_CFG_CORR_ERR_STS, corr_err_status));
+		PCIE_CFG_CORR_ERR_STS, corr_err_status,
+		PCI_ERR_CAP_CTRL, err_cap_ctrl,
+		PCIECFGREG_LANE_ERR_STAT, lane_err_status));
 }
 
 #define PCIE_SLAVER_WRAPPER_BASE	0x18102000u
