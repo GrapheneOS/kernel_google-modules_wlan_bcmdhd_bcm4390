@@ -9781,6 +9781,10 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	dhd_state |= DHD_ATTACH_STATE_LB_ATTACH_DONE;
 #endif /* DHD_LB */
 
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+	skb_queue_head_init(&dhd->inv_addr_queue);
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
+
 #if defined(DNGL_AXI_ERROR_LOGGING) && defined(DHD_USE_WQ_FOR_DNGL_AXI_ERROR)
 	INIT_WORK(&dhd->axi_error_dispatcher_work, dhd_axi_error_dispatcher_fn);
 #endif /* DNGL_AXI_ERROR_LOGGING && DHD_USE_WQ_FOR_DNGL_AXI_ERROR */
@@ -15290,6 +15294,10 @@ void dhd_detach(dhd_pub_t *dhdp)
 		DHD_LB_STATS_DEINIT(&dhd->pub);
 	}
 #endif /* DHD_LB */
+
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+	skb_queue_purge(&dhd->inv_addr_queue);
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
 
 #if defined(DNGL_AXI_ERROR_LOGGING) && defined(DHD_USE_WQ_FOR_DNGL_AXI_ERROR)
 	dhd_cancel_work_sync(&dhd->axi_error_dispatcher_work);
@@ -25150,6 +25158,15 @@ dhd_get_module_exit_status(struct dhd_pub *dhdp)
 {
 	return OSL_ATOMIC_READ(dhdp->osh, &exit_in_progress);
 }
+
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+void
+dhd_enqueue_inv_address_queue(struct dhd_pub *dhdp, void *pkt)
+{
+	dhd_info_t *dhd = (dhd_info_t *)(dhdp->info);
+	skb_queue_tail(&dhd->inv_addr_queue, (struct sk_buff *)pkt);
+}
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
 
 /**
  * Given an skb list, walkthrough the list of skbs and print the skb address to dmesg
