@@ -1399,9 +1399,7 @@ dhd_dump_txrx_stats(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 	            dhdp->tx_cso_cnt, dhdp->tx_nocso_cnt);
 #endif
 #ifdef DHD_VALIDATE_PKT_ADDRESS
-	bcm_bprintf(strbuf, "badaddr_pkt_cnt %lu "
-		"badaddr_pkt_copy_fail_cnt %lu\n",
-		dhdp->badaddr_pkt_cnt, dhdp->badaddr_pkt_copy_fail_cnt);
+	bcm_bprintf(strbuf, "badaddr_pkt_cnt %lu \n", dhdp->badaddr_pkt_cnt);
 #endif /* DHD_VALIDATE_PKT_ADDRESS */
 
 	/* ----------------------------------------------------- */
@@ -2874,10 +2872,6 @@ dhd_doiovar(dhd_pub_t *dhd_pub, int ifidx, const bcm_iovar_t *vi, uint32 actioni
 #ifdef RX_CSO
 		dhd_pub->rx_cso_cnt = dhd_pub->rx_nocso_cnt = 0;
 #endif /* RX_CSO */
-#ifdef DHD_VALIDATE_PKT_ADDRESS
-		dhd_pub->badaddr_pkt_cnt = 0;
-		dhd_pub->badaddr_pkt_copy_fail_cnt = 0;
-#endif /* DHD_VALIDATE_PKT_ADDRESS */
 		dhd_clear_if_stats(dhd_pub);
 		bzero(&dhd_pub->dstats, sizeof(dhd_pub->dstats));
 		dhd_bus_clearcounts(dhd_pub);

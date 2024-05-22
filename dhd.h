@@ -2112,7 +2112,6 @@ typedef struct dhd_pub {
 #endif /* DHD_SSSR_DUMP */
 #ifdef DHD_VALIDATE_PKT_ADDRESS
 	uint badaddr_pkt_cnt;
-	uint badaddr_pkt_copy_fail_cnt;
 #endif /* DHD_VALIDATE_PKT_ADDRESS */
 	uint32 armpc;
 	uint32 arm_assert_phy_addr;
@@ -5077,5 +5076,6 @@ int dhd_reinit_logtrace_process(void *dhd_info);
 #endif /* SHOW_LOGTRACE */
 #ifdef DHD_VALIDATE_PKT_ADDRESS
 extern void *dhd_validate_packet_address(dhd_pub_t *dhd, void *pkt);
+extern void dhd_enqueue_inv_address_queue(struct dhd_pub *dhdp, void *pkt);
 #endif /* DHD_VALIDATE_PKT_ADDRESS */
 #endif /* _dhd_h_ */
