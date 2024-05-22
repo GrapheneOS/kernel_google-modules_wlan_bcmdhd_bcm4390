@@ -256,6 +256,11 @@ typedef struct dhd_info {
 	*/
 	struct sk_buff_head   rx_emerge_queue	____cacheline_aligned;
 
+#ifdef DHD_VALIDATE_PKT_ADDRESS
+	/* Queue to hold invalid address packets in Hikey */
+	struct sk_buff_head   inv_addr_queue	____cacheline_aligned;
+#endif /* DHD_VALIDATE_PKT_ADDRESS */
+
 	/* Number of times DPC Tasklet ran */
 	uint32	dhd_dpc_cnt;
 	/* Number of times NAPI processing got scheduled */
