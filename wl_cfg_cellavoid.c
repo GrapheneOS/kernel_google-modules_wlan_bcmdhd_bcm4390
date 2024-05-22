@@ -65,7 +65,9 @@
 
 #define INVALID_CHSPEC_BW	(0xFFFF)
 
-#define CELLAVOID_DEFAULT_TXCAP	127u
+#define CELLAVOID_NO_POWER_CAP (0x7FFFFFFF)
+#define CELLAVOID_TXCAP_MIN_VAL -32	/* dBm */
+#define CELLAVOID_TXCAP_MAX_VAL 31	/* dBm */
 #define CELLAVOID_MAX_CH 128u
 #define WL_CELLAVOID_INFORM(args) WL_ERR(args)
 
@@ -511,7 +513,7 @@ wl_cellavoid_clear_cell_chan_list(wl_cellavoid_info_t *cellavoid_info)
 		GCC_DIAGNOSTIC_POP();
 		list_del(&chan_info->list);
 		/* Restore channel info to the value of safe channel */
-		chan_info->pwr_cap = CELLAVOID_DEFAULT_TXCAP;
+		chan_info->pwr_cap = CELLAVOID_TXCAP_MAX_VAL;
 		list_add(&chan_info->list, &cellavoid_info->avail_chan_info_list);
 	}
 	cellavoid_info->cell_chan_info_cnt = 0;
@@ -795,7 +797,7 @@ wl_cellavoid_alloc_chan_info(wl_cellavoid_info_t *cellavoid_info, chanspec_t cha
 	}
 
 	chan_info->chanspec = chanspec;
-	chan_info->pwr_cap = CELLAVOID_DEFAULT_TXCAP;
+	chan_info->pwr_cap = CELLAVOID_TXCAP_MAX_VAL;
 
 	return chan_info;
 }
@@ -1782,6 +1784,7 @@ wl_cfgvendor_cellavoid_set_cell_channels(struct wiphy *wiphy,
 		struct wireless_dev *wdev, const void  *data, int len)
 {
 	int err = BCME_OK, rem, rem1, rem2, type;
+	int32 fwk_val;
 	wl_cellavoid_param_t param;
 	wl_cellavoid_chan_param_t* cur_chan_param = NULL;
 	const struct nlattr *iter, *iter1, *iter2;
@@ -1842,19 +1845,30 @@ wl_cfgvendor_cellavoid_set_cell_channels(struct wiphy *wiphy,
 								nla_get_u32(iter2);
 							break;
 						case CELLAVOID_ATTRIBUTE_PWRCAP:
-							cur_chan_param->pwr_cap =
-								nla_get_u32(iter2);
+							fwk_val = nla_get_u32(iter2);
+							WL_DBG_MEM(("fwk_val:0x%x\n", fwk_val));
+							if (fwk_val == CELLAVOID_NO_POWER_CAP) {
+								cur_chan_param->pwr_cap = CELLAVOID_TXCAP_MAX_VAL;
+							} else if ((fwk_val >= CELLAVOID_TXCAP_MIN_VAL) ||
+								(fwk_val < CELLAVOID_TXCAP_MAX_VAL)) {
+								cur_chan_param->pwr_cap = fwk_val;
+							} else {
+								WL_ERR(("unsupported value for pwr_cap:0x%x\n",
+									fwk_val));
+								err = -EINVAL;
+								goto exit;
+							}
 							break;
 					}
 				}
+				WL_DBG_MEM(("CELLAVOID PARAM - BAND:%d CHAN:%d PWR_CAP:%d\n",
+					cur_chan_param->band, cur_chan_param->center_channel,
+					cur_chan_param->pwr_cap));
 				cur_chan_param++;
 			}
 			break;
 		}
 	}
-
-	WL_INFORM_MEM(("CELLAVOID PARAM - CNT:%d MANDATORY:%d\n",
-		param.chan_cnt, param.mandatory));
 
 	err = wl_cellavoid_validate_param(cfg, &param);
 	if (err) {
