@@ -1662,6 +1662,7 @@ typedef struct dhd_pub {
 #ifdef DHD_COREDUMP
 	uint8 *coredump_mem;
 	uint32 coredump_len;
+	uint32 uc_status;		/* PCIE Uncorrectable Error Status */
 	uint8 ewp_init_state;
 	char memdump_str[DHD_MEMDUMP_LONGSTR_LEN];
 #endif /* DHD_COREDUMP */
@@ -3331,6 +3332,13 @@ extern int wl_iw_send_priv_event(struct net_device *dev, char *flag);
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 extern void dhd_flush_rx_tx_wq(dhd_pub_t *dhdp);
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
+
+#ifdef __linux__
+bool dhd_check_del_in_progress(dhd_pub_t *dhdp, uint8 ifindex);
+#else
+static INLINE bool dhd_check_del_in_progress(dhd_pub_t *dhdp, uint8 ifindex)
+{ return FALSE; }
+#endif
 
 /*
  * Insmod parameters for debug/test

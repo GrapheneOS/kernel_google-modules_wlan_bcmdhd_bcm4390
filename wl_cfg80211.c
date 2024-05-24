@@ -14703,8 +14703,7 @@ wl_handle_link_down(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 	/*
 	* FW sends body and body len as a part of deauth
 	* and disassoc events (WLC_E_DISASSOC_IND, WLC_E_DEAUTH_IND)
-	* The VIEs sits after reason code in the body. Reason code is
-	* 2 bytes long.
+	* The VIEs sits after reason code in the body. Reason code is 2 bytes long.
 	*/
 	WL_DBG(("recv disconnect ies ie_len = %d\n", ie_len));
 	if (event == WLC_E_DISASSOC_IND || event == WLC_E_DEAUTH_IND) {
@@ -14735,6 +14734,9 @@ wl_handle_link_down(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 		}
 		/* force reset reason code to prevent autoreconnect in bcnloss case */
 		reason = 0;
+	} else if ((event == WLC_E_LINK) && (as->reason == WLC_E_LINK_DISASSOC)) {
+		/* Reason to upper layer indicating locally generated disassoc */
+		reason = WLAN_REASON_DEAUTH_LEAVING;
 	}
 
 #ifdef BCMDONGLEHOST
@@ -16578,16 +16580,16 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	return err;
 
 fail:
-	/* clear the connection states so that no other context use stale data */
+	/* Clear driver states on roam failure and notify upper layer */
 	wl_clr_drv_status(cfg, CONNECTED, ndev);
 	wl_clr_drv_status(cfg, ROAMING, ndev);
 
-	/* Notify the upper layer to notify connection drop */
+	/* notify upper layer */
 	CFG80211_DISCONNECTED(ndev, 0, NULL, 0, false, GFP_KERNEL);
-	/* Trigger a disassoc to avoid state mismatch between driver and upper
-	* layers, since we skip roam indication to upper layers in fail: handling
-	*/
+
+	/* Trigger a disassoc to avoid state mismatch between driver and FW */
 	wl_cfg80211_disassoc(ndev, WLAN_REASON_DEAUTH_LEAVING);
+
 #if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	wl_del_roam_timeout(cfg);
 #endif /* DHD_LOSSLESS_ROAMING || WLFBT */

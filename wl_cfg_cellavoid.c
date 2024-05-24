@@ -1778,13 +1778,35 @@ wl_cellavoid_update_param(struct bcm_cfg80211 *cfg, wl_cellavoid_param_t *param)
 	return err;
 }
 
+static int
+wl_cellavoid_is_pwrcap_valid(struct bcm_cfg80211 *cfg,
+	int32 fwk_val, int8 *pwrcap)
+{
+	int ret = BCME_OK;
+
+	WL_DBG_MEM(("fwk_val:0x%x\n", fwk_val));
+
+	if (fwk_val == CELLAVOID_NO_POWER_CAP) {
+		*pwrcap = CELLAVOID_TXCAP_MAX_VAL;
+	} else if ((fwk_val < CELLAVOID_TXCAP_MAX_VAL) &&
+		(fwk_val >= CELLAVOID_TXCAP_MIN_VAL)) {
+		*pwrcap = fwk_val;
+	} else {
+		WL_ERR(("unsupported value for pwr_cap:0x%x\n",
+			fwk_val));
+		ret = BCME_BADARG;
+	}
+
+	return ret;
+}
+
 /* cfg vendor interface function */
 int
 wl_cfgvendor_cellavoid_set_cell_channels(struct wiphy *wiphy,
 		struct wireless_dev *wdev, const void  *data, int len)
 {
 	int err = BCME_OK, rem, rem1, rem2, type;
-	int32 fwk_val;
+	int8 pwrcap;
 	wl_cellavoid_param_t param;
 	wl_cellavoid_chan_param_t* cur_chan_param = NULL;
 	const struct nlattr *iter, *iter1, *iter2;
@@ -1845,17 +1867,12 @@ wl_cfgvendor_cellavoid_set_cell_channels(struct wiphy *wiphy,
 								nla_get_u32(iter2);
 							break;
 						case CELLAVOID_ATTRIBUTE_PWRCAP:
-							fwk_val = nla_get_u32(iter2);
-							WL_DBG_MEM(("fwk_val:0x%x\n", fwk_val));
-							if (fwk_val == CELLAVOID_NO_POWER_CAP) {
-								cur_chan_param->pwr_cap = CELLAVOID_TXCAP_MAX_VAL;
-							} else if ((fwk_val >= CELLAVOID_TXCAP_MIN_VAL) ||
-								(fwk_val < CELLAVOID_TXCAP_MAX_VAL)) {
-								cur_chan_param->pwr_cap = fwk_val;
+							err = wl_cellavoid_is_pwrcap_valid(cfg,
+								nla_get_u32(iter2), &pwrcap);
+							if (err == BCME_OK) {
+								cur_chan_param->pwr_cap = pwrcap;
 							} else {
-								WL_ERR(("unsupported value for pwr_cap:0x%x\n",
-									fwk_val));
-								err = -EINVAL;
+								WL_ERR(("pwr_cap is not valid\n"));
 								goto exit;
 							}
 							break;
@@ -1869,6 +1886,9 @@ wl_cfgvendor_cellavoid_set_cell_channels(struct wiphy *wiphy,
 			break;
 		}
 	}
+
+	WL_INFORM_MEM(("CELLAVOID PARAM - CNT:%d MANDATORY:%d\n",
+		param.chan_cnt, param.mandatory));
 
 	err = wl_cellavoid_validate_param(cfg, &param);
 	if (err) {
