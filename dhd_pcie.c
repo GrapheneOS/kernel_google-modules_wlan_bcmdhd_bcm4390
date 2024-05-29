@@ -15812,6 +15812,17 @@ dhd_get_ewp_init_state(dhd_bus_t *bus, uint8 *init_state)
 	*init_state = ewp_info.init_state;
 	return;
 }
+
+void
+dhd_coredump_add_status(char* buf, char *err_tag, uint32 status)
+{
+	int len;
+	if (status) {
+		len = strlen(buf);
+		snprintf(&buf[len], DHD_MEMDUMP_LONGSTR_LEN - len,
+			"_%s0x%x", err_tag, status);
+	}
+}
 #endif /* DHD_COREDUMP */
 
 #if defined(__linux__)

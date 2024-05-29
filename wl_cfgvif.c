@@ -1167,8 +1167,14 @@ wl_cfg80211_del_virtual_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev)
 	u16 wl_iftype;
 	u16 wl_mode;
 	struct net_device *primary_ndev;
+	dhd_pub_t *dhdp;
 
 	if (!cfg) {
+		return -EINVAL;
+	}
+
+	dhdp = (dhd_pub_t *)(cfg->pub);
+	if (!dhdp) {
 		return -EINVAL;
 	}
 
@@ -1193,10 +1199,12 @@ wl_cfg80211_del_virtual_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev)
 		return -ENODEV;
 	}
 
+	dhd_set_del_in_progress(dhdp, wdev->netdev);
 	if ((ret = wl_cfgvif_del_if(cfg, primary_ndev,
 			wdev, NULL)) < 0) {
 		WL_ERR(("IF del failed\n"));
 	}
+	dhd_clear_del_in_progress(dhdp, wdev->netdev);
 
 	return ret;
 }
