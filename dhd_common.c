@@ -6257,17 +6257,10 @@ wl_process_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata, uint pktlen
 						__FUNCTION__, ifevent->ifidx, event->ifname));
 					return (BCME_ERROR);
 				}
-#if defined(__linux__)
-				ndev = dhd_idx2net(dhd_pub, ifevent->ifidx);
-				if (ndev) {
-					dhd_clear_del_in_progress(dhd_pub, ndev);
-				}
-#endif /* __linux__ */
 			} else if (ifevent->opcode == WLC_E_IF_DEL) {
 #if defined(__linux__)
 				ndev = dhd_idx2net(dhd_pub, ifevent->ifidx);
 				if (ndev) {
-					dhd_set_del_in_progress(dhd_pub, ndev);
 					netif_tx_disable(ndev);
 				}
 #endif /* __linux__ */

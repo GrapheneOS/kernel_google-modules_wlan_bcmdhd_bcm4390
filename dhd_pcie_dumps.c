@@ -2288,6 +2288,7 @@ int
 dhd_pcie_debug_info_dump(dhd_pub_t *dhd)
 {
 	int host_irq_disabled;
+	uint32 uc_status;
 
 	DHD_PRINT(("bus->bus_low_power_state = %d\n", dhd->bus->bus_low_power_state));
 	host_irq_disabled = dhdpcie_irq_disabled(dhd->bus);
@@ -2314,9 +2315,12 @@ dhd_pcie_debug_info_dump(dhd_pub_t *dhd)
 	DHD_PRINT(("\n ------- DUMPING PCIE EP config space Registers ------- \r\n"));
 	dhd_bus_dump_imp_cfg_registers(dhd->bus);
 #ifdef EXTENDED_PCIE_DEBUG_DUMP
-	DHD_PRINT(("Pcie EP Uncorrectable Error Status Val=0x%x\n",
-		dhdpcie_ep_access_cap(dhd->bus, PCIE_EXTCAP_ID_ERR,
-		PCIE_EXTCAP_AER_UCERR_OFFSET, TRUE, FALSE, 0)));
+	uc_status = dhdpcie_ep_access_cap(dhd->bus, PCIE_EXTCAP_ID_ERR,
+		PCIE_EXTCAP_AER_UCERR_OFFSET, TRUE, FALSE, 0);
+	DHD_PRINT(("Pcie EP Uncorrectable Error Status Val=0x%x\n", uc_status));
+#ifdef DHD_COREDUMP
+	dhd->uc_status = uc_status;
+#endif /* DHD_COREDUMP */
 	DHD_PRINT(("hdrlog0(0x%x)=0x%08x hdrlog1(0x%x)=0x%08x hdrlog2(0x%x)=0x%08x "
 		"hdrlog3(0x%x)=0x%08x\n", PCI_TLP_HDR_LOG1,
 		dhd_pcie_config_read(dhd->bus, PCI_TLP_HDR_LOG1, sizeof(uint32)),

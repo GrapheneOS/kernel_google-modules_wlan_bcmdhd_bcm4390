@@ -3284,7 +3284,9 @@ dhd_ifdel_event_handler(void *handle, void *event_info, u8 event)
 	dhd_info_t *dhd = handle;
 	int ifidx;
 	dhd_if_event_t *if_event = event_info;
-
+	dhd_pub_t *dhdp = &dhd->pub;
+	struct net_device *ndev = NULL;
+	bool del_cmd_in_progress = NULL;
 
 	if (event != DHD_WQ_WORK_IF_DEL) {
 		DHD_ERROR(("%s: unexpected event \n", __FUNCTION__));
@@ -3311,6 +3313,20 @@ dhd_ifdel_event_handler(void *handle, void *event_info, u8 event)
 		DHD_ERROR(("Netdev not found! Do nothing.\n"));
 		goto done;
 	}
+
+	/* Check whether command context has set del in progress */
+	del_cmd_in_progress = dhd_check_del_in_progress(dhdp, ifidx);
+
+	ndev = dhd_idx2net(dhdp, ifidx);
+	if (!ndev) {
+		DHD_ERROR(("ndev null\n"));
+		goto done;
+	}
+
+	if (!del_cmd_in_progress) {
+		dhd_set_del_in_progress(dhdp, ndev);
+	}
+
 #if defined(WL_CFG80211) && (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0))
 	if (if_event->event.ifidx > 0) {
 		/* Do the post interface del ops */
@@ -3325,6 +3341,10 @@ dhd_ifdel_event_handler(void *handle, void *event_info, u8 event)
 	dhd_remove_if(&dhd->pub, ifidx, TRUE);
 #endif /* WL_CFG80211 && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
 
+
+	if (!del_cmd_in_progress) {
+		dhd_clear_del_in_progress(dhdp, ndev);
+	}
 
 done:
 	MFREE(dhd->pub.osh, if_event, sizeof(dhd_if_event_t));
@@ -3441,8 +3461,9 @@ dhd_set_mcast_list_handler(void *handle, void *event_info, u8 event)
 
 	ifp = dhd->iflist[ifidx];
 
-	if (ifp == NULL || !dhd->pub.up) {
-		DHD_ERROR(("%s: interface info not available/down \n", __FUNCTION__));
+	if (ifp == NULL || !dhd->pub.up || ifp->del_in_progress) {
+		DHD_ERROR(("%s: interface info not available/down/del_cmd in prog\n",
+			__FUNCTION__));
 		goto done;
 	}
 
@@ -20493,6 +20514,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 	char trap_code[DHD_TRAP_CODE_LEN] = {0};
 	char trap_subcode[DHD_TRAP_CODE_LEN] = {0};
 	int written_len;
+	uint32 uc_status;
 	uint8 ewp_init_state;
 #endif /* DHD_COREDUMP */
 	uint32 memdump_type;
@@ -20533,6 +20555,7 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 #endif /* DHD_SSSR_DUMP */
 #ifdef DHD_COREDUMP
 	ewp_init_state = dhdp->ewp_init_state;
+	uc_status = dhdp->uc_status;
 #endif /* DHD_COREDUMP */
 
 	DHD_GENERAL_LOCK(dhdp, flags);
@@ -20709,6 +20732,9 @@ dhd_mem_dump(void *handle, void *event_info, u8 event)
 		written_len = strlen(dhdp->memdump_str);
 		snprintf(&dhdp->memdump_str[written_len], DHD_MEMDUMP_LONGSTR_LEN - written_len,
 			 "_%.79s_%.79s", pc_fn, lr_fn);
+
+		/* append additional status code with tag string */
+		dhd_coredump_add_status(dhdp->memdump_str, "UC", uc_status);
 	} else if (memdump_type == DUMP_TYPE_DONGLE_INIT_FAILURE) {
 		snprintf(&dhdp->memdump_str[written_len], DHD_MEMDUMP_LONGSTR_LEN - written_len,
 			 "_0x%x_0x%x_0x%x", ewp_init_state, dhdp->armpc, dhdp->arm_assert_phy_addr);
@@ -24782,6 +24808,21 @@ dhd_cancel_delayed_work(void *dwork)
 	if (dwk && dwk->work.func) {
 		ret =  cancel_delayed_work(dwk);
 	}
+	return ret;
+}
+
+bool
+dhd_check_del_in_progress(dhd_pub_t *dhdp, uint8 ifindex)
+{
+	dhd_if_t *ifp = NULL;
+	unsigned long flags;
+	bool ret = TRUE;
+	DHD_GENERAL_LOCK(dhdp, flags);
+	ifp = dhd_get_ifp(dhdp, ifindex);
+	if (ifp) {
+		ret = ifp->del_in_progress;
+	}
+	DHD_GENERAL_UNLOCK(dhdp, flags);
 	return ret;
 }
 
