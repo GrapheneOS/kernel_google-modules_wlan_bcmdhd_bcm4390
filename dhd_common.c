@@ -11921,6 +11921,7 @@ dhd_convert_memdump_type_to_str(uint32 type, char *buf, size_t buf_len, int subs
 			break;
 #endif /* DHD_ERPOM */
 		case DUMP_TYPE_BY_USER:
+		case DUMP_TYPE_CLEAR:
 			type_str = "BY_USER";
 			break;
 		case DUMP_TYPE_LOGSET_BEYOND_RANGE:
