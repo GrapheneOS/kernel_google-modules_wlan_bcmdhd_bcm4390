@@ -9268,6 +9268,7 @@ static int wl_update_ml_link_stat(struct bcm_cfg80211 *cfg, struct net_device *i
 	u8 link_idx, u8 link_id, char **output, uint *total_len)
 {
 	static char iovar_buf[WLC_IOCTL_MAXLEN];
+	static char rate_iovar_buf[WLC_IOCTL_MAXLEN];
 	wifi_rate_stat_v1 *p_wifi_rate_stat_v1 = NULL;
 	wifi_rate_stat *p_wifi_rate_stat = NULL;
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
@@ -9284,7 +9285,6 @@ static int wl_update_ml_link_stat(struct bcm_cfg80211 *cfg, struct net_device *i
 	chanspec_t chanspec = INVCHANSPEC;
 	bss_peer_list_info_t *peer_list_info;
 	wl_bssload_t *bssload;
-	uint32 rspec = 0;
 
 	COMPAT_STRUCT_IFACE(wifi_link_stat, iface);
 
@@ -9437,18 +9437,26 @@ static int wl_update_ml_link_stat(struct bcm_cfg80211 *cfg, struct net_device *i
 	}
 
 	if ((err == BCME_OK) && (peer_list_info && peer_list_info->count > 0)) {
-		err = wldev_link_iovar_getint(inet_ndev, link_idx, "nrate", (int*)&rspec);
+		err = wldev_link_iovar_getbuf(inet_ndev, link_idx, "ratestat", NULL, 0,
+			rate_iovar_buf, WLC_IOCTL_MAXLEN, NULL);
 		if (err != BCME_OK) {
-			WL_ERR(("Error (%d) in getting nrate\n", err));
+			WL_ERR(("failed to fetch the rate_stat: error (%d)\n", err));
+			goto exit;
+		}
+		p_wifi_rate_stat = (wifi_rate_stat *)rate_iovar_buf;
+		if (p_wifi_rate_stat->version != WLC_LINKSTATS_RATESTATS_V1) {
+			err = BCME_VERSION;
 			goto exit;
 		}
 
-		if (WL_CFG_RSPEC_ISEHT(rspec)) {
-			num_rate = NUM_RATE;
-		} else {
-			num_rate = NUM_RATE_NONBE;
+		if (p_wifi_rate_stat->length < sizeof(*p_wifi_rate_stat)) {
+			err = BCME_BADLEN;
+			goto exit;
 		}
-		WL_DBG_MEM(("num_rate %d\n", num_rate));
+
+		num_rate = p_wifi_rate_stat->length/sizeof(*p_wifi_rate_stat);
+		WL_INFORM_MEM(("num_rate %d\n", num_rate));
+
 		COMPAT_ASSIGN_VALUE(iface, peer_info->num_rate, num_rate);
 	}
 
@@ -9472,15 +9480,9 @@ static int wl_update_ml_link_stat(struct bcm_cfg80211 *cfg, struct net_device *i
 	COMPAT_MEMCOPY_IFACE(*output, *total_len, wifi_link_stat, iface, wifi_rate_stat_v1);
 
 	if ((err == BCME_OK) && (peer_list_info && peer_list_info->count > 0)) {
-		err = wldev_link_iovar_getbuf(inet_ndev, link_idx, "ratestat", NULL, 0,
-			iovar_buf, WLC_IOCTL_MAXLEN, NULL);
-		if (err != BCME_OK && err != BCME_UNSUPPORTED) {
-			WL_ERR(("error (%d) - size = %zu\n", err, num_rate*sizeof(wifi_rate_stat)));
-			goto exit;
-		}
 		for (i = 0; i < num_rate; i++) {
 			p_wifi_rate_stat =
-				(wifi_rate_stat *)(iovar_buf + i*sizeof(wifi_rate_stat));
+				(wifi_rate_stat *)(rate_iovar_buf + i*sizeof(wifi_rate_stat));
 			p_wifi_rate_stat_v1 = (wifi_rate_stat_v1 *)*output;
 			p_wifi_rate_stat_v1->rate.preamble = p_wifi_rate_stat->rate.preamble;
 			p_wifi_rate_stat_v1->rate.nss = p_wifi_rate_stat->rate.nss;

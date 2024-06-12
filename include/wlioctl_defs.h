@@ -1485,6 +1485,7 @@ typedef uint32 ratespec_t;
 #define WL_DYNBW_DBG_VAL	0x00000020
 #define WL_RATE_INFO_VAL	0x00000040
 #define WL_RATE_TRACE_VAL	0x00000080
+#define WL_KM_INFO_VAL		0x00000100
 
 /* number of bytes needed to define a proper bit mask for MAC event reporting */
 #define BCMIO_ROUNDUP(x, y)	((((x) + ((y) - 1)) / (y)) * (y))
@@ -3447,6 +3448,7 @@ enum wlc_capext_feature_bitpos {
 #define WL_DBG_CRSH_TYPE_SR_RXIQCAL1			0x51u
 #define WL_DBG_CRSH_TYPE_SR_TEMP0			0x60u
 #define WL_DBG_CRSH_TYPE_SR_TEMP1			0x61u
+#define WL_DBG_CRSH_TYPE_SR_TEMP2			0x62u
 #define WL_DBG_CRSH_TYPE_SR_FULLCAL0			0x70u
 #define WL_DBG_CRSH_TYPE_SR_FULLCAL1			0x71u
 #define WL_DBG_CRSH_TYPE_SR_MPCAL0			0x80u
