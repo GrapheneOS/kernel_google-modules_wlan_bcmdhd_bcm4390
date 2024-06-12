@@ -2250,9 +2250,11 @@ dhd_log_dump_trigger(dhd_pub_t *dhdp, int subcmd)
 		goto exit;
 	}
 
-	if (dhdp->memdump_type != DUMP_TYPE_CLEAR) {
-		DHD_ERROR(("%s: memdump_type=%d in progress, abort DUMP_TYPE_BY_SYSDUMP\n",
-			__FUNCTION__, dhdp->memdump_type));
+	if (dhdp->memdump_type != DUMP_TYPE_CLEAR || dhdp->dongle_trap_data ||
+		dhd_query_bus_erros(dhdp)) {
+		DHD_ERROR(("%s: memdump_type=%d, dongle_trap_data=0x%x, other error memdump"
+			" collection in progress, abort DUMP_TYPE_BY_SYSDUMP\n",
+			__FUNCTION__, dhdp->memdump_type, dhdp->dongle_trap_data));
 		goto exit;
 	}
 

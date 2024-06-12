@@ -1167,6 +1167,7 @@ wl_cfg80211_del_virtual_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev)
 	u16 wl_iftype;
 	u16 wl_mode;
 	struct net_device *primary_ndev;
+	struct net_device *ndev = NULL;
 	dhd_pub_t *dhdp;
 
 	if (!cfg) {
@@ -1185,10 +1186,11 @@ wl_cfg80211_del_virtual_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev)
 		return -ENODEV;
 	}
 
+	ndev = wdev_to_ndev(wdev);
 #ifdef WL_STATIC_IF
 	/* interface delete is invalid for static interface */
-	if (IS_CFG80211_STATIC_IF(cfg, wdev_to_ndev(wdev))) {
-		WL_ERR(("Invalid request to delete static interface %s\n", wdev->netdev->name));
+	if (IS_CFG80211_STATIC_IF(cfg, ndev)) {
+		WL_ERR(("Invalid request to delete static interface %s\n", ndev->name));
 		return -EINVAL;
 	}
 #endif /* WL_STATIC_IF */
@@ -1199,12 +1201,16 @@ wl_cfg80211_del_virtual_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev)
 		return -ENODEV;
 	}
 
-	dhd_set_del_in_progress(dhdp, wdev->netdev);
+	if (ndev) {
+		dhd_set_del_in_progress(dhdp, ndev);
+	}
 	if ((ret = wl_cfgvif_del_if(cfg, primary_ndev,
 			wdev, NULL)) < 0) {
 		WL_ERR(("IF del failed\n"));
 	}
-	dhd_clear_del_in_progress(dhdp, wdev->netdev);
+	if (ndev) {
+		dhd_clear_del_in_progress(dhdp, ndev);
+	}
 
 	return ret;
 }
