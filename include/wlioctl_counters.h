@@ -3810,6 +3810,46 @@ typedef struct wlc_btc_stats_v13 {
 	uint16 fbaci_nsamples_idx3;	/* number of samples at index3 */
 	uint16 idle2fbc_cnt;		/* count of radio state changes from IDle to FBC */
 	uint16 idle2wlauxrx_cnt;	/* count of radio state changes from IDle to Aux Ded Rx. */
+	uint32 fbcx_ovd_cnt;		/* FBC override cnt */
+	uint32 fbcx_ovd_dur;		/* FBC override duration */
+	uint32 fbcx_bt_forced_fbc_cnt;	/* bt fored fbc cnt */
+	uint32 fbcx_bt_forced_fbc_dur;	/* bt forced fbc_dur */
+	uint32 fbcx_bt_auto_fbc_cnt;	/* bt auto fbc cnt */
+	uint32 fbcx_act_cfg;		/* bt act cfg mask to put bt in fbc */
+	uint8 fbaci_acipwr_cdf_idx_c0_ch0;
+	/* core0, channel0 histogram index of  2% ACI power */
+	uint8 fbaci_acipwr_cdf_idx_c1_ch0;
+	/* core1, channel0 histogram index of  2% ACI power */
+	uint16 fbaci_acipwr_cdf_cnt_c0_ch0;
+	/* core0, channel0 histogram count of ACI power (2%) */
+	uint16 fbaci_acipwr_cdf_cnt_c1_ch0;
+	/* core1, channel0 histogram count of ACI power (2%) */
+	uint8 fbaci_acipwr_cdf_idx_c0_ch1;
+	/* core0, channel1 histogram index of  2% ACI power */
+	uint8 fbaci_acipwr_cdf_idx_c1_ch1;
+	/* core1, channel1 histogram index of  2% ACI power */
+	uint16 fbaci_acipwr_cdf_cnt_c0_ch1;
+	/* core0, channel1 histogram count of ACI power (2%) */
+	uint16 fbaci_acipwr_cdf_cnt_c1_ch1;
+	/* core1, channel1 histogram count of ACI power (2%) */
+	uint8 fbaci_acipwr_cdf_idx_c0_ch2;
+	/* core0, channel2 histogram index of  2% ACI power */
+	uint8 fbaci_acipwr_cdf_idx_c1_ch2;
+	/* core1, channel2 histogram index of  2% ACI power */
+	uint16 fbaci_acipwr_cdf_cnt_c0_ch2;
+	/* core0, channel2 histogram count of ACI power (2%) */
+	uint16 fbaci_acipwr_cdf_cnt_c1_ch2;
+	/* core1, channel2 histogram count of ACI power (2%) */
+	uint8 fbaci_acipwr_cdf_idx_c0_ch3;
+	/* core0, channel3 histogram index of  2% ACI power */
+	uint8 fbaci_acipwr_cdf_idx_c1_ch3;
+	/* core1, channel3 histogram index of  2% ACI power */
+	uint16 fbaci_acipwr_cdf_cnt_c0_ch3;
+	/* core0, channel3 histogram count of ACI power (2%) */
+	uint16 fbaci_acipwr_cdf_cnt_c1_ch3;
+	/* core1, channel3 histogram count of ACI power (2%) */
+	uint32 fbagc_fbc_gain_stuck_cnt;
+	/* fbc gain stuck counter */
 } wlc_btc_stats_v13_t;
 
 #define BTCX_STATS_VER_12 12

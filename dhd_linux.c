@@ -7808,7 +7808,8 @@ dhd_get_ifp_by_ndev(dhd_pub_t *dhdp, struct net_device *ndev)
 		}
 	} while (ifidx--);
 
-	DHD_ERROR(("no entry found for %s\n", ndev->name));
+	/* if match not found, ndev may be freed. so avoid dereference */
+	DHD_ERROR(("no entry found for ndev ptr\n"));
 	return NULL;
 }
 
@@ -24859,7 +24860,8 @@ dhd_clear_del_in_progress(dhd_pub_t *dhdp, struct net_device *ndev)
 	DHD_PRINT(("%s\n", __FUNCTION__));
 	ifp = dhd_get_ifp_by_ndev(dhdp, ndev);
 	if (ifp == NULL) {
-		DHD_ERROR(("DHD Iface Info corresponding to %s not found\n", ndev->name));
+		/* use ndev addr only for finding ifp, the ndev may be freed already */
+		DHD_ERROR(("DHD Iface Info not found for given ndev\n"));
 		return;
 	}
 

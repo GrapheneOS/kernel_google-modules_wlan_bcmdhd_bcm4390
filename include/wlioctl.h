@@ -4149,7 +4149,7 @@ typedef struct wl_mws_ocl_override {
 #define OCL_DISABLED_EMLSR		(1u << 16u)  /* Disabled due to EMLSR enabled */
 #define OCL_DISABLED_BTBPHYWAR		(1u << 17u)  /* Disabled during BT eSCO traffic */
 #define OCL_DISABLED_SCCA_MIT		(1u << 18u)  /* Disabled when SCCA enabled, sccatxlbt=1 */
-
+#define OCL_DISABLED_BTMRC_USECASE	(1u << 19u)  /* Disabled when BT has MRC enabled */
 
 /* Bits for hw_status */
 #define OCL_HWCFG			0x01u   /* State of OCL config bit in phy HW */
@@ -10156,12 +10156,14 @@ typedef struct wl_proxd_collect_header_v4 {
  * If set - indicates that NAN initialization is successful
  * Bit 30:
  * If set - indicates that NAN MAC cfg creation is successful
- *
+ * Bit 29:
+ * If set - indicates that NAN disc msch registration type is start flex
  * NOTE: These are only ready-only bits for host.
  * All sets to these bits from host are masked off
  */
-#define WL_NAN_PROTO_INIT_DONE		(1u << 31u)
-#define WL_NAN_CFG_CREATE_DONE		(1u << 30u)
+#define WL_NAN_PROTO_INIT_DONE			(1u << 31u)
+#define WL_NAN_CFG_CREATE_DONE			(1u << 30u)
+#define WL_NAN_CTRL_FW_FLEX_REG_FOR_DISC	(1u << 29u)
 
 #define WL_NAN_GET_PROTO_INIT_STATUS(x) \
 		(((x) & WL_NAN_PROTO_INIT_DONE) ? TRUE:FALSE)
@@ -17496,7 +17498,7 @@ typedef struct wlc_dynsar_sts_obs_win {
 	uint8 opt;
 	uint8 valid;
 	uint8 start;
-	uint8 PAD;
+	uint8 flags;
 	uint32 dur;	/* monitor duration in usec */
 	uint64 ts;	/* timestamp in usec */
 } wlc_dynsar_sts_obs_win_t;
@@ -17690,26 +17692,51 @@ typedef struct dynsar_opt_profile_v1 {
 } dynsar_opt_profile_v1_t;
 
 typedef struct dynsar_opt_profile_v2 {
-	uint32 var_lim; /* variance limit */
-	uint32 var_off; /* hysterysis offset applied to variance while optimized */
-	uint8 pwr_off; /* power boost offset */
-	uint8 mode; /* DSA mode */
+	uint32 var_lim;		/* Variance limit				*/
+	uint32 var_off;		/* Variance Hysterysis while in optimized state */
+	uint8 pwr_off;		/* Power boost to SAR limit			*/
+	uint8 mode;		/* DSA mode					*/
 	/* optimization parameters */
-	uint8 opt_dur;     /* number of mon periods in future to predict optimization */
-	uint8 util_thrhd;  /* Max history utilization before turning off optimization */
-	uint8 util_mean;   /* Mean utilization percentage before turning off optimization */
+	uint8 opt_dur;		/* Tmon periods forecasted when optimized	*/
+	uint8 util_thrhd;	/* Averaged Ux before turning off optimization	*/
+	uint8 util_mean;	/* Mean     Ux before turning off optimization	*/
 	/* failsafe parameters */
-	uint8 fs;          /* historical util percentage to start failsafe */
-	uint8 util_mean_fs; /* Mean utilization to force failsafe */
-	uint8 avg_txdc_fs;   /* mean txdc threshold for failsafe */
-	/* txdc limits */
-	uint8 util_mean_ddc; /* mean utilization threshold to apply avg_txdc_th */
-	uint8 opt_txdc;    /* txdc cap when optimized */
-	uint8 avg_txdc_th;   /* mean txdc threshold for throttling txdc */
-	uint8 opt_txdc_tgt; /* target txdc */
-	uint8 twin; /* Twin in seconds */
+	uint8 fs;          	/* Historical Ux threshold triggering failsafe	*/
+	uint8 util_mean_fs;	/* Mean Ux threshold to trigger failsafe	*/
+	uint8 avg_txdc_fs;	/* Mean TxDC threshold for failsafe for util_mean_fs */
+	/* DDC parameters */
+	uint8 util_mean_ddc;	/* Mean Ux threshold to apply avg_txdc_th	*/
+	uint8 opt_txdc;		/* Static TxDC target limit when DSA is active	*/
+	uint8 avg_txdc_th;	/* Mean TxDC threshold for triggering DDC	*/
+	uint8 opt_txdc_tgt;	/* TxDC target limit when DDC is active		*/
+	uint8 twin;		/* Observation period duration in seconds	*/
 	uint8 pad[3];
 } dynsar_opt_profile_v2_t;
+
+typedef struct dynsar_opt_profile_v3 {
+	uint32 var_lim;		/* Variance limit				*/
+	uint32 var_off;		/* Variance Hysterysis while in optimized state	*/
+	uint8 pwr_off;		/* Power boost to SAR limit			*/
+	uint8 mode;		/* DSA mode					*/
+	/* optimization parameters */
+	uint8 opt_dur;		/* Tmon periods forecasted when not optimized	*/
+	uint8 util_thrhd;	/* Averaged Ux before turning off optimization	*/
+	uint8 util_mean;	/* Mean     Ux before turning off optimization	*/
+	/* failsafe parameters */
+	uint8 fs;          	/* Historical Ux threshold triggering failsafe	*/
+	uint8 util_mean_fs;	/* Mean Ux threshold to trigger failsafe	*/
+	uint8 avg_txdc_fs;	/* Mean TxDC threshold for failsafe for util_mean_fs */
+	/* DDC parameters */
+	uint8 util_mean_ddc;	/* Mean Ux threshold to apply avg_txdc_th	*/
+	uint8 opt_txdc;		/* Static TxDC target limit when DSA is active	*/
+	uint8 avg_txdc_th;	/* Mean TxDC threshold for triggering DDC	*/
+	uint8 opt_txdc_tgt;	/* TxDC target limit when DDC is active		*/
+	uint8 twin;		/* Observation period duration in seconds	*/
+	/* additional parameters */
+	uint8 util_med_opt;	/* Median Ux threshold for optimization		*/
+	uint8 opt_dur_opt;	/* Tmon periods forecasted when optimized	*/
+	uint8 pad;
+} dynsar_opt_profile_v3_t;
 
 typedef struct dynsar_opt_profiles_v1 {
 	uint16 ver;
@@ -17727,6 +17754,21 @@ typedef struct dynsar_opt_profiles_v2 {
 	dynsar_opt_profile_v2_t profiles[];
 } dynsar_opt_profiles_v2_t;
 
+typedef struct dynsar_opt_profiles_v3 {
+	uint16 ver;
+	uint16 len;	/* length of this structure */
+	uint16 active;  /* active profile */
+	uint16 num_profiles;  /* number of profiles in variable length below */
+	dynsar_opt_profile_v3_t profiles[];
+} dynsar_opt_profiles_v3_t;
+
+typedef struct dynsar_opt_profiles_hdr {
+	uint16 ver;
+	uint16 len;	/* length of this structure */
+	uint16 active;  /* active profile */
+	uint16 num_profiles;  /* number of profiles in variable length below */
+} dynsar_opt_profiles_hdr_t;
+
 typedef dynsar_opt_profiles_v2_t dynsar_opt_profiles_t;
 
 typedef struct wl_dynsar_ioc {
@@ -17735,16 +17777,17 @@ typedef struct wl_dynsar_ioc {
 	uint8 PAD[4];
 	union { /* var len payload */
 		uint8 cnt;
-		dynsar_cnt_v1_t det;
-		dynsar_cnt_v2_t detv2;
-		dynsar_cnt_v3_t detv3;
-		dynsar_agg_stat_t agg_stat;
-		dynsar_sum_v1_t sum;
-		dynsar_sum_v2_t sumv2;
-		dynsar_status_v3_t statusv3;
-		dynsar_var_info_t var;
+		dynsar_cnt_v1_t		 det;
+		dynsar_cnt_v2_t		 detv2;
+		dynsar_cnt_v3_t		 detv3;
+		dynsar_agg_stat_t	 agg_stat;
+		dynsar_sum_v1_t		 sum;
+		dynsar_sum_v2_t		 sumv2;
+		dynsar_status_v3_t	 statusv3;
+		dynsar_var_info_t	 var;
 		dynsar_opt_profiles_v1_t profiles;
 		dynsar_opt_profiles_v2_t profilesv2;
+		dynsar_opt_profiles_v3_t profilesv3;
 	} data;
 } wl_dynsar_ioc_t;
 
@@ -20542,6 +20585,29 @@ enum wl_fils_xtlv_id {
 	WL_FILS_XTLV_PMK		= 0x9,
 	WL_FILS_XTLV_TK			= 0xa,
 	WL_FILS_XTLV_PMKID		= 0xb
+};
+
+#define WL_FILS_DISC_IOV_MAJOR_VER_SHIFT 8u
+
+#define WL_FILS_DISC_IOV_MAJOR_VER_1 1u
+#define WL_FILS_DISC_IOV_MINOR_VER_1 1u
+
+#define WL_FILS_DISC_IOV_VERSION_1_1 \
+	((WL_FILS_DISC_IOV_MAJOR_VER_1 \
+	<< WL_FILS_DISC_IOV_MAJOR_VER_SHIFT) | WL_FILS_DISC_IOV_MINOR_VER_1)
+
+enum wl_fils_disc_cmd_ids {
+	WL_FILS_DISC_CMD_VERSION	= 0u,
+	WL_FILS_DISC_CMD_ENABLE		= 1u,
+	WL_FILS_DISC_CMD_TX_PERIOD	= 2u,
+	WL_FILS_DISC_CMD_TX_DURATION	= 3u,
+	WL_FILS_DISC_CMD_LAST
+};
+
+enum wl_fils_disc_xtlv_id {
+	WL_FILS_DISC_XTLV_ENABLE	= 0x1u,
+	WL_FILS_DISC_XTLV_TX_PERIOD	= 0x2u,
+	WL_FILS_DISC_XTLV_TX_DURATION	= 0x3u
 };
 
 #define WL_OCE_IOV_MAJOR_VER_1 1
@@ -26740,7 +26806,7 @@ typedef struct wl_phy_dbg_sra_info_v2 {
 	uint8	sr_softrecovery_count;	    /* Critical region recoverable boot count */
 
 	uint32	sr_dbg02;		    /* not populated yet */
-	uint16	sr_dbg03;		    /* not populated yet */
+	uint16	sr_bootstat_bt;		    /* BT FW boot stat */
 	uint16	sr_dbg04;		    /* not populated yet */
 	uint8	sr_phy_crash_rc;	    /* Critical region crash reason code */
 	uint8	sr_phy_crash_boot_count;    /* Boot count when critical region crash happened */
@@ -26796,6 +26862,13 @@ typedef struct wl_phy_ed_v1 {
 /* subcommand ids for phy_noise */
 enum wl_phy_noise_cmd_type {
 	WL_PHY_NOISE_CMD_LONG = 0u,	/* get noise profile */
+	WL_PHY_NOISE_CMD_KNOISE = 1u,			/* get knoise profile */
+	WL_PHY_NOISE_CMD_KNOISE_RETRYLIMIT = 2u,	/* get knoise profile */
+	WL_PHY_NOISE_CMD_KNOISE_RETRYTIMEOUT = 3u,	/* get knoise profile */
+	WL_PHY_NOISE_CMD_KNOISE_RETRYLIMIT_SCAN = 4u,	/* get knoise profile */
+	WL_PHY_NOISE_CMD_KNOISE_RETRYTIMEOUT_SCAN = 5u,	/* get knoise profile */
+	WL_PHY_NOISE_CMD_KNOISE_IRQ_EN = 6u,		/* get knoise profile */
+	WL_PHY_NOISE_CMD_KNOISE_BLANKING_EN = 7u,	/* get knoise profile */
 	WL_PHY_NOISE_CMD_LAST
 };
 
@@ -26806,11 +26879,23 @@ typedef struct wl_phy_noise_long_v1 {
 	uint8   PAD[3];
 } wl_phy_noise_long_v1_t;
 
+typedef struct wl_phy_noise_knoise_v1 {
+	int32 noise_dBm;		/* knoise dBm */
+	uint8 hwknoise_retrylimit;
+	uint8 hwknoise_retrylimit_scan;
+	uint8 hwknoise_retrytimeout;
+	uint8 hwknoise_retrytimeout_scan;
+	bool  hwknoise_irq;
+	bool  hwknoise_blanking;
+	uint8 PAD[2];
+} wl_phy_noise_knoise_v1_t;
+
 typedef struct wl_phy_noise_v1 {
 	uint16  subcmd_version;		/* Version of the sub-command */
 	uint16  length;			/* Length of the particular struct being used in union */
 	union {
 		wl_phy_noise_long_v1_t long_v1;
+		wl_phy_noise_knoise_v1_t knoise_v1;
 	} u;
 } wl_phy_noise_v1_t;
 

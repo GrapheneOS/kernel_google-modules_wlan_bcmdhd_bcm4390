@@ -131,6 +131,12 @@ typedef uint32	wl_ftm_flags_t;
 #define WL_FTM_SESSION_FLAG_PASSIVE_TB_RANGING	0x0000800000000000llu	/* Passive TB ranging */
 #define WL_FTM_SESSION_FLAG_ONE_WAY		0x0001000000000000llu	/* ONE_WAY RTT */
 #define WL_FTM_SESSION_FLAG_PASSIVE_STA		0x0002000000000000llu	/* Passive STA */
+#define WL_FTM_SESSION_FLAG_DONT_USE_SCAN_CACHE	0x0004000000000000llu	/* Don't use scan cache for
+									 * ranging scan
+									 */
+#define WL_FTM_SESSION_FLAG_DONT_SCAN		0x0008000000000000llu	/* Don't scan when both
+									 * peers are already known.
+									 */
 
 #define WL_FTM_SESSION_FLAG_ALL			0xffffffffffffffffllu
 typedef uint64 wl_ftm_session_flags_t;
@@ -152,7 +158,9 @@ typedef uint64 wl_ftm_session_flags_t;
 	| WL_FTM_SESSION_FLAG_AUTO_BURST \
 	| WL_FTM_SESSION_FLAG_NAN_BSS \
 	| WL_FTM_SESSION_FLAG_NO_TSF_SYNC \
-	| WL_FTM_SESSION_FLAG_CONT_ON_BURST_ERR)
+	| WL_FTM_SESSION_FLAG_CONT_ON_BURST_ERR \
+	| WL_FTM_SESSION_FLAG_DONT_USE_SCAN_CACHE \
+	| WL_FTM_SESSION_FLAG_DONT_SCAN)
 
 /* flags relevant to MC sessions */
 #define FTM_MC_CONFIG_MASK \
@@ -427,7 +435,9 @@ typedef enum {
 	WL_FTM_TLV_ID_SECURITY_PASSPHRASE	= 1045, /* ftm security passphrase */
 	WL_FTM_TLV_ID_SECURITY_PASSPHRASE_LEN	= 1046, /* ftm security passphrase len */
 	WL_FTM_TLV_ID_SECURITY_CIPHER_TYPE	= 1047, /* ftm security cipher type */
-	WL_FTM_TLV_ID_SECURITY_LTF_REQD		= 1048	/* ftm security, secure ltf needed */
+	WL_FTM_TLV_ID_SECURITY_LTF_REQD		= 1048,	/* ftm security, secure ltf needed */
+
+	WL_FTM_TLV_ID_TX_COREMASK		= 1049	/* tx coremask for ranging frm tx */
 } wl_ftm_tlv_types_t;
 
 enum wl_ftm_wait_reason {
@@ -483,6 +493,10 @@ enum wl_test_mode_flag {
 	WL_FTM_TEST_MODE_FLAG_BAD_SAC		= 0x00000020u,
 	WL_FTM_TEST_MODE_FLAG_NULL_SAC		= 0x00000040u,
 	WL_FTM_TEST_MODE_FLAG_SKIP_LMR_TX	= 0x00000080u,
+	WL_FTM_TEST_MODE_FLAG_BAD_SLTF_SEQ	= 0x00000100u,
+	/* add new CTT device behavior here */
+	WL_FTM_TEST_MODE_FLAG_WFA_CTT_MASK	= 0x0000FFFFu,
+
 	/* for internal testing purpose */
 	WL_FTM_TEST_MODE_FLAG_TRAP_ON_CSI_TMO	= 0x00010000u,
 	WL_FTM_TEST_MODE_FLAG_NO_TS_IN_LMR	= 0x00020000u
@@ -702,7 +716,9 @@ typedef struct wl_ftm_az_rtt_result_v2 {
 	uint16				sample_fmt;	/* format of rtt sample (TLV ID) */
 	chanspec_t			chanspec;	/* ranging chanspec */
 	wl_ftm_ranging_format_bw_t	format_bw;	/* format bw used for ranging */
-	uint8				pad[3];
+	uint8				i2r_sts;	/* initiator to responder spatial stream */
+	uint8				r2i_sts;	/* responder to initiator spatial stream */
+	uint8				pad;
 	uint8				rtt_samples[];	/* optional variable length fields */
 } wl_ftm_az_rtt_result_v2_t;
 
