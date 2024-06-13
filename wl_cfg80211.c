@@ -14851,6 +14851,9 @@ wl_handle_roam_done(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 {
 	s32 ret = BCME_OK;
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
+#ifndef BCMSUP_4WAY_HANDSHAKE
+	struct wl_security *sec = wl_read_prof(cfg, as->ndev, WL_PROF_SEC);
+#endif /* BCMSUP_4WAY_HANDSHAKE */
 
 	if (cfg->roam_offload) {
 		/* roam offload enabled, avoid roam events to wake up host */
@@ -14878,14 +14881,20 @@ wl_handle_roam_done(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 
 #if defined(DHD_LOSSLESS_ROAMING) || defined(WLFBT)
 	{
-		struct wl_security *sec = wl_read_prof(cfg,
-				as->ndev, WL_PROF_SEC);
+#ifdef BCMSUP_4WAY_HANDSHAKE
+		wl_bss_roaming_done(cfg, as->ndev, as->event_msg, as->data);
+#else
 		 /* For FT cases roaming done will be called in ROAM/BSSID
 		 * event context and we should avoid here in LINK_UP context
+		 * to ensure key data is all available for external supp
 		 */
 		if (!IS_AKM_SUITE_FT(sec) && !IS_AKM_SUITE_SAE_FT(sec)) {
 			wl_bss_roaming_done(cfg, as->ndev, as->event_msg, as->data);
+		} else {
+			WL_INFORM_MEM(("execute roaming done from WLC_E_BSSID/ROAM for FT AKMs."
+				"wpa_auth:0x%x\n", sec->wpa_auth));
 		}
+#endif /* BCMSUP_4WAY_HANDSHAKE */
 	}
 #endif /* DHD_LOSSLESS_ROAMING || WLFBT */
 
@@ -15511,6 +15520,7 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			 * here only if WLC_E_LINK event is blocked for specific
 			 * security type.
 			 */
+#ifndef BCMSUP_4WAY_HANDSHAKE
 			if (IS_AKM_SUITE_FT(sec) || IS_AKM_SUITE_SAE_FT(sec)) {
 				wl_bss_roaming_done(cfg, ndev, e, data);
 #ifdef BCMDONGLEHOST
@@ -15518,6 +15528,7 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				dhd_dump_mod_pkt_timer(dhdp, PKT_CNT_RSN_ROAM);
 #endif /* BCMDONGLEHOST */
 			}
+#endif /* BCMSUP_4WAY_HANDSHAKE */
 			/* Roam timer is deleted mostly from wl_cfg80211_change_station
 			 * after roaming is finished successfully. We need to delete
 			 * the timer from here only for some security types that aren't
@@ -16990,6 +17001,9 @@ wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		WL_INFORM_MEM(("[%s] Report connect result - "
 			"connection succeeded\n", ndev->name));
 
+	} else {
+		WL_INFORM_MEM(("[%s] Report connection failure. status:%d auth_assoc_stat:%d\n",
+			ndev->name, status, sec->auth_assoc_res_status));
 	}
 
 exit:
