@@ -142,8 +142,9 @@ typedef int bcmerror_t;
 #define BCME_PHYMUTE			-83	/* PHY MUTED */
 #define BCME_ECC_REJECT			-84	/* OTP Program Reject on ECC enabled row */
 #define BCME_OTP_PROG_LOCK		-85	/* OTP Program Locked */
+#define BCME_RETRY			-86	/* Ask caller to retry */
 
-#define BCME_LAST			BCME_OTP_PROG_LOCK /* add new one above and update this */
+#define BCME_LAST			BCME_RETRY /* add new one above and update this */
 
 /* This error code is *internal* to the driver, and is not propogated to users. It should
  * only be used by IOCTL patch handlers as an indication that it did not handle the IOCTL.
@@ -243,6 +244,7 @@ typedef int bcmerror_t;
 	"Phy muted",			\
 	"OTP Program Reject on ECC enabled row",			\
 	"Programming failed due to OTP Locked - need a reset",			\
+	"retry indication",		\
 }
 
 /* FTM error codes [-1024, -2047] */

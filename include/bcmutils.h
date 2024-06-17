@@ -236,7 +236,9 @@ typedef struct bcm_sm_log_info bcm_sm_log_info_t;
 
 #define BCM_SM_LOG_FLAG_EVENT_PRESENT (1u << 0u)
 
-void *bcm_sm_logger_init(osl_t *osh, uint32 flags, uint32 num_entries, uint32 module_entry_sz);
+bcm_sm_log_info_t *bcm_sm_logger_init(osl_t *osh, uint32 flags, uint32 num_entries,
+	uint32 module_entry_sz);
+void bcm_sm_logger_deinit(osl_t *osh, bcm_sm_log_info_t *bsli);
 void *bcm_sm_log(bcm_sm_log_info_t *bsli, uint32 state, uint32 event, void *call_site);
 
 /* Get priority from a packet and pass it back in scb (or equiv) */

@@ -1597,7 +1597,7 @@ wl_cfg80211_cleanup_virtual_ifaces(struct bcm_cfg80211 *cfg, bool rtnl_lock_reqd
 					/* hold the rtnl lock explicitly for vendor hal callers */
 					rtnl_lock_reqd = true;
 				}
-				wl_cfg80211_post_ifdel(iter->ndev, rtnl_lock_reqd, 0);
+				_wl_cfg80211_post_ifdel(iter->ndev, rtnl_lock_reqd, 0);
 			}
 		}
 	}
@@ -2324,6 +2324,9 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 		cur_chspec =
 			wl_cellavoid_find_widechspec_fromchspec(cfg->cellavoid_info, chspec, dev);
 		if (cur_chspec == INVCHANSPEC) {
+#ifdef WL_CELLULAR_CHAN_AVOID_DUMP
+			wl_cellavoid_dump_chan_info_list(cfg);
+#endif /* WL_CELLULAR_CHAN_AVOID_DUMP */
 			wl_cellavoid_sync_unlock(cfg);
 			return BCME_ERROR;
 		}
@@ -8369,6 +8372,49 @@ wl_cfgvif_sta_multilink_config(struct bcm_cfg80211 *cfg, wl_assoc_state_t assoc_
 		}
 	}
 }
+
+#ifdef WL_AGGRESSIVE_ROAM
+void
+wl_cfgvif_enable_aggressive_roam(struct bcm_cfg80211 *cfg, struct net_device *dev,
+	bool enable)
+{
+	int ret = BCME_OK;
+	int roam_trigger[2];
+	struct net_info *netinfo = wl_get_netinfo_by_wdev(cfg, dev->ieee80211_ptr);
+
+	if (!cfg || !dev || !netinfo) {
+		WL_ERR(("%s: invalid args\n", __FUNCTION__));
+		return;
+	}
+
+	if (enable) {
+		roam_trigger[0] = WL_AGGR_ROAM_TRIGGER_VALUE;
+	} else {
+		if (netinfo->aggressive_roam == FALSE) {
+			/* Already in default state. Do nothing */
+			return;
+		}
+		roam_trigger[0] = WL_AUTO_ROAM_TRIGGER;
+#ifdef WBTEXT
+		/* on aggressive roam disable, revert back the roam prof */
+		wl_cfg80211_wbtext_set_default(dev);
+#endif /* WBTEXT */
+	}
+
+	roam_trigger[1] = WLC_BAND_ALL;
+	ret = wldev_ioctl_set(dev, WLC_SET_ROAM_TRIGGER, roam_trigger,
+			sizeof(roam_trigger));
+	if (ret != BCME_OK) {
+		WL_ERR(("failed to set roam trigger (%d)\n", ret));
+		return;
+	}
+
+	netinfo->aggressive_roam = enable;
+	WL_INFORM_MEM(("[%s] aggressive_roam:%d connected_stas:%d\n",
+		dev->name, enable, cfg->stas_associated));
+	return;
+}
+#endif /* WL_AGGRESSIVE_ROAM */
 
 void
 wl_cfgvif_roam_config(struct bcm_cfg80211 *cfg, struct net_device *dev,
