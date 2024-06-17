@@ -12034,6 +12034,9 @@ dhd_msgbuf_iovar_timeout_dump(dhd_pub_t *dhd)
 
 	dhd_validate_pcie_link_cbp_wlbp(dhd->bus);
 
+	if (dhd->bus->link_state != DHD_PCIE_COMMON_BP_DOWN) {
+		dhdpcie_print_amni_regs(dhd->bus, TRUE);
+	}
 	if (dhd->bus->link_state != DHD_PCIE_WLAN_BP_DOWN) {
 		dhd_bus_dump_console_buffer(dhd->bus);
 		dhd_prot_debug_info_print(dhd);

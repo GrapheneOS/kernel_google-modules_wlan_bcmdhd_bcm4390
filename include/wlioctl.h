@@ -26925,6 +26925,12 @@ struct bus_tx_release_log_v1 {
 	bus_tx_release_log_entry_v1_t	log[];		/**< count # of tx release log entries */
 };
 
+/*
+ * Version 2 structue is same as version 1 reason_max is increased by 1.
+ * So use v1 structure only for version 2 and handle only the reason part.
+ */
+#define BUS_FETCH_HISTOGRAM_VERSION_2	(2u)
+
 #define BUS_FETCH_HISTOGRAM_VERSION_1	(1u)
 typedef struct  flow_fetch_histogram_v1 {
 	uint32  flowid;				 /* flowing id */

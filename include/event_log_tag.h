@@ -650,8 +650,26 @@
 /* MFP scan (motion triggered scan) */
 #define EVENT_LOG_TAG_MPF_SCAN_ERR		487
 #define	EVENT_LOG_TAG_MPF_SCAN_INFO		488
+
+/* URB */
+#define	EVENT_LOG_TAG_URB			489
+
+/* Datapath debugging. */
+/* General datapath debugging. */
+#define	EVENT_LOG_TAG_DATAPATH			490
+/* For rxdatapath. */
+#define	EVENT_LOG_TAG_RX_DATAPATH		491
+/* For txdatapath. */
+#define	EVENT_LOG_TAG_TX_DATAPATH		492
+
+/* FILS Discovery */
+#define EVENT_LOG_TAG_FILS_DISC_DBG		493
+#define EVENT_LOG_TAG_FILS_DISC_INFO		494
+#define EVENT_LOG_TAG_FILS_DISC_ERROR		495
+#define EVENT_LOG_TAG_MCNX_IDX_LOG		496
+
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			488
+#define EVENT_LOG_TAG_MAX			496
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

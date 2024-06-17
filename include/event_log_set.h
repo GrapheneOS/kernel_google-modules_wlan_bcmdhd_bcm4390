@@ -446,6 +446,16 @@
 #define EVENT_LOG_SET_WL_EMLSR_BLOCK_SIZE	(EVENT_LOG_BLOCK_SIZE_1K)
 #endif
 
+/* set 43: For all datapath related logging. */
+#define EVENT_LOG_SET_DATAPATH			(43u)
+#ifndef EVENT_LOG_SET_DATAPATH_NUM_BLOCKS
+#define EVENT_LOG_SET_DATAPATH_NUM_BLOCKS	(4u)
+#endif /* !EVENT_LOG_SET_DATAPATH_NUM_BLOCKS */
+
+#ifndef EVENT_LOG_SET_DATAPATH_BLOCK_SIZE
+#define EVENT_LOG_SET_DATAPATH_BLOCK_SIZE	(EVENT_LOG_BLOCK_SIZE_1648B)
+#endif
+
 #ifndef NUM_EVENT_LOG_SETS
 /* Set a maximum number of sets here.  It is not dynamic for
  * efficiency of the EVENT_LOG calls. Old branches could define
@@ -454,9 +464,9 @@
  */
 #ifdef NUM_EVENT_LOG_SETS_V2
 /* for v2, everything has became unsigned */
-#define NUM_EVENT_LOG_SETS (43u)
+#define NUM_EVENT_LOG_SETS (44u)
 #else /* NUM_EVENT_LOG_SETS_V2 */
-#define NUM_EVENT_LOG_SETS (43)
+#define NUM_EVENT_LOG_SETS (44)
 #endif /* NUM_EVENT_LOG_SETS_V2 */
 #endif /* NUM_EVENT_LOG_SETS */
 

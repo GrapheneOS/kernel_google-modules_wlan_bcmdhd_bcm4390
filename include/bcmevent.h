@@ -458,6 +458,7 @@ typedef enum wlc_roam_cache_update_reason {
 #define WLC_E_STATUS_6G_NO_TPE		23	/* No tpe in the fw cache for 6g channels  */
 #define WLC_E_STATUS_CHANNELSWITCH	24	/* scan aborted due to CSA event */
 #define WLC_E_STATUS_PREF_LINK_SWAP_FAIL	25	/* Failure happened during pref link swap */
+#define WLC_E_STATUS_MLO_ROAM_FAIL	26	/* Fall back handling when AP sends deuath */
 #define WLC_E_STATUS_INVALID 0xff  /* Invalid status code to init variables. */
 
 /* 4-way handshake event type */
