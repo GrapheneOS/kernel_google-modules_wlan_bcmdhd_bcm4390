@@ -166,6 +166,7 @@ typedef struct {
 
 #define PCIE_SHARED3_CFG_TRAP_SUPPORT   0x00000001 /* special trap sig supported in config space */
 #define PCIE_SHARED3_TXDESC_ATTR_SUPPORT  0x00000002 /* txdesc.ext_flags supported */
+#define PCIE_SHARED3_TXDESC_ETH_HDR	0x00000004 /* host address will point to ethernet header */
 
 #define PCIE_SHARED_D2H_MAGIC		0xFEDCBA09
 #define PCIE_SHARED_H2D_MAGIC		0x12345678
@@ -471,7 +472,7 @@ typedef struct {
 #define HOSTCAP_EDL_RING			0x10000000
 #define HOSTCAP_PKT_TIMESTAMP			0x20000000
 #define HOSTCAP_PKT_HP2P			0x40000000
-#define HOSTCAP_HWA				0x80000000
+#define HOSTCAP_TXDESC_ETH_HDR			0x80000000
 
 #define HOSTCAP2_DURATION_SCALE_MASK            0x0000003Fu
 #define HOSTCAP2_PCIE_PTM			0x00000100u

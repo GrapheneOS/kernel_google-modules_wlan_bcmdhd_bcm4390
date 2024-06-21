@@ -1826,21 +1826,18 @@ typedef struct phy_periodic_counters_v16 {
 	uint32	txprobersp;		/* Number of TX probe response */
 	uint32	rxprobersp;		/* Number of RX probe response */
 
+	uint16	pending_packet_cnt;
+
 	/* Misc general purpose debug counters (will be used for future debugging) */
-	uint32	debug_01;
+	uint16	debug_01;
 	uint32	debug_02;
 	uint32	debug_03;
 } phy_periodic_counters_v16_t;
 
 #define PHY_PERIODIC_COUNTERS_VER_255	(255u)
 typedef struct phy_periodic_counters_v255 {
-	uint16 version;
-	uint16 len;
-	uint16 seq;
-	uint8 PAD[2];
-
 	/* RX error related */
-	uint32	rxrsptmout;		/* number of response timeouts for transmitted frames
+	uint32	rxrsptmout_mpdu;	/* number of response timeouts for transmitted frames
 					* expecting a response
 					*/
 	uint32	rxcrsglitch;		/* PHY was able to correlate the preamble
@@ -1856,7 +1853,7 @@ typedef struct phy_periodic_counters_v255 {
 					*/
 
 	/* RX related */
-	uint32	rxstrt;			/* number of received frames with a good PLCP */
+	uint32	rxstrt_phy;		/* number of received frames with a good PLCP */
 	uint32	rxbeaconmbss;		/* beacons received from member of BSS */
 	uint32	rxdtucastmbss;		/* number of received DATA frames with good FCS
 					* and matching RA
@@ -1865,11 +1862,11 @@ typedef struct phy_periodic_counters_v255 {
 					* (good FCS and no matching RA)
 					*/
 	uint32  goodfcs;		/* Good fcs counters  */
-	uint32	rxctl;			/* Number of control frames */
+	uint32	rxctl_mgt;		/* Number of control frames */
 	uint32	rxaction;		/* Number of action frames */
 	uint32	rxback;			/* Number of block ack frames rcvd */
 	uint32	rxctlucast;		/* Number of received unicast ctl frames */
-	uint32	rxframe;		/* Number of received frames */
+	uint32	rxframe_mpdu;		/* Number of received frames */
 
 	uint32	rxbar;			/* Number of block ack requests rcvd */
 	uint32	rxackucast;		/* number of ucast ACKS received (good FCS) */
@@ -1907,7 +1904,7 @@ typedef struct phy_periodic_counters_v255 {
 	uint32	txnull_pm_succ;		/* Number of TX NULL_DATA successes */
 
 	/* TX error related */
-	uint32	txrtsfail;		/* RTS TX failure count */
+	uint32	txrtsfail_BA;		/* RTS TX failure count */
 	uint32	txphyerr;		/* PHY TX error count */
 
 	uint32	last_bcn_seq_num;	/* last beacon seq no. */
@@ -1981,11 +1978,40 @@ typedef struct phy_periodic_counters_v255 {
 	uint16	bfe_txsf;		/* subframes */
 
 	uint16	txexptime;
-	uint16	txdc;
+	uint8	tx_links;		/* Number of per-link stats supported on slice */
+	uint8	rx_links;		/* Number of per-link stats supported on slice */
+
+	uint32	he_rxtrig_myaid;	/* rxed valid trigger frame with myaid */
+	uint32	he_rxtrig_murts;	/* reception of MU-RTS trigger frame */
+	uint32	he_null_tbppdu;		/* null TB PPDU's sent as response to basic trig frame */
+	uint32	he_txtbppdu;		/* increments on transmission of every TB PPDU */
+	uint32	he_colormiss;		/* for bss color mismatch cases */
+	uint32	txretrans;		/* tx mac retransmits */
+	uint32	txsu;
+	uint32	rx_toss;
+
+	uint32	txampdu;		/* number of AMPDUs transmitted */
+	uint32	rxampdu;		/* ampdus recd */
+	uint32	rxmpdu;			/* mpdus recd in a ampdu */
+	uint32	rxnull;			/* Number of RX NULL_DATA */
+	uint32	rxqosnull;		/* Number of RX NULL_QoSDATA */
+	uint32	txmpduperampdu;
+	uint32	rxmpduperampdu;
+
+	uint32	chup_mode0;		/* Channel update mode 0 counter legacy */
+	uint32	chup_mode1;		/* Channel update mode 1 counter itr */
+	uint32	dmd_mode0;		/* DynamicML feature ZF */
+	uint32	dmd_mode1;		/* DynamicML feature ML */
+
+	uint32	txprobereq;		/* Number of TX probe request */
+	uint32	rxprobereq;		/* Number of RX probe request */
+	uint32	txprobersp;		/* Number of TX probe response */
+	uint32	rxprobersp;		/* Number of RX probe response */
 
 	/* Misc general purpose debug counters (will be used for future debugging) */
-	uint16	debug_01;
-	uint16	debug_02;
+	uint32	debug_01;
+	uint32	debug_02;
+	uint32	debug_03;
 } phy_periodic_counters_v255_t;
 
 typedef struct phycal_log_cmn {
@@ -4795,14 +4821,15 @@ typedef struct phy_periodic_log_cmn_v18 {
 	uint32	debug_06;
 } phy_periodic_log_cmn_v18_t;
 
-// Trunk version
-typedef struct phy_periodic_log_cmn_v255 {
+// From v18 for v43
+typedef struct phy_periodic_log_cmn_v19 {
 	uint32	txratespec;		/* Current Tx rate spec */
 	uint32	rxratespec;		/* Current rx rate spec */
 	uint32	duration;		/* millisecs spent sampling this channel */
 	uint32	congest_ibss;		/* millisecs in our bss (presumably this traffic will */
 					/*  move if cur bss moves channels) */
 	uint32	congest_obss;		/* traffic not in our bss */
+	uint32	congest_meonly;		/* microsecs in my own traffic (TX + RX) */
 	uint32	interference;		/* millisecs detecting a non 802.11 interferer. */
 	uint32	last_cal_time;		/* Last cal execution time */
 
@@ -4833,7 +4860,7 @@ typedef struct phy_periodic_log_cmn_v255 {
 	uint32	featureflag;		/* Currently active feature flags */
 
 	uint16	chanspec;		/* Current phy chanspec */
-	uint16	vbatmeas;		/* Measured VBAT sense value */
+	uint16	debug_01;
 
 	/* HP2P related params */
 	uint16	shm_mpif_cnt_val;
@@ -4848,6 +4875,8 @@ typedef struct phy_periodic_log_cmn_v255 {
 
 	uint16	dcc_attempt_counter;	/* Number of DC cal attempts */
 	uint16	dcc_fail_counter;	/* Number of DC cal failures */
+	uint16	dcc_hcfail;		/* dcc health check failure count */
+	uint16	dcc_calfail;		/* dcc failure count */
 
 	uint16	btcxovrd_dur;		/* Cumulative btcx overide between WDGs */
 	uint16	btcxovrd_err_cnt;	/* BTCX override flagged errors */
@@ -4857,8 +4886,6 @@ typedef struct phy_periodic_log_cmn_v255 {
 	uint16	noise_mmt_overdue;	/* Count up if ucode noise mmt is overdue for 5 sec */
 	uint16	chan_switch_dur;	/* Channel switch time */
 
-	uint16	dcc_hcfail;		/* dcc health check failure count */
-	uint16	dcc_calfail;		/* dcc failure count */
 	uint16	crsmin_pwr_apply_cnt;	/* Count of desense power threshold update to phy */
 
 	uint16	txpustatus;		/* txpu off definations */
@@ -4922,29 +4949,6 @@ typedef struct phy_periodic_log_cmn_v255 {
 	uint16	txiqcal_max_slope_cnt;	/* txiqlocal slope reached max allowed count */
 	uint16	mppc_cal_failed_cnt;	/* MPPC cal failure count */
 
-	uint16	gci_lst_inv_ctr;
-	uint16	gci_lst_rst_ctr;
-	uint16	gci_lst_sem_fail;
-	uint16	gci_lst_rb_state;
-	uint16	gci_lst_state_mask;
-	uint16	gci_inv_tx;		/* Tx inv cnt */
-	uint16	gci_inv_rx;		/* Rx inv cnt */
-	uint16	gci_rst_tx;		/* gci Tx reset cnt */
-	uint16	gci_rst_rx;		/* gci Rx reset cnt */
-	uint16	gci_sem_fail;
-	uint16	gci_invstate;		/* inv state */
-	uint16	gci_phyctl0;		/* TX_PHYCTL0 */
-	uint16	gci_phyctl2;		/* TX_PHYCTL2 */
-	uint16	gci_ctxtst;		/* S_CTXTST */
-	uint16	gci_chan;		/* GCI channel */
-	uint16	gci_cm;
-	uint16	gci_inv_intr;
-	uint16	gci_rst_intr;
-	uint16	gci_rst_prdc_rx;
-	uint16	gci_rst_wk_rx;
-	uint16	gci_rst_rmac_rx;
-	uint16	gci_rst_tx_rx;
-
 	uint16	rspfrm_ed_txncl_cnt;	/* Response frame not sent due to ED */
 
 	uint8	rfem_rxmode_curr_hwstate;
@@ -4958,27 +4962,39 @@ typedef struct phy_periodic_log_cmn_v255 {
 
 	int16	last_cal_temp;
 	uint8	cal_reason;		/* reason for the cal */
+
 	uint8	cal_suppressed_cntr_ed;	/* counter including ss, mp cals, MSB is current state */
+	uint8	cal_suppressed_cntr_phymute;	/* Cal suppressed counter due to PHY MUTE */
+	uint8	cal_suppressed_cntr_fullcal;	/* Cal suppressed counter due to no Full cal */
+	uint16	cal_suppressed_cntr_mphase;	/* Cal suppressed counter due to SW */
+	uint8	cal_suppressed_cntr_reason01;	/* Cal suppressed counter due to reason 1 */
+	uint8	cal_suppressed_bitmap;		/* Cal suppressed bitmap */
+	uint8   cal_mphase_retry_cnt;	/* mphase cal retry count */
+	uint8	chiptemp_retry_cnt;
 	int8	rxsense_noise_idx;	/* rxsense detection threshold desense index */
 	int8	rxsense_offset;		/* rxsense min power desense index */
 
 	uint8	rccal_lpf_tmout;
 	uint8	rccal_tia_tmout;
 	uint8	rccal_rxpll_tmout;
+	uint8	rccal_btadcfb_tmout;
+	uint8	rccal_btadcres_tmout;
+	uint8	rccal_btbpf_tmout;
+
+	uint8	macsusp_phy_cnt;
+	uint8	pa_mode;
+	uint16	channel_active;		/* Channel active status */
+
+	uint8	mws_coex_cellst_prev_currltests;	/* previous cellstatus */
 
 	uint8	noise_cal_mode;		/* noisecal mode */
 	uint16	noise_cal_timeout;	/* noisecal timeout */
-
-	uint16	txpwr_recalc_reasons;	/* Reasons bitmap for triggered Tx pwr recalc */
-
-	uint16	channel_active;		/* Channel active status */
 
 	uint32	interference_mode;	/* interference mitigation mode */
 	uint32	power_mode;		/* LP/VLP logging */
 
 	uint32	temp_sense_cnt;
 	uint32	pm_dur;
-	uint16	ncap_misc;
 
 	uint16	nap_disable_reqs;	/* NAP disable bitmap */
 	uint8	nap_en_status;		/* NAP enable status */
@@ -4999,21 +5015,335 @@ typedef struct phy_periodic_log_cmn_v255 {
 	uint16	phyctl_w5_pa2;		/* PHYCTL Word-5/6 with PA 2
 						* Bit[7:0] Core0 PPR, Bit[15:8] Core1 PPR
 						*/
+	uint16	preempt_status2;	/* status of preemption */
+
 	uint32	navstat_acc;
 
-	uint16	preempt_status2;	/* status of preemption */
-	uint8	macsusp_phy_cnt;
-
+	uint16	txdc;
 	uint8	tvpm_mitigation;	/* Bitmap of enabled and which mitigation active */
+	uint8	tvpm_dynamic_rate;	/* dynamic update monitor rate */
 	uint8	dsa_mode;
-	uint8	dsa_status;
-	uint8	dsa_offset;
+	uint8	dsa_state;
+	uint8	dsa_boost;
 	uint8	dsa_util[6u];		/* Size subject to change */
 
-	uint8	pa_mode;
+	uint8	bsscolor;		/* bsscolor value from 0 to 63 */
+
+	uint16	rxgpr0_cnt_ltestschange;
+
+	uint32	phywd_override_cnt;
+	uint32	tx_prohibited_cnt;
+	uint32	txcap_reason;
+
+	uint16	txpwr_recalc_reasons;	/* Reasons bitmap for triggered Tx pwr recalc */
+	uint16	crs_pwrind_status;
+
+	/* SWDiv */
+	uint8	active_ant;		/* Lower byte */
+	uint8	swap_trig_event_id;	/* Lower byte */
+	uint8	swap_trig_event_id_prev;	/* Lower byte */
+
+	uint8	dig_gain;
+	uint8	dcest_overflow_cnt;
+
+	uint8	tiadccal_i_retry;
+	uint8	tiadccal_q_retry;
+	uint8	femtemp_retry_cnt;
+	int8	cal_ctsdur_ms;
+
+	uint8	bsscolor_parse_ctrl;
+	uint8	bsscolor_idx0;
+	uint8	bsscolor_idx1;
+	uint32	phy_chansw_cb_cal_counter;	/* # of times cal done from callback */
+	uint16	bsscolor_change_cnt;
+	uint16	pp;				/* Puncture pattern */
+	uint16	pp_80;
+	uint16	pp_160;
+	uint16	pp_bw;
+	uint16	phy_dbg_cnt_regwr_bank1;	/* How many times shadowed-bank1 is set */
+	uint16	phy_dbg_cnt_set_chanind1;	/* How many times bank1 regs are written */
+	uint16	tpc_tx_baseidxchk_dis;
+	uint16	tpc_olpcwar;
+	uint16	tpc_txbaseidx0;
+	uint16	tpc_txbaseidx127;
+	uint16	tpc_txpwrctrl_reset_count;	/* For later WD implementation */
+	uint16	noise_iqest2_status;		/* iqest hw status indication */
+	uint16	noise_iqest2_trig;		/* number of iqest triggers */
+	uint16	noise_iqest2_failcnt;		/* accumulated fail counts during iqest */
+	uint16	noise_iqest2_rstcca;		/* number of reset cca during iqest */
+	uint16	noise_iqest2_rstcca_fw;		/* number of reset cca during iqest from fw */
+	uint8	hc_tempfail_count;
+	uint8	tof_active_ctr;
+	uint8	chan_switch_indicator;
+	uint8	lo_divider_recovery_fail_cnt;
+	uint8	lo_divider_recovery_pass_cnt;
+	uint8	lo_sync_war_cnt;
+	uint32	accum_pmdur;
+	uint16	dcest_overflow_gainidx;
 
 	/* Misc general purpose debug counters (will be used for future debugging) */
-	uint16	debug_01;
+	uint16	debug_02;
+	uint32	debug_03;
+	uint32	debug_04;
+	uint32	debug_05;
+	uint32	debug_06;
+} phy_periodic_log_cmn_v19_t;
+
+// Trunk version
+typedef struct phy_periodic_log_cmn_v255 {
+	uint32	txratespec;		/* Current Tx rate spec */
+	uint32	rxratespec;		/* Current rx rate spec */
+	uint32	duration;		/* millisecs spent sampling this channel */
+	uint32	congest_meonly;		/* microsecs in my own traffic (TX + RX) */
+	uint32	congest_ibss;		/* millisecs in our bss (presumably this traffic will */
+					/*  move if cur bss moves channels) */
+	uint32	congest_obss;		/* traffic not in our bss */
+	uint32	interference;		/* millisecs detecting a non 802.11 interferer. */
+	uint32	last_cal_time;		/* Last cal execution time */
+
+	uint32	noise_cal_req_ts;	/* Time-stamp when noise cal was requested */
+	uint32	noise_cal_intr_ts;	/* Time-stamp when noise cal was completed */
+	uint32	phywdg_ts;		/* Time-stamp when wd was fired */
+	uint32	phywd_dur;		/* Duration of the watchdog */
+	uint32	chanspec_set_ts;	/* Time-stamp when chanspec was set */
+	uint32	vcopll_failure_cnt;	/* Number of VCO cal failures including */
+					/* failures detected in ucode */
+	uint32	log_ts;			/* Time-stamp when this log was collected */
+
+	/* glitch based desense input from cca */
+	uint32	cca_stats_total_glitch;
+	uint32	cca_stats_bphy_glitch;
+	uint32	cca_stats_total_badplcp;
+	uint32	cca_stats_bphy_badplcp;
+	uint32	cca_stats_mbsstime;
+
+	uint32	counter_noise_request;	/* count of noisecal request */
+	uint32	counter_noise_crsbit;	/* count of crs high during noisecal request */
+	uint32	counter_noise_apply;	/* count of applying noisecal result to crsmin */
+	uint32	fullphycalcntr;		/* count of performing single phase cal */
+	uint32	multiphasecalcntr;	/* count of performing multi-phase cal */
+
+	uint32	macsusp_dur;		/* mac suspend duration */
+
+	uint32	featureflag;		/* Currently active feature flags */
+
+	uint16	chanspec;		/* Current phy chanspec */
+	uint16	vbatmeas;		/* Measured VBAT sense value */
+
+	/* HP2P related params */
+	uint16	shm_mpif_cnt_val;
+	uint16	shm_thld_cnt_val;
+	uint16	shm_cts_cnt_val;
+	uint16	shm_m_prewds_cnt;	/* Count of pre-wds fired in the ucode */
+
+	uint16	navstat_max;
+
+	uint16	timeoutstatus;
+	uint16	deaf_count;		/* Depth of stay_in_carrier_search function */
+
+	uint16	dcc_attempt_counter;	/* Number of DC cal attempts */
+	uint16	dcc_fail_counter;	/* Number of DC cal failures */
+	uint16	dcc_hcfail;		/* dcc health check failure count */
+	uint16	dcc_calfail;		/* dcc failure count */
+
+	uint16	btcxovrd_dur;		/* Cumulative btcx overide between WDGs */
+	uint16	btcxovrd_err_cnt;	/* BTCX override flagged errors */
+
+	uint16	femtemp_read_fail_counter;	/* Fem temparature read fail counter */
+	uint16	phy_log_counter;
+	uint16	noise_mmt_overdue;	/* Count up if ucode noise mmt is overdue for 5 sec */
+	uint16	chan_switch_dur;	/* Channel switch time */
+
+	uint16	crsmin_pwr_apply_cnt;	/* Count of desense power threshold update to phy */
+
+	uint16	txpustatus;		/* txpu off definations */
+	uint16	tempinvalid_count;	/* Count no. of invalid temp. measurements */
+	uint16	log_event_id;		/* logging event id */
+
+	uint16	counter_noise_interrupt_cleared;	/* interrupt cleared on channel change */
+	uint16	counter_noise_cal_cancelled;		/* trigger cancelled on channel change */
+
+	uint16	macsusp_cnt;		/* mac suspend counter */
+	uint8	amtbitmap;		/* AMT status bitamp */
+
+	int8	chiptemp;		/* Chip temparature */
+	int8	femtemp;		/* Fem temparature */
+
+	uint8	cal_phase_id;		/* Current Multi phase cal ID */
+	uint8	rxchain;		/* Rx Chain */
+	uint8	txchain;		/* Tx Chain */
+	uint8	ofdm_desense;		/* OFDM desense */
+
+	uint8	slice;
+	uint8	bphy_desense;		/* BPHY desense */
+	uint8	pll_lockstatus;		/* PLL Lock status */
+
+	/* dccal dcoe & idacc */
+	uint8	dcc_err;		/* dccal health check error status */
+	uint8	dcoe_num_tries;		/* number of retries on dcoe cal */
+	uint8	idacc_num_tries;	/* number of retries on idac cal */
+
+	uint8	dccal_phyrxchain;	/* phy rxchain during dc calibration */
+	uint8	dccal_type;		/* DC cal type: single/multi phase, chan change, etc. */
+
+	uint8	gbd_bphy_sleep_counter;	/* gbd sleep counter */
+	uint8	gbd_ofdm_sleep_counter;	/* gbd sleep counter */
+
+	/* desense data */
+	int8	btcx_mode;		/* btcoex desense mode */
+	int8	ltecx_mode;		/* lte coex desense mode */
+	uint8	gbd_ofdm_desense;	/* gbd ofdm desense level */
+	uint8	gbd_bphy_desense;	/* gbd bphy desense level */
+	uint8	current_elna_bypass;	/* init gain desense: elna bypass */
+	uint8	current_tia_idx;	/* init gain desense: tia index */
+	uint8	current_lpf_idx;	/* init gain desense: lpf index */
+
+	int8	weakest_rssi;		/* weakest link RSSI */
+
+	bool	phycal_disable;		/* Set if calibration is disabled */
+	bool	hwpwrctrlen;		/* tx hwpwrctrl enable */
+	uint8	ocl_en_status;		/* OCL requested state and OCL HW state */
+	uint32	measurehold;		/* PHY hold activities */
+	uint32	ed_duration;		/* ccastats: ed_duration */
+	uint16	ed_crs_status;		/* Status of ED and CRS during noise cal */
+
+	uint16	pktprocdebug;
+	uint16	pktprocdebug2;
+
+	uint16	counter_noise_iqest_to;	/* count of IQ_Est time out */
+	uint16	rfemstate2g;		/* rFEM state register for 2g */
+	uint16	rfemstate5g;		/* rFEM state register for 5g */
+	uint16	txiqcal_max_retry_cnt;	/* txiqlocal retries reached max allowed count */
+	uint16	txiqcal_max_slope_cnt;	/* txiqlocal slope reached max allowed count */
+	uint16	mppc_cal_failed_cnt;	/* MPPC cal failure count */
+
+	uint16	rspfrm_ed_txncl_cnt;	/* Response frame not sent due to ED */
+
+	uint8	rfem_rxmode_curr_hwstate;
+	uint8   rfem_rxmode_bands_req;		/* mode as requested by SW layer */
+	uint8   rfem_rxmode_bands_applied;	/* mode currently configured in HW */
+
+	uint8	lpc_status;		/* Flag to enable/disable LPC, and runtime flag status */
+
+	uint32	rxsense_disable_req_ch;	/* channel disable requests */
+	uint32	ocl_disable_reqs;	/* OCL disable bitmap */
+
+	int16	last_cal_temp;
+	uint8	cal_reason;		/* reason for the cal */
+	uint8	cal_suppressed_cntr_ed;	/* counter including ss, mp cals, MSB is current state */
+	uint8	cal_suppressed_cntr_phymute;	/* Cal suppressed counter due to PHY MUTE */
+	uint8	cal_suppressed_cntr_fullcal;	/* Cal suppressed counter due to no Full cal */
+	uint16	cal_suppressed_cntr_mphase;	/* Cal suppressed counter due to SW */
+	uint8	cal_suppressed_cntr_reason01;	/* Cal suppressed counter due to reason 1 */
+	uint8	cal_suppressed_bitmap;		/* Cal suppressed bitmap */
+	uint8   cal_mphase_retry_cnt;	/* mphase cal retry count */
+	uint8	chiptemp_retry_cnt;
+
+	int8	rxsense_noise_idx;	/* rxsense detection threshold desense index */
+	int8	rxsense_offset;		/* rxsense min power desense index */
+
+	uint8	rccal_lpf_tmout;
+	uint8	rccal_tia_tmout;
+	uint8	rccal_rxpll_tmout;
+	uint8	rccal_btadcfb_tmout;
+	uint8	rccal_btadcres_tmout;
+	uint8	rccal_btbpf_tmout;
+
+	uint8	macsusp_phy_cnt;
+	uint8	pa_mode;
+	uint16	channel_active; 	/* Channel active status */
+
+	uint8	mws_coex_cellst_prev_currltests;	/* previous cellstatus */
+
+	uint8	noise_cal_mode;		/* noisecal mode */
+	uint16	noise_cal_timeout;	/* noisecal timeout */
+
+	uint32	interference_mode;	/* interference mitigation mode */
+	uint32	power_mode;		/* LP/VLP logging */
+
+	uint32	temp_sense_cnt;
+	uint32	pm_dur;
+
+	uint16	nap_disable_reqs;	/* NAP disable bitmap */
+	uint8	nap_en_status;		/* NAP enable status */
+	uint8	phylog_noise_mode;	/* Noise mode used */
+
+	uint16	phyctl_w0_pa0;		/* PHYCTL Word-0 with PA 0 */
+	uint16	phyctl_w2_pa0;		/* PHYCTL Word-2 with PA 0 */
+	uint16	phyctl_w5_pa0;		/* PHYCTL Word-5/6 with PA 0
+						* Bit[7:0] Core0 PPR, Bit[15:8] Core1 PPR
+						*/
+	uint16	phyctl_w0_pa1;		/* PHYCTL Word-0 with PA 1 */
+	uint16	phyctl_w2_pa1;		/* PHYCTL Word-2 with PA 1 */
+	uint16	phyctl_w5_pa1;		/* PHYCTL Word-5/6 with PA 1
+						* Bit[7:0] Core0 PPR, Bit[15:8] Core1 PPR
+						*/
+	uint16	phyctl_w0_pa2;		/* PHYCTL Word-0 with PA 2 */
+	uint16	phyctl_w2_pa2;		/* PHYCTL Word-2 with PA 2 */
+	uint16	phyctl_w5_pa2;		/* PHYCTL Word-5/6 with PA 2
+						* Bit[7:0] Core0 PPR, Bit[15:8] Core1 PPR
+						*/
+	uint16	preempt_status2;	/* status of preemption */
+	uint32	navstat_acc;
+
+	uint16	txdc;
+	uint8	tvpm_mitigation;	/* Bitmap of enabled and which mitigation active */
+	uint8	tvpm_dynamic_rate;	/* dynamic update monitor rate */
+	uint8	dsa_mode;
+	uint8	dsa_state;
+	uint8	dsa_boost;
+	uint8	dsa_util[6u];		/* Size subject to change */
+
+	uint8	bsscolor;		/* bsscolor value from 0 to 63 */
+
+	uint16	rxgpr0_cnt_ltestschange;
+
+	uint32	phywd_override_cnt;
+	uint32	tx_prohibited_cnt;
+	uint32	txcap_reason;
+
+	uint16	txpwr_recalc_reasons;	/* Reasons bitmap for triggered Tx pwr recalc */
+	uint16	crs_pwrind_status;
+
+	/* SWDiv */
+	uint8	active_ant;			/* Lower byte */
+	uint8	swap_trig_event_id;		/* Lower byte */
+	uint8	swap_trig_event_id_prev;	/* Lower byte */
+
+	uint8	dig_gain;
+	uint8	dcest_overflow_cnt;
+
+	uint8	tiadccal_i_retry;
+	uint8	tiadccal_q_retry;
+	uint8	femtemp_retry_cnt;
+	int8	cal_ctsdur_ms;
+
+	uint8	bsscolor_parse_ctrl;
+	uint8	bsscolor_idx0;
+	uint8	bsscolor_idx1;
+	uint32	phy_chansw_cb_cal_counter;	/* # of times cal done from callback */
+	uint16	bsscolor_change_cnt;
+	uint16	pp;				/* Puncture pattern */
+	uint16	pp_80;
+	uint16	pp_160;
+	uint16	pp_bw;
+	uint16	phy_dbg_cnt_regwr_bank1;	/* How many times shadowed-bank1 is set */
+	uint16	phy_dbg_cnt_set_chanind1;	/* How many times bank1 regs are written */
+	uint16	tpc_tx_baseidxchk_dis;
+	uint16	tpc_olpcwar;
+	uint16	tpc_txbaseidx0;
+	uint16	tpc_txbaseidx127;
+	uint16	tpc_txpwrctrl_reset_count;	/* For later WD implementation */
+	uint16	noise_iqest2_status;		/* iqest hw status indication */
+	uint16	noise_iqest2_trig;		/* number of iqest triggers */
+	uint16	noise_iqest2_failcnt;		/* accumulated fail counts during iqest */
+	uint16	noise_iqest2_rstcca;		/* number of reset cca during iqest */
+	uint8	hc_tempfail_count;
+	uint8	tof_active_ctr;
+	uint8	chan_switch_indicator;
+
+	/* Misc general purpose debug counters (will be used for future debugging) */
+	uint8	debug_01;
 	uint32	debug_02;
 	uint32	debug_03;
 } phy_periodic_log_cmn_v255_t;
@@ -5571,14 +5901,27 @@ typedef struct phy_periodic_log_core_v255 {
 	uint16	flexpwrdig4;
 	uint16	flexgaininfo_A;
 
-	uint32	rfseq_rst_ctr;		/* rfseq reset counter */
+	/* SW Diversity */
+	int32	avg_snr_per_ant;
+	uint32	swap_txfail;
+	uint32	swap_alivecheck;
+	uint32	rxcount_per_ant;
+	uint32	swap_snrdrop;
+
+	uint32	gainidx_latchout;
+	uint32	adcreset_i;
+	uint32	adcreset_q;
+
 	uint16	tpc_vmid;
+	int16	dcRe_aux;
+	int16	dcIm_aux;
+	uint16	iqest_mode2_gain;
 	uint8	tpc_av;
 
 	/* Misc general purpose debug counters (will be used for future debugging) */
 	uint8	debug_01;
 	uint16	debug_02;
-	uint16	debug_03;
+	uint32	debug_03;
 	uint32	debug_04;
 
 	int8	phy_noise_pwr_array[PHY_NOISE_PWR_ARRAY_SIZE];	/* noise buffer array */
@@ -5992,11 +6335,7 @@ typedef struct phy_periodic_obss_stats_v5 {
 
 typedef struct phy_periodic_obss_stats_v255 {
 	uint32	obss_last_read_time;			/* last stats read time */
-	uint16	obss_mit_bw;				/* selected mitigation BW */
 	uint16	obss_stats_cnt;				/* stats count */
-	uint8	obss_need_updt;				/* BW update needed flag */
-	uint8	obss_mit_status;			/* obss mitigation status */
-	uint8	obss_curr_det[ACPHY_OBSS_SUBBAND_CNT];	/* obss curr detection */
 	uint16	obss_mmt_skip_cnt;			/* mmt skipped due to powersave */
 	uint16	obss_mmt_no_result_cnt;			/* mmt with no result */
 	uint16	obss_mmt_intr_err_cnt;			/* obss reg mismatch between ucode and fw */
@@ -6017,13 +6356,11 @@ typedef struct phy_periodic_obss_stats_v255 {
 									* sub-band in dBm
 									*/
 	uint8	obss_last_rec_bw;			/* last recommended bw to wlc-Sent to SW */
+	uint8	obss_curr_det_bitmap;		/* obss curr detection bitmap: 0 - LLL, 7 - UUU */
 
 	/* Misc general purpose debug counters (will be used for future debugging) */
 	uint8	debug_01;
 	uint8	debug_02;
-	uint8	debug_03;
-	uint16	debug_04;
-	uint16	debug_05;
 } phy_periodic_obss_stats_v255_t;
 
 /* SmartCCA related PHY Logging */
@@ -6303,7 +6640,7 @@ typedef struct phy_periodic_scca_stats_v255 {
 	int8	asym_intf_ant_noise[2];
 
 	uint8	asym_intf_tx_smartcca_cm;
-	uint8	asym_intf_rx_noise_mit_cm;
+	uint8	asym_intf_pending_host_req_type; /* Set request pending if clk not present */
 
 	/* LTE asymmetric jammer paramaters */
 	bool	asym_intf_jammer_en;
@@ -6316,11 +6653,9 @@ typedef struct phy_periodic_scca_stats_v255 {
 	int8	asym_intf_prev_noise_lvl[2];
 	uint8	asym_intf_ant_noise_idx;
 	uint8	asym_intf_least_core_idx;
-	uint8	asym_intf_pending_host_req_type;
-						/* Set request pending if clk not present */
-	uint16	asym_intf_ncal_crs_stat;
 	uint8	asym_intf_ncal_crs_stat_idx;
-	uint8	debug_01;
+	uint16	asym_intf_ncal_crs_stat;
+	uint16	debug_01;
 } phy_periodic_scca_stats_v255_t;
 
 /* MLO related PHY Logging */
@@ -6349,6 +6684,33 @@ typedef struct phy_periodic_mlo_stats_v1 {
 	bool	pref_link_sw_in_prog;
 	uint8	debug_01;
 } phy_periodic_mlo_stats_v1_t;
+
+/* MLO related PHY Logging */
+typedef struct phy_periodic_mlo_stats_v255 {
+	uint32	emlsr_disable_rsn;	/* eMLSR Disable reason */
+	uint32	emlsr_pause_rsn;	/* eMLSR Pause reason */
+	uint8	trans_dly;		/* EMLSR transition delay */
+	uint8	link_id;		/* link ID - AP managed */
+	uint8	dtim_cnt;		/* current DTIM count */
+	uint8	dtim_bcn_cnt;		/* DTIM bcn cnt since Crit Upd Ind last set */
+	uint8	link_hibernated;	/* Link is in hibernated state : 1 */
+	uint8	ml_scan_in_prog;	/* ML scan in progress... : 1 */
+	uint8	link_disabled;		/* Link is disabled : 1 */
+	uint8	emlsr_state;		/* bsscfg emlsr FSM state */
+	uint32	emlsr_ctrl_params;	/* emlsr present ctrl params state */
+	uint16	eml_req_txcnt;		/* EML notif req txcnt new attempts */
+	uint16	eml_req_tot_retry_cnt;	/* EML notif req total retries */
+	uint16	eml_resp_rxcnt;		/* EML notif resp rxcnt */
+	uint16	eml_resp_match_rxcnt;	/* EML notif resp all conditions matched */
+	uint8	eml_req_retry_cnt;	/* EML Notificaion Request retry count */
+	bool	emlsr_en_notif_done;	/* EML Enable Notif complete */
+	uint8	recent_st;		/* recent state for EMLSR state machines */
+	uint8	recent_ev;		/* recent event for EMLSR state machines */
+	bool	link_swap_inprog;	/* eMLSR link swap is in progress */
+	bool	non_prim_bcn_rx_failed;	/* eMLSR 2nd link bcn rx failed */
+	bool	pref_link_sw_in_prog;
+	uint8	debug_01;
+} phy_periodic_mlo_stats_v255_t;
 
 /* SRCB related PHY Logging */
 typedef struct phy_periodic_srcb_stats_v1 {
@@ -6393,9 +6755,56 @@ typedef struct phy_periodic_srcb_stats_v1 {
 	uint32	gci_sem_reserved_cnt;	/* counter of gci semaphore reserving and waiting */
 	uint8	srcb_sem_id;		/* current acquired semaphore id */
 	bool	initsts_incomp;		/* init status incomplete warning flag */
-	uint8	debug_01;		/* reserved for debugging */
+	uint8	total_2g_cal_retries;	/* number of retries for 2g cals */
 	uint8	debug_02;		/* reserved for debugging */
 } phy_periodic_srcb_stats_v1_t;
+
+/* SRCB related PHY Logging */
+typedef struct phy_periodic_srcb_stats_v255 {
+	uint32	fem_debug_bus_2g;
+	uint32	fem_debug_bus_5g;
+	uint32	srmc_5g_debug_bus;
+	uint32	srmc_5g_input_status;
+	uint32	srmc_5g_output_status;
+	uint32	rfactv_reg;
+	uint32	currenttrigger;
+	uint32	previous2triggers;
+	uint32	previous4triggers;
+	uint32	rfseq2rdig_debug_1;
+	uint32	rfseq2rdig_debug_2;
+	uint32	rfseq2rdig_debug_3;
+	uint32	rfseq2rdig_debug_4;
+	uint32	rfseq2rdig_debug_5;
+	uint32	rfseq2rdig_debug_6;
+	uint32	rfseq2rdig_debug_7;
+	uint32	rfseq2rdig_debug_8;
+	uint32	srcb_srmc_2g_input_status;
+	uint32	srcb_srmc_2g_input_status_2;
+	uint32	srcb_srmc_2g_output_status;
+	uint32	srcb_srmc_grant;
+	uint32	srcb_srmc_2g_output_status_2;
+	uint32	srcb_srmc_2g_debug_bus_1;
+	uint32	dacclkstatus;
+	uint32	adcclkstatus;
+	uint32	ocl_mode_enable;
+	uint32	rfpll_2g_config28;
+	uint32	pll_2g_need_refresh;
+	uint16	srcb_2g_sem_cnt;	/* total 2g semaphore acquisition count */
+	uint16	srcb_5g_sem_cnt;	/* total 5g semaphore acquisition count */
+	uint16	srcb_2g_sem_cnt_bt;	/* total 2g semaphore acquisition count from bt side */
+	uint16	srcb_5g_sem_cnt_bt;	/* total 5g semaphore acquisition count from bt side */
+	uint32	srcb_2g_sem_acc_dur_us;	/* accumulated duration of 2g semaphore */
+	uint32	srcb_2g_sem_max_dur_us;	/* max duration of single 2g semaphore acquisition */
+	uint32	srcb_5g_sem_acc_dur_us;	/* accumulated duration of 5g semaphore */
+	uint32	srcb_5g_sem_max_dur_us;	/* max duration of single 5g semaphore acquisition */
+	uint32	init_done_wl;		/* sra init done status bit in WL side */
+	uint32	init_done_bt;		/* sra init done status bit in BT side */
+	uint32	gci_sem_reserved_cnt;	/* counter of gci semaphore reserving and waiting */
+	uint8	srcb_sem_id;		/* current acquired semaphore id */
+	bool	initsts_incomp;		/* init status incomplete warning flag */
+	uint8	debug_01;		/* reserved for debugging */
+	uint8	debug_02;		/* reserved for debugging */
+} phy_periodic_srcb_stats_v255_t;
 
 /* FBC related PHY Logging */
 typedef struct phy_periodic_fbc_stats_v1 {
@@ -6413,6 +6822,22 @@ typedef struct phy_periodic_fbc_stats_v1 {
 	uint8	cal_reason;
 	uint16	debug_01;
 } phy_periodic_fbc_stats_v1_t;
+
+typedef struct phy_periodic_fbc_stats_v255 {
+	uint32	fbc_multiphasecalcntr;	/* count of performing multi-phase cal */
+	uint32	fbc_last_cal_time;
+	uint16	fbc_channels;		/* Channels parked on */
+	uint16	fbc_starts;		/* Indicates frame starts */
+	uint16	fbc_detect[3];		/* Indicates frame detections */
+	uint16	fbc_good_fcs[3];	/* Indicates good FCS Rx counter */
+	uint16	fbc_bad_fcs;		/* Indicates bad FCS Rx counter */
+	uint16	fbc_be_busy;		/* Indicates hardware busy */
+	uint16	fbc_errors;		/* Indicates error counter */
+	int16	last_cal_temp;
+	uint8	cal_phase_id;
+	uint8	cal_reason;
+	uint16	debug_01;
+} phy_periodic_fbc_stats_v255_t;
 
 typedef struct phy_periodic_vcocal_stats_v1 {
 	uint16	debug_cal_code_main_slice;
@@ -6437,6 +6862,20 @@ typedef struct phy_periodic_vcocal_stats_v2 {
 	uint16	debug_02;
 } phy_periodic_vcocal_stats_v2_t;
 
+typedef struct phy_periodic_vcocal_stats_v255 {
+	uint16	debug_cal_code_main_slice;
+	uint16	pll_2g_vcocal_calcaprb;
+	uint16	dpll_lp_dig_observation[8];
+	uint8	force_pu_cnt_ded;		/* force PU retry cnt as part of ded cal */
+	uint8	force_pu_cnt_need_refresh;	/* force PU retry cnt as part of need refresh */
+	bool	force_pu_req_need_refresh;	/* force PU required as part of need refresh */
+	uint8	force_pu_cnt_fbc;		/* force PU retry cnt as part of FBC cal */
+	uint8	vcocalitr_cnt;
+	uint8	debug_01;
+	uint16	debug_02;
+} phy_periodic_vcocal_stats_v255_t;
+
+#define FBCX_STATS_PHY_LOGGING_VER1	1u
 typedef struct wlc_fbcx_stats_phy_logging_v1 {
 	uint32	fbcx_ovd_cnt;		/**< # of times FBC override applied */
 	uint32	fbcx_last_ovd_start_ts;	/**< last FBC ovd start TS */
@@ -6445,6 +6884,38 @@ typedef struct wlc_fbcx_stats_phy_logging_v1 {
 	uint32	fbcx_actv_cfg;		/**< FBC ovd active conditions */
 	uint32	fbcx_cfg;		/* global FBC config flag */
 } phy_periodic_fbcx_stats_v1_t;
+
+#define FBCX_STATS_PHY_LOGGING_VER2	2u
+typedef struct wlc_fbcx_stats_phy_logging_v2 {
+	uint32	fbcx_ovd_cnt;		/**< # of times FBC override applied */
+	uint32	fbcx_last_ovd_start_ts;	/**< last FBC ovd start TS */
+	uint32	fbcx_last_ovd_end_ts;	/**< last FBC ovd end TS */
+	uint32	fbcx_ovd_dur;		/**< accumulated FBC ovd duration */
+	uint32	fbcx_actv_cfg;		/**< FBC ovd active conditions */
+	uint32	fbcx_cfg;		/* global FBC config flag */
+
+	uint16  fbaci_status_idx[4];    /**< FBAGC ACI status idx */
+	uint16  fbaci_nsamples_idx[4];  /**< FBAGC ACI nsamples idx */
+
+	uint32	pmu_mode_switch_time;
+	uint16	pmu_mode_switch_cnt;
+	uint16	pmu_force_pwm_cnt;
+	uint16	pmu_auto_mode_cnt;
+	uint16	fpwm_ovrd_reason_bitmap;
+	uint8	pmu_mode;
+	uint8	traffic_valid_bitmap;
+	uint16	debug_01;
+	uint32	debug_02;
+} phy_periodic_fbcx_stats_v2_t;
+
+typedef struct wlc_fbcx_stats_phy_logging_v255 {
+	uint32	fbcx_ovd_cnt;		/**< # of times FBC override applied */
+	uint32	fbcx_last_ovd_start_ts;	/**< last FBC ovd start TS */
+	uint32	fbcx_last_ovd_end_ts;	/**< last FBC ovd end TS */
+	uint32	fbcx_ovd_dur;		/**< accumulated FBC ovd duration */
+	uint32	fbcx_actv_cfg;		/**< FBC ovd active conditions */
+	uint32	fbcx_cfg;		/* global FBC config flag */
+} phy_periodic_fbcx_stats_v255_t;
 
 typedef struct phy_periodic_sra_stats_v1 {
 	uint16	sr_crash_reason_bt;	/* Last BT fw crash reason */
@@ -6480,6 +6951,45 @@ typedef struct phy_periodic_sra_stats_v2 {
 	uint16	sr_param2;		/* SR param 2 */
 	uint16	sr_param3;		/* SR param 3 */
 } phy_periodic_sra_stats_v2_t;
+
+typedef struct phy_periodic_sra_stats_v3 {
+	uint16	sr_notif_counter_bt;	/* BT fw crash counter */
+	uint16	sr_notif_state_bt;	/* Last BT fw notif state */
+	uint32	sr_notif_option_bt;	/* Last BT fw notif reason */
+	uint16	sr_notif_counter_wl;	/* WL fw crash counter */
+	uint16	sr_notif_state_wl;	/* Last WL fw crash reason */
+	uint16	sr_calreq_counter_bt;	/* BT Cal Request counter */
+	uint16	sr_tempreq_counter_bt;	/* BT Temp Request counter */
+	uint16	sr_crit_region_wl[SEM_MAX]; /* 2, 5G Sema Crit region counter */
+	uint16	sr_crit_region_bt[SEM_MAX]; /* 2, 5G Sema Crit region counter */
+	uint8	sr_boot_count;		/* Boots without power cycle or REG ON */
+	uint8	sr_softrecovery_count;	/* Soft recoveries */
+	uint8	phy_crash_rc;		/* Critical region crash reason code */
+	uint8	phy_crash_boot_count;	/* Boot count when critical region crash happened */
+	uint16	sr_bootstat_bt;		/* BT boot stat */
+	uint16	debug_01;
+	uint32	debug_02;
+	uint32	debug_03;
+	uint32	debug_04;
+} phy_periodic_sra_stats_v3_t;
+
+typedef struct phy_periodic_sra_stats_v255 {
+	uint16	sr_notif_counter_bt;	/* BT fw crash counter */
+	uint16	sr_notif_state_bt;	/* Last BT fw notif state */
+	uint32	sr_notif_option_bt;	/* Last BT fw notif reason */
+	uint16	sr_notif_counter_wl;	/* WL fw crash counter */
+	uint16	sr_notif_state_wl;	/* Last WL fw crash reason */
+	uint16	sr_calreq_counter_bt;	/* BT Cal Request counter */
+	uint16	sr_tempreq_counter_bt;	/* BT Temp Request counter */
+	uint16	sr_crit_region_wl[SEM_MAX]; /* 2, 5G Sema Crit region counter */
+	uint16	sr_crit_region_bt[SEM_MAX]; /* 2, 5G Sema Crit region counter */
+	uint8	sr_boot_count;		/* Boots without power cycle or REG ON */
+	uint8	sr_softrecovery_count;	/* Soft recoveries */
+	uint8	phy_crash_rc;		/* Critical region crash reason code */
+	uint8	phy_crash_boot_count;	/* Boot count when critical region crash happened */
+	uint16	sr_param2;		/* SR param 2 */
+	uint16	sr_param3;		/* SR param 3 */
+} phy_periodic_sra_stats_v255_t;
 
 #define PHY_PERIODIC_LOG_VER1         (1u)
 
@@ -7251,36 +7761,67 @@ typedef struct phy_periodic_log_v42 {
 	phy_periodic_log_ext_v42_t extended_logs;
 } phy_periodic_log_v42_t;
 
+#define PHY_PERIODIC_LOG_VER43	43u
+typedef struct phy_periodic_log_v43 {
+	uint8  version;		/* Logging structure version */
+	uint8  numcores;	/* Number of cores for which core specific data present */
+	uint16 length;		/* Length of the structure */
+	uint16 seq;		/* For matching with other structs sent out at the same time */
+	uint8 PAD[2];
+
+	/* Logs general PHY parameters */
+	phy_periodic_log_cmn_v19_t phy_perilog_cmn;
+
+	/* log data for BTcoex */
+	phy_periodic_btc_stats_v5_t phy_perilog_btc_stats;
+
+	/* log data for obss/dynbw */
+	phy_periodic_obss_stats_v5_t phy_perilog_obss_stats;
+
+	/* log data for smartCCA */
+	phy_periodic_scca_stats_v4_t scca_counters_peri_log;
+
+	/* MLO related PHY Logging */
+	phy_periodic_mlo_stats_v1_t phy_perilog_mlo_stats;
+
+	/* SRCB related PHY Logging */
+	phy_periodic_srcb_stats_v1_t phy_perilog_srcb_stats;
+
+	/* FBC related PHY Logging */
+	phy_periodic_fbc_stats_v1_t phy_perilog_fbc_stats;
+
+	/* VCOCAL related PHY Logging */
+	phy_periodic_vcocal_stats_v2_t phy_perilog_vcocal_stats;
+
+	/* FBCX related PHY Logging */
+	phy_periodic_fbcx_stats_v2_t phy_perilog_fbcx_stats;
+
+	/* Shared radio related PHY Logging */
+	phy_periodic_sra_stats_v3_t phy_perilog_sra_stats;
+
+	/* Logging going in separate log buffer */
+	phy_periodic_log_ext_v42_t extended_logs;
+} phy_periodic_log_v43_t;
+
 /* ************************************************** */
 /* The version 255 for the logging data structures    */
 /* is for use in trunk ONLY. In release branches the  */
 /* next available version for the particular data     */
 /* structure should be used.                          */
 /* ************************************************** */
-
-/* Used by parser to parse data */
-typedef struct phy_log_data_v255 {
-	uint8  version;		/* Logging structure version */
-	uint8  numcores;	/* Number of cores for which core specific data present */
-	uint16 length;		/* Length of the structure */
-	uint16 seq;		/* FOr matching with other structs sent out at the same time */
+#define PHY_PERIODIC_LOG_EXT_VER255	255u
+typedef struct phy_periodic_log_ext_v255 {
+	uint16 version;
+	uint16 len;
+	uint16 seq;
 	uint8 PAD[2];
 
-	/* Logs general PHY parameters */
-	phy_periodic_log_cmn_v255_t phy_perilog_cmn;
-
-	/* log data for BTcoex */
-	phy_periodic_btc_stats_v255_t phy_perilog_btc_stats;
-
-	/* log data for obss/dynbw */
-	phy_periodic_obss_stats_v255_t phy_perilog_obss_stats;
+	/* Logs ucode counters and NAVs */
+	phy_periodic_counters_v255_t counters_peri_log;
 
 	/* Logs data pertaining to each core */
 	phy_periodic_log_core_v255_t phy_perilog_core[2];
-
-	/* log data for smartCCA */
-	phy_periodic_scca_stats_v255_t scca_counters_peri_log;
-} phy_log_data_v255_t;
+} phy_periodic_log_ext_v255_t;
 
 /* USed by FW to populate counters */
 #define PHY_PERIODIC_LOG_VER255	255u
@@ -7300,13 +7841,28 @@ typedef struct phy_periodic_log_v255 {
 	/* log data for obss/dynbw */
 	phy_periodic_obss_stats_v255_t phy_perilog_obss_stats;
 
-	/* Logs data pertaining to each core */
-	phy_periodic_log_core_v255_t phy_perilog_core[2];
-
 	/* log data for smartCCA */
 	phy_periodic_scca_stats_v255_t scca_counters_peri_log;
 
-	/* Logs ucode counters and NAVs */
-	phy_periodic_counters_v255_t counters_peri_log;
+	/* MLO related PHY Logging */
+	phy_periodic_mlo_stats_v255_t phy_perilog_mlo_stats;
+
+	/* SRCB related PHY Logging */
+	phy_periodic_srcb_stats_v255_t phy_perilog_srcb_stats;
+
+	/* FBC related PHY Logging */
+	phy_periodic_fbc_stats_v255_t phy_perilog_fbc_stats;
+
+	/* VCOCAL related PHY Logging */
+	phy_periodic_vcocal_stats_v255_t phy_perilog_vcocal_stats;
+
+	/* FBCX related PHY Logging */
+	phy_periodic_fbcx_stats_v255_t phy_perilog_fbcx_stats;
+
+	/* Shared radio related PHY Logging */
+	phy_periodic_sra_stats_v255_t phy_perilog_sra_stats;
+
+	/* Logging going in separate log buffer */
+	phy_periodic_log_ext_v255_t extended_logs;
 } phy_periodic_log_v255_t;
 #endif /* _PHY_EVENT_LOG_PAYLOAD_H_ */
