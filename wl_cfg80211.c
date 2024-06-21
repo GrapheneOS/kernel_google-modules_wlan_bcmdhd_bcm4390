@@ -6896,10 +6896,6 @@ wl_is_mlo_sec_supported(struct bcm_cfg80211 *cfg, struct net_device *dev,
 		/* SAE AKMs */
 		case WLAN_AKM_SUITE_SAE:
 		case WLAN_AKM_SUITE_SAE_EXT_PSK:
-#ifdef WL_SAE_FT
-		case WLAN_AKM_SUITE_FT_OVER_SAE:
-		case WLAN_AKM_SUITE_FT_SAE_EXT:
-#endif /* WL_SAE_FT */
 #ifdef WL_SAE_STD_API
 			/* mlo requires h2e. if its HnP, disable MLO */
 			if (sme->crypto.sae_pwe == NL80211_SAE_PWE_HUNT_AND_PECK) {
@@ -6916,6 +6912,10 @@ wl_is_mlo_sec_supported(struct bcm_cfg80211 *cfg, struct net_device *dev,
 			mlo_sec = TRUE;
 			break;
 #ifdef NOT_YET
+#ifdef WL_SAE_FT
+		case WLAN_AKM_SUITE_FT_OVER_SAE:
+		case WLAN_AKM_SUITE_FT_SAE_EXT:
+#endif /* WL_SAE_FT */
 		case WLAN_AKM_SUITE_8021X_SUITE_B:
 		case WLAN_AKM_SUITE_8021X_SUITE_B_192:
 		case WLAN_AKM_SUITE_FT_8021X:
