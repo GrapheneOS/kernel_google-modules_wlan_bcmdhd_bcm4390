@@ -9441,6 +9441,11 @@ static int wl_update_ml_link_stat(struct bcm_cfg80211 *cfg, struct net_device *i
 			WIFI_VSDB_TIMESLICE_DUTY_CYCLE);
 	}
 
+	if (!wl_get_drv_status(cfg, CONNECTED, inet_ndev)) {
+		WL_ERR(("Sta is not connected to an AP!\n"));
+		goto exit;
+	}
+
 	COMPAT_ASSIGN_VALUE(iface, num_peers, NUM_PEER);
 
 	err = wldev_link_iovar_getbuf(inet_ndev, link_idx, "bss_peer_info",
@@ -9496,6 +9501,7 @@ static int wl_update_ml_link_stat(struct bcm_cfg80211 *cfg, struct net_device *i
 		err = BCME_OK;
 	} else if (err == BCME_NOTASSOCIATED) {
 		WL_ERR(("bssload_report IOVAR failed. STA is not associated.\n"));
+		goto exit;
 	} else {
 		WL_ERR(("error (%d) - size = %zu\n", err, sizeof(wl_bssload_t)));
 		goto exit;
