@@ -7040,6 +7040,9 @@ wl_do_preassoc_ops(struct bcm_cfg80211 *cfg,
 	wl_cfgvif_sta_multilink_config(cfg, WL_STATE_ASSOCIATING);
 #endif /* OEM_ANDROID */
 
+	/* Initialise profile data */
+	wl_init_prof(cfg, dev);
+
 	/* Connection attempted via linux-wireless */
 	wl_set_drv_status(cfg, CFG80211_CONNECT, dev);
 	return BCME_OK;
@@ -14151,8 +14154,9 @@ static s32
 wl_cfg80211_handle_deauth_ind(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 {
 	int err = BCME_OK;
-#ifdef WL_SAE
 	struct net_device *ndev = as->ndev;
+	u32 assoc_status = 0;
+#ifdef WL_SAE
 	const wl_event_msg_t *e = as->event_msg;
 	uint8 bssid[ETHER_ADDR_LEN];
 	struct cfg80211_pmksa pmksa;
@@ -14173,6 +14177,14 @@ wl_cfg80211_handle_deauth_ind(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 			"changed 0xFF\n", as->event_type, as->reason));
 		as->reason = WLC_E_DEAUTH_MAX_REASON;
 	}
+
+	if (as->status == WLC_E_STATUS_MLO_ROAM_FAIL) {
+		/* Disable MLO for next connect by marking current connection as failure */
+		assoc_status = WL_PROF_ASSOC_FAIL;
+		wl_update_prof(cfg, ndev, NULL, &assoc_status, WL_PROF_ASSOC_STATUS);
+		WL_INFORM_MEM(("force ML disable for next connect to same SSID\n"));
+	}
+
 #ifdef WL_SAE
 	err = wldev_iovar_getint(ndev, "wpa_auth", &val);
 	if (unlikely(err)) {
@@ -14763,9 +14775,6 @@ wl_handle_link_down(struct bcm_cfg80211 *cfg, wl_assoc_status_t *as)
 	wl_android_get_roam_scan_freqlist(cfg);
 #endif /* WL_GET_RCC */
 	ROAMOFF_DBG_DUMP(cfg);
-
-	/* clear profile before reporting link down */
-	wl_init_prof(cfg, ndev);
 
 	if (wl_get_drv_status(cfg, DISCONNECTING, ndev)) {
 		/* If DISCONNECTING bit is set, mark locally generated */
