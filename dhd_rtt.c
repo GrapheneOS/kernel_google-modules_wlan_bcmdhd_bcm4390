@@ -5354,7 +5354,8 @@ dhd_rtt_convert_az_results_to_host_v1(rtt_mc_az_result_t *rtt_result,
 	*/
 	if (((ftm_status == WL_FTM_E_TIMEOUT) ||
 			(ftm_status == WL_FTM_E_CANCELED) ||
-			(ftm_status == WL_FTM_E_OFF_CHAN)) &&
+			(ftm_status == WL_FTM_E_OFF_CHAN) ||
+			(ftm_status == WL_FTM_E_REMOTE_CANCEL)) &&
 			rtt_report->success_num) {
 		ftm_status = RTT_STATUS_SUCCESS;
 	}
@@ -5444,7 +5445,8 @@ dhd_rtt_convert_az_results_to_host_v2(rtt_mc_az_result_t *rtt_result,
 	*/
 	if (((ftm_status == WL_FTM_E_TIMEOUT) ||
 			(ftm_status == WL_FTM_E_CANCELED) ||
-			(ftm_status == WL_FTM_E_OFF_CHAN)) &&
+			(ftm_status == WL_FTM_E_OFF_CHAN) ||
+			(ftm_status == WL_FTM_E_REMOTE_CANCEL)) &&
 			rtt_report->success_num) {
 		ftm_status = RTT_STATUS_SUCCESS;
 	}
