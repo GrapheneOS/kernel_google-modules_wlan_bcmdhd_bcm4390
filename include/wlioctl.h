@@ -4949,6 +4949,98 @@ enum {
 	IOV_TDMTX_LAST
 };
 
+/* Not mogrified in wlu to support more straightforward SVT deployment */
+#ifdef WLBCNSIM
+/* iovar structure for beacon simulator */
+typedef struct wl_bcnsim_ioc {
+	uint16   id;       /* ID of the sub-command */
+	uint16   len;      /* total length of all data[] */
+	uint8    data[];   /* var len payload  */
+} wl_bcnsim_ioc_t;
+
+/* iovar subcmd ids */
+enum {
+	IOV_BCNSIM_ENB = 1,
+	IOV_BCNSIM_ERRMAX = 2,
+	IOV_BCNSIM_ERRDSTRB = 3,
+	IOV_BCNSIM_DRIFT = 4,
+	IOV_BCNSIM_RNDLYMAX = 5,
+	IOV_BCNSIM_RNDDLY_DSTRB = 6,
+	IOV_BCNSIM_CONSDLY = 7,
+	IOV_BCNSIM_OMT_PROB = 8,
+	IOV_BCNSIM_OMT_MIN_N = 9,
+	IOV_BCNSIM_OMT_MAX_N = 10,
+	IOV_BCNSIM_OMT_DSTRB = 11,
+	IOV_BCNSIM_TSF_JUMP = 12,
+	IOV_BCNSIM_PATTERN = 13,
+	IOV_BCNSIM_STATUS = 14,
+	IOV_BCNSIM_AUTH = 15,
+	IOV_BCNSIM_RNDDLY_PROB = 16,
+	IOV_BCNSIM_BCMC_MOREDATA = 17,
+	IOV_BCNSIM_TIM_BITMAP_MC = 18,
+	IOV_BCNSIM_SEND_UPR = 19,
+	IOV_BCNSIM_LAST
+};
+
+/* tlv id for beacon simulator */
+enum wl_bcnsim_xtlv_id {
+	WL_BCNSIM_XTLV_ENABLE  = 0x1,
+	WL_BCNSIM_XTLV_ERRMAX  = 0x2,
+	WL_BCNSIM_XTLV_ERRDSTRB = 0x3,
+	WL_BCNSIM_XTLV_DRIFT = 0x4,
+	WL_BCNSIM_XTLV_RNDLYMAX = 0x5,
+	WL_BCNSIM_XTLV_RNDDLY_DSTRB = 0x6,
+	WL_BCNSIM_XTLV_CONSDLY = 0x7,
+	WL_BCNSIM_XTLV_OMT_PROB = 0x8,
+	WL_BCNSIM_XTLV_OMT_MIN_N = 0x9,
+	WL_BCNSIM_XTLV_OMT_MAX_N = 0xa,
+	WL_BCNSIM_XTLV_OMT_DSTRB = 0xb,
+	WL_BCNSIM_XTLV_TSF_JUMP = 0xc,
+	WL_BCNSIM_XTLV_PATTERN = 0xd,
+	WL_BCNSIM_XTLV_STATUS = 0xe,
+	WL_BCNSIM_XTLV_AUTH = 0xf,
+	WL_BCNSIM_XTLV_RNDDLY_PROB = 0x10,
+	WL_BCNSIM_XTLV_BCMC_MOREDATA = 0x11,
+	WL_BCNSIM_XTLV_TIM_BITMAP_MC = 0x12,
+	WL_BCNSIM_XTLV_SEND_UPR = 0x13
+};
+
+/* structure to store different pattern params */
+typedef struct wlc_bcnsim_bcn_diff_v1 {
+	uint16	version;
+	uint16	dtim_cnt;
+	uint32	tx_delta;
+	uint32	ts_delta;
+} wlc_bcnsim_bcn_diff_v1_t;
+
+/* structure to store/pass pattern */
+typedef struct wlc_bcnsim_pattern_info_v1 {
+	uint16	version;
+	uint16	pattern_count;
+	uint16	current_pos;
+	uint16	PAD;
+	wlc_bcnsim_bcn_diff_v1_t bcnsim_bcn_diff[];
+} wlc_bcnsim_pattern_info_v1_t;
+
+/* struct to store bcn sim status */
+typedef struct bcnsim_status_v1 {
+	uint16	ver;
+	uint16	length;	/* length of this structure */
+	uint32	rnd_delay_max; /* random delay */
+	int32	const_delay; /* cons delay */
+	int32	tsf_jump; /* change tsf */
+	int16	drift; /* add drift  */
+	uint16	error_max; /* max error */
+	uint8	error_dstrb; /* error dstrb */
+	uint8	rnd_delay_dstrb; /* rnd delay distr */
+	uint8	rnd_delay_prob; /* random delay prob */
+	uint8	omit_prob; /* control omit prob */
+	uint8	omit_min_n; /* min omit */
+	uint8	omit_max_n; /* max omit */
+	uint8	omit_dstrb; /* omit dstrb % */
+	uint8	PAD;
+} bcnsim_status_v1_t;
+#endif /* WLBCNSIM */
 
 /* SFLASH iovar sub commands */
 #define WL_SFLASH_IOV_VERSION_V1 1u
@@ -8146,6 +8238,45 @@ typedef struct {
 	uint32 timestamp;
 } wl_acs_record_t;
 
+typedef struct chanim_stats_us {
+	uint64		total_tm;	/* total time radio was actiave on channel */
+	uint64		busy_tm;	/* time channel is busy reciveing traffic */
+	uint64		ccastats_us[CCASTATS_MAX];	/* in microsecond */
+	chanspec_t	chanspec;	/* ctrl chanspec of the interface */
+	uint16	pad[3];	/* align struct to 8 byte boundary */
+} chanim_stats_us_t;
+
+typedef struct {
+	uint32 buflen;
+	uint32 version;
+	uint32 count;
+	uint32 dur;
+	chanim_stats_us_t stats_us[];
+} wl_chanim_stats_us_t;
+
+#define WL_CHANIM_BUF_LEN		8192u
+#define WL_CHANIM_READ_VERSION		0x00
+#define WL_CHANIM_STATS_US_VERSION_1	1u
+#define WL_CHANIM_STATS_US_VERSION	WL_CHANIM_STATS_US_VERSION_1
+
+#define WL_CHANIM_STATS_FIXED_LEN OFFSETOF(wl_chanim_stats_t, stats)
+#define WL_CHANIM_STATS_US_FIXED_LEN OFFSETOF(wl_chanim_stats_us_t, stats_us)
+
+#define WL_CHANIM_STATS_V4 4
+typedef struct chanim_stats_v4 {
+	uint32 glitchcnt;               /**< normalized as per second count */
+	uint32 badplcp;                 /**< normalized as per second count */
+	uint8 ccastats[CCASTATS_V4_MAX];   /**< normalized as 0-255 */
+	int8 bgnoise;                   /**< background noise level (in dBm) */
+	uint8 PAD;
+	chanspec_t chanspec;            /**< ctrl chanspec of the interface */
+	uint32 timestamp;               /**< time stamp at which the stats are collected */
+	uint32 bphy_glitchcnt;          /**< normalized as per second count */
+	uint32 bphy_badplcp;            /**< normalized as per second count */
+	uint8 chan_idle;                /**< normalized as 0~255 */
+	uint8 PAD[3];
+} chanim_stats_v4_t;
+
 #define WL_CHANIM_STATS_V2 2
 #define CCASTATS_V2_MAX 9
 typedef struct chanim_stats_v2 {
@@ -8183,6 +8314,13 @@ typedef struct {
 	uint32 count;
 	chanim_stats_t stats[BCM_FLEX_ARRAY];
 } wl_chanim_stats_t;
+
+typedef struct {
+	uint32 buflen;
+	uint32 version;
+	uint32 count;
+	chanim_stats_v4_t stats[BCM_FLEX_ARRAY];
+} wl_chanim_stats_v4_t;
 
 #define WL_SC_CHANIM_STATS_V1	 1u
 /* sc chanim interface stats */
@@ -10443,6 +10581,7 @@ typedef struct wl_nan_event_oob_af_txs {
 #define NAN_OOB_AF_TXS_NO_ACK		0x2
 #define NAN_OOB_AF_TXS_EXPIRED		0x3
 #define NAN_OOB_AF_TXS_DISABLED		0x4
+#define NAN_OOB_AF_TXS_MCAST_NO_ACK	0x5
 
 /* WL_NAN_EVENT_OOB_AF_RX event sent to host upon receiving a NAN OOB AF frame */
 typedef struct wl_nan_event_oob_af_rx {
@@ -10507,6 +10646,7 @@ enum wl_nan_cmd_xtlv_id {
 #define WL_NAN_CMD_PAIRING_PEER_COMP_ID	0x11
 #define WL_NAN_CMD_TETHER_COMP_ID	0x12
 #define WL_NAN_CMD_SNAP_LLC_CFG_COMP_ID	0x13
+#define WL_NAN_CMD_DATA_STATS_COMP_ID	0x14
 
 
 #define WL_NAN_CMD_COMP_SHIFT		8
@@ -10670,7 +10810,11 @@ typedef enum wl_nan_tlv {
 	/* NAN snap xtlv sub commands - xtlv_list, rx_data, tx_data */
 	WL_NAN_XTLV_SNAP_LLC_XTLV_LIST	= NAN_CMD(WL_NAN_CMD_SNAP_LLC_CFG_COMP_ID, 0x01),
 	WL_NAN_XTLV_SNAP_RX_DATA	= NAN_CMD(WL_NAN_CMD_SNAP_LLC_CFG_COMP_ID, 0x02),
-	WL_NAN_XTLV_SNAP_TX_DATA	= NAN_CMD(WL_NAN_CMD_SNAP_LLC_CFG_COMP_ID, 0x03)
+	WL_NAN_XTLV_SNAP_TX_DATA	= NAN_CMD(WL_NAN_CMD_SNAP_LLC_CFG_COMP_ID, 0x03),
+
+	WL_NAN_XTLV_DATA_STATS_HDR	= NAN_CMD(WL_NAN_CMD_DATA_STATS_COMP_ID, 0x01),
+	WL_NAN_XTLV_DATA_STATS_TX	= NAN_CMD(WL_NAN_CMD_DATA_STATS_COMP_ID, 0x02),
+	WL_NAN_XTLV_DATA_STATS_RX	= NAN_CMD(WL_NAN_CMD_DATA_STATS_COMP_ID, 0x03)
 
 } wl_nan_tlv_t;
 
@@ -10865,10 +11009,11 @@ enum wl_nan_sub_cmd_xtlv_id {
 	WL_NAN_CMD_PAIRING_END = NAN_CMD(WL_NAN_CMD_PAIRING_COMP_ID, 0x04),
 	WL_NAN_CMD_PAIRING_MAX = WL_NAN_CMD_PAIRING_END,
 
+	WL_NAN_CMD_DATA_STATS_SAMPLE_DUR = NAN_CMD(WL_NAN_CMD_DATA_STATS_COMP_ID, 0x01),
 	/* Add submodules below, and update WL_NAN_CMD_MAX */
 
 	/* ROML check for this enum should use WL_NAN_CMD_MAX */
-	WL_NAN_CMD_MAX = WL_NAN_CMD_PAIRING_MAX
+	WL_NAN_CMD_MAX = WL_NAN_CMD_DATA_STATS_SAMPLE_DUR
 };
 
 
@@ -13289,6 +13434,40 @@ typedef struct wl_nan_per_stats_s {
 	uint32  rxback;		/* rx block ack */
 	uint32  txback;		/* tx bloak ack */
 } wl_nan_per_stats_t;
+
+/* WL_NAN_XTLV_DATA_STATS_HDR */
+typedef struct wl_nan_data_stats_hdr {
+	uint16	sample_dur;	/* Sample duration in TU */
+	uint16	sample_cnt;
+	uint16	start_dw_idx;
+	uint16	reserved;
+} wl_nan_data_stats_hdr_t;
+
+/* WL_NAN_XTLV_DATA_STATS_TX */
+typedef struct wl_nan_data_stats_tx {
+	uint16 start_slot_idx;
+	uint16 PAD;
+	uint32 avg_cca;
+	uint32 unicast_tx_pkts;
+	uint32 unicast_tx_mpdu;
+	uint32 mcast_tx_rspec;
+	uint32 mcast_tx_pkts;
+	uint32 mcast_tx_mpdu;
+} wl_nan_data_stats_tx_t;
+
+/* WL_NAN_XTLV_DATA_STATS_RX */
+typedef struct wl_nan_data_stats_rx {
+	uint16 start_slot_idx;
+	uint16 PAD;
+	uint32 avg_cca;
+	uint32 unicast_rx_pkts;
+	uint32 unicast_rx_mpdu;
+	uint32 mcast_rx_rspec;
+	uint32 mcast_rx_pkts;
+	uint32 mcast_rx_mpdu;
+	uint16 unicast_rx_snr;
+	uint16 mcast_rx_snr;
+} wl_nan_data_stats_rx_t;
 
 /* fast discovery beacon config
  * WL_NAN_XTLV_CFG_FDISC_TBMP
@@ -19226,6 +19405,7 @@ enum {
 	WL_TWT_CMD_STATUS		= 10,
 	WL_TWT_CMD_CONFIG		= 11,
 	WL_TWT_CMD_BTWT_CONFIG		= 12,
+	WL_TWT_CMD_RANGE		= 13,
 	WL_TWT_CMD_LAST
 };
 
@@ -19380,7 +19560,7 @@ typedef struct wl_twt_sdesc_v0 {
 	uint32 btwt_persistence;	/* Broadcast TWT Persistence */
 	uint32 wake_int_max;	/* max wake interval(uS) for TWT */
 	uint8 duty_cycle_min;	/* min duty cycle for TWT(Percentage) */
-	uint8 PAD;
+	uint8 flow_flags2;	/* Additional Flow attributes. See WL_TWT_FLOW_FLAG2_XXXX below */
 	/* deprecated - to be removed */
 	uint16 li;
 } wl_twt_sdesc_v0_t;
@@ -19420,7 +19600,7 @@ typedef struct wl_twt_cdesc {
 	uint8 negotiation_type;	/* Negotiation Type: See macros TWT_NEGO_TYPE_X */
 	uint8 configID;		/* TWT Configuration ID */
 	uint8 flow_flags;	/* Flow Flags Configuration. See WL_TWT_FLOW_FLAG_XXXX */
-	uint8 PAD;
+	uint8 flow_flags2;	/* Additional Flow attributes. See WL_TWT_FLOW_FLAG2_XXXX below */
 	uint32 wake_time_h;	/* target wake time - BSS TSF (us) */
 	uint32 wake_time_l;
 	uint32 wake_dur;	/* target wake duration in unit of microseconds */
@@ -19443,6 +19623,11 @@ typedef struct wl_twt_cdesc {
 #define WL_TWT_FLOW_FLAG_WAKEDUR_UNIT_1ms	(1u << 6u)
 #define WL_TWT_FLOW_FLAG_INFO_FRM_DISABLED	(1u << 7u)
 
+/* Flow Flags2 */
+#define WL_TWT_FLOW_FLAG2_IMPLICIT	(1u << 0u)
+#define WL_TWT_FLOW_FLAG2_UPDATABLE	(1u << 1u)
+#define WL_TWT_FLOW_FLAG2_PARAM_UPDATE	(1u << 2u)
+
 /* Deprecated - To be removed */
 #define WL_TWT_FLOW_FLAG_BROADCAST	(1u << 5u)
 #define WL_TWT_FLOW_FLAG_IMPLICIT	(1u << 7u)
@@ -19463,6 +19648,8 @@ typedef struct wl_twt_cdesc {
 #define WL_TWT_INV_PKT_SIZE	0xFFFFFFFFu
 #define WL_TWT_INV_WAKE_TIME	0xFFFFFFFFu
 
+/* auto Config ID */
+#define WL_TWT_CONFIG_ID_AUTO	0xFFu
 /* auto flow_id */
 #define WL_TWT_SETUP_FLOW_ID_AUTO	0xFFu
 /* auto broadcast ID */
@@ -19610,8 +19797,8 @@ typedef struct wl_twt_info {
 typedef struct wl_twt_status_v0 {
 	uint8	state;		/* TWT State */
 	uint8	heb_id;		/* HEB ID */
-	uint8	configID;		/* TWT Configuration ID */
-	uint8	PAD[1];
+	uint8	configID;	/* TWT Configuration ID */
+	uint8	mlo_link_id;	/* MLO Link ID */
 	struct	ether_addr peer;
 	uint8	PAD[2];
 	uint32	avg_pkt_num;	/* Average Packet number per TWT SP Interval */
@@ -19678,8 +19865,9 @@ typedef struct wl_twt_peer_stats_v2 {
 	struct	ether_addr peer;
 	uint8	id;		/* TWT session ID */
 	uint8	flow_flags;
-	uint8	configID;		/* TWT Configuration ID */
-	uint8	PAD[3];
+	uint8	configID;	/* TWT Configuration ID */
+	uint8	mlo_link_id;	/* MLO Link ID */
+	uint8	PAD[2];
 	uint32	sp_seq;		/* sequence number of the service period */
 	uint32	tx_ucast_pkts;	/* Number of unicast Tx packets in TWT SPs */
 	uint32	tx_pkts_min;	/* Minimum number of Tx packets in a TWT SP */
@@ -19764,6 +19952,25 @@ typedef struct wl_twt_cap_cmd {
 #define WL_TWT_BTWT_TEARDOWN_BID0	(1u << 1u) /* Enable/disable teardown of BTWT
 						* with BTWT id 0
 						*/
+#define WL_TWT_RANGE_CMD_VERSION_1	1u
+
+/* HE TWT schedule range output */
+typedef struct wl_twt_range {
+	uint16	version;
+	uint16	length;
+	uint32 wake_dur_min;		/* Minimum Wake duration */
+	uint32 wake_dur_max;		/* Maximum Wake duration */
+	uint32 wake_int_min;		/* Minimum Wake interval */
+	uint32 wake_int_max;		/* Maximum Wake interval */
+} wl_twt_range_t;
+
+/* HE TWT range command input */
+typedef struct wl_twt_range_cmd {
+	uint16	version;
+	uint16	length;
+	struct ether_addr peer;
+	uint8	PAD[2];
+} wl_twt_range_cmd_t;
 
 /* EHT sub command IDs */
 enum {

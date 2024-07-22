@@ -30,8 +30,9 @@ ifeq ($(KERNEL_SRC),)
   endif
 endif
 
-# undef STB when GG is defined
+# undef hikey and STB when GG is defined
 ifneq ($(CONFIG_SOC_GOOGLE),)
+  CONFIG_ARCH_HISI=
   CONFIG_ARCH_BRCMSTB=
 endif
 

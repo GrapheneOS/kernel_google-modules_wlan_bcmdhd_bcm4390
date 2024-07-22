@@ -16532,6 +16532,9 @@ wl_bss_roaming_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		roam_info.fils.pmkid = fils_info->fils_pmkid;
 	}
 #endif
+	/* Update channel info for debuggability */
+	wl_connected_channel_debuggability(cfg, ndev);
+
 	cfg80211_roamed(ndev, &roam_info, GFP_KERNEL);
 #else
 	cfg80211_roamed(ndev,
@@ -16944,6 +16947,8 @@ wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	/* update status field */
 	if (completed) {
 		status = WLAN_STATUS_SUCCESS;
+		/* Update channel info for debuggability */
+		wl_connected_channel_debuggability(cfg, ndev);
 		/* Set CONNECTED status */
 		wl_set_drv_status(cfg, CONNECTED, ndev);
 	} else if (sec->auth_assoc_res_status) {

@@ -364,9 +364,10 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 		return err;
 	}
 
-	if (bi->length < (bi->ie_offset + bi->ie_length)) {
-		WL_ERR(("IE length is not Valid. IE offse:%d, len:%d\n",
-			bi->ie_offset, bi->ie_length));
+	if ((bi->length < bi->ie_length) || (bi->length < bi->ie_offset) ||
+		(bi->length < (bi->ie_offset + bi->ie_length))) {
+		WL_ERR(("IE length is not Valid. ie_offset %d, ie_length %d, length %d\n",
+		bi->ie_offset, bi->ie_length, bi->length));
 		return -EINVAL;
 	}
 
@@ -1223,6 +1224,7 @@ wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			}
 #endif /* DUAL_ESCAN_RESULT_BUFFER */
 			/* report scan results for aborted case */
+			wl_inform_bss(cfg);
 			wl_notify_escan_complete(cfg, ndev, true);
 		} else {
 			/* If there is no pending host initiated scan, do nothing */
@@ -3136,6 +3138,11 @@ wl_notify_escan_complete(struct bcm_cfg80211 *cfg,
 		/* use the current scan cache */
 		cfg->bss_list = wl_escan_get_buf(cfg, FALSE);
 #endif /* USE_CACHED_SCANRESULT_FOR_ABORT */
+	}
+
+	if (!cfg->bss_list) {
+		/* user abort case, get if cached scan is available */
+		cfg->bss_list = wl_escan_get_buf(cfg, aborted);
 	}
 
 	if (cfg->bss_list) {
@@ -7980,4 +7987,22 @@ u8 wl_cfgscan_get_max_num_chans_per_bw(chanspec_t chspec)
 
 	}
 	return max_num_chans;
+}
+
+void
+wl_connected_channel_debuggability(struct bcm_cfg80211 * cfg, struct net_device * ndev)
+{
+	chanspec_t *chanspec;
+	struct ieee80211_channel *chan;
+	u32 center_freq;
+	struct wiphy *wiphy = bcmcfg_to_wiphy(cfg);
+
+	chanspec = (chanspec_t *)wl_read_prof(cfg, ndev, WL_PROF_CHAN);
+	center_freq = wl_channel_to_frequency(wf_chspec_ctlchan(*chanspec),
+			CHSPEC_BAND(*chanspec));
+
+	chan = ieee80211_get_channel(wiphy, center_freq);
+	if (chan) {
+		WL_INFORM_MEM(("Connected center_freq:%d flags:%x\n", center_freq, chan->flags));
+	}
 }
