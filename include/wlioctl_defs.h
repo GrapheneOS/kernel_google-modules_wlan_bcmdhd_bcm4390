@@ -472,7 +472,8 @@ typedef uint32 ratespec_t;
 #define WL_BSS2_FLAGS_RNR_MATCH		0x10	/* To report original BSS that has RNR match */
 #define WL_BSS2_FLAGS_HE_BCN_PRBRSP	0x20	/* BSS update to indiacte HE bcn or prb rsp. */
 #define WL_BSS2_FLAGS_HE_6G_DUP		0x40	/* non-HT dup'ed beacon indicator */
-#define WL_BSS2_FLAGS_FROM_SS		0x80	/* bss_info from results on slim scan */
+#define WL_BSS2_FLAGS_FROM_SS		0x80	/* obsoleted. to be removed */
+#define WL_BSS2_FLAGS_FROM_MS		0x80	/* bss_info from results on multi scan */
 
 /* bit definitions for bcnflags in wl_bss_info */
 #define WL_BSS_BCNFLAGS_INTERWORK_PRESENT	0x01 /* beacon had IE, accessnet valid */
@@ -1877,28 +1878,37 @@ typedef uint32 ratespec_t;
 #define CHANIM_ACS_RECORD			10
 
 /* CHANIM */
-#define CCASTATS_TXDUR  0
-#define CCASTATS_INBSS  1
-#define CCASTATS_OBSS   2
-#define CCASTATS_NOCTG  3
-#define CCASTATS_NOPKT  4
-#define CCASTATS_DOZE   5
-#define CCASTATS_TXOP	6
-#define CCASTATS_GDTXDUR        7
-#define CCASTATS_BDTXDUR        8
+#define CCASTATS_TXDUR  0u
+#define CCASTATS_INBSS  1u
+#define CCASTATS_OBSS   2u
+#define CCASTATS_NOCTG  3u
+#define CCASTATS_NOPKT  4u
+#define CCASTATS_DOZE   5u
+#define CCASTATS_TXOP	6u
+#define CCASTATS_GDTXDUR        7u
+#define CCASTATS_BDTXDUR        8u
+#define CCASTATS_MYRX      9u
+#define CCASTATS_TXMUTE      10u
+#define CCASTATS_RXBLNK      11u
 
 /* FIXME: CCASTATS_MAX is 9 for existing chips and 10 for new ones.
  * This is to avoid rom invalidation of existing chips.
  */
+#define CCASTATS_V3_MAX    10
 #ifndef WLCHANIM_V2
 #define CCASTATS_MAX    9
 #else /* WLCHANIM_V2 */
-#define CCASTATS_MYRX      9
 #define CCASTATS_MAX    10
 #endif /* WLCHANIM_V2 */
+#define	CCASTATS_V4_MAX	12
 
 #define WL_CHANIM_COUNT_ALL	0xff
 #define WL_CHANIM_COUNT_ONE	0x1
+#define WL_CHANIM_US_DUR               0xfa
+#define WL_CHANIM_US_DUR_GET           0xfb
+#define WL_CHANIM_COUNT_US_ONE         0xfc
+#define WL_CHANIM_COUNT_US_ALL         0xfd
+#define WL_CHANIM_COUNT_US_RESET       0xfe
 
 /* flags used in scandb, indicates bss attributes of interest */
 #define WLC_SCANDB_CACHE_FLAG_NONE	(0u)		/* None */

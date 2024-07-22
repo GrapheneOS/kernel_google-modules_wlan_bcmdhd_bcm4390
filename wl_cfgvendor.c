@@ -12031,7 +12031,7 @@ wl_cfgvendor_tx_power_scenario(struct wiphy *wiphy,
 				break;
 			default:
 				WL_ERR(("SAR: invalid wifi tx power scenario = %d\n",
-					sar_tx_power_val));
+					wifi_tx_power_mode));
 				err = -EINVAL;
 				goto exit;
 		}
@@ -13794,7 +13794,7 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 	u32 mask = 0;
 	uint32 channel;
 	uint32 freq, width;
-	uint32 chspec, chaninfo;
+	uint32 chspec, chaninfo, cfg_chaninfo;
 	u16 list_count;
 	int found_idx = BCME_NOTFOUND;
 	bool ch_160mhz_5g;
@@ -13999,6 +13999,14 @@ static int wl_cfgvendor_get_usable_channels_handler(struct bcm_cfg80211 *cfg,
 					/* handle 2G and 5G channels */
 					if (!(chaninfo & WL_CHAN_P2P_PROHIBITED)) {
 						mask |= (1 << WIFI_INTERFACE_P2P_GO);
+					}
+
+					if (CHSPEC_IS2G(chspec) ||
+						(CHSPEC_IS5G(chspec) &&
+						((wl_cfgscan_get_chan_info(cfg,
+						&cfg_chaninfo, chspec) == BCME_OK) &&
+						!((cfg_chaninfo & WL_CHAN_RADAR) ||
+						(cfg_chaninfo & WL_CHAN_PASSIVE))))) {
 						mask |= (1 << WIFI_INTERFACE_SOFTAP);
 					}
 #ifdef WL_NAN_INSTANT_MODE
