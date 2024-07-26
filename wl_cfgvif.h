@@ -70,8 +70,6 @@
 #define WL_HE_FEATURES_HE_P2P		0x20
 #define WL_HE_FEATURES_6G		0x80u
 
-/* customer requested aggr roaming value */
-#define WL_AGGR_ROAM_TRIGGER_VALUE      (-65)
 
 extern bool wl_cfg80211_check_vif_in_use(struct net_device *ndev);
 
@@ -333,8 +331,4 @@ extern s32 wl_cfgvif_update_assoc_fail_status(struct bcm_cfg80211 *cfg,
 extern s32 wl_cfgvif_interface_ops(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev, s32 bsscfg_idx,
 	wl_iftype_t iftype, s32 del, u8 *addr);
-#ifdef WL_AGGRESSIVE_ROAM
-extern void wl_cfgvif_enable_aggressive_roam(struct bcm_cfg80211 *cfg, struct net_device *dev,
-	bool enable);
-#endif /* WL_AGGRESSIVE_ROAM */
 #endif /* _wl_cfgvif_h_ */

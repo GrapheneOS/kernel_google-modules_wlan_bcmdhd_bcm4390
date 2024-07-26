@@ -44,9 +44,6 @@ extern void wl_cellavoid_clear_requested_freq_bands(struct net_device *ndev,
 	void *cai);
 extern bool wl_cellavoid_operation_allowed(void *cai,
 	chanspec_t chanspec, enum nl80211_iftype type);
-#ifdef WL_CELLULAR_CHAN_AVOID_DUMP
-extern void wl_cellavoid_dump_chan_info_list(struct bcm_cfg80211 *cfg);
-#endif /* WL_CELLULAR_CHAN_AVOID_DUMP */
 extern void wl_cellavoid_free_csa_info(void *cai,
 	struct net_device *ndev);
 extern chanspec_t wl_cellavoid_find_chspec_fromband(void *cai, int band);
