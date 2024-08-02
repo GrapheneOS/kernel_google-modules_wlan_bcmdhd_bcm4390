@@ -5313,13 +5313,17 @@ wl_cfgscan_listen_complete_work(struct work_struct *work)
 	struct bcm_cfg80211 *cfg = NULL;
 	BCM_SET_CONTAINER_OF(cfg, work, struct bcm_cfg80211, loc.work.work);
 
+	mutex_lock(&cfg->if_sync);
 	WL_ERR(("listen timeout\n"));
 	/* listen not completed. Do recovery */
 	if (!cfg->loc.in_progress) {
 		WL_ERR(("No listen in progress!\n"));
-		return;
+		goto exit;
 	}
 	wl_cfgscan_notify_listen_complete(cfg);
+
+exit:
+	mutex_unlock(&cfg->if_sync);
 }
 
 s32
