@@ -2662,7 +2662,7 @@ dhdpcie_dongle_attach(dhd_bus_t *bus)
 	}
 
 	DHD_PRINT(("%s: before si_attach\n", __FUNCTION__));
-	dhdpcie_print_amni_regs(bus, FALSE);
+	dhdpcie_print_amni_regs(bus);
 	/* si_attach() will provide an SI handle and scan the backplane */
 	if (!(bus->sih = si_attach((uint)devid, osh, regsva, PCI_BUS, bus,
 	                           &bus->vars, &bus->varsz))) {
@@ -2670,7 +2670,7 @@ dhdpcie_dongle_attach(dhd_bus_t *bus)
 		goto fail;
 	}
 	DHD_PRINT(("%s: after si_attach\n", __FUNCTION__));
-	dhdpcie_print_amni_regs(bus, FALSE);
+	dhdpcie_print_amni_regs(bus);
 
 	if (MULTIBP_ENAB(bus->sih) && (bus->sih->buscorerev >= 66)) {
 		/*
@@ -5358,10 +5358,6 @@ dhdpcie_checkdied(dhd_bus_t *bus, char *data, uint size)
 		/* wake up IOCTL wait event */
 		dhd_wakeup_ioctl_event(bus->dhd, IOCTL_RETURN_ON_TRAP);
 
-		if (dhdpcie_chk_cmnbp_status_indirect(bus) == BCME_OK) {
-			dhdpcie_print_amni_regs(bus, TRUE);
-		}
-
 		dhd_bus_dump_console_buffer(bus);
 		dhd_prot_debug_info_print(bus->dhd);
 
@@ -6003,15 +5999,10 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 					DHD_ERROR(("%s : Set do_chip_bighammer\n", __FUNCTION__));
 					bus->dhd->do_chip_bighammer = TRUE;
 #endif /* WBRC */
-
+					/* For android collect FIS dumps */
 #ifdef DHD_SSSR_DUMP
 					dhdp->collect_sssr = TRUE;
-#ifdef OEM_ANDROID
-					/* Only for android collect FIS dumps
-					 * It could cause pcie link down problem on oly platform
-					 */
 					dhdpcie_set_collect_fis(bus);
-#endif /* OEM_ANDROID */
 #endif /* DHD_SSSR_DUMP */
 					if (timeout) {
 						collect_cbaon_dmps = TRUE;
@@ -8120,11 +8111,11 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 		*/
 		dhdpcie_advertise_bus_cleanup(bus->dhd);
 
-		dhdpcie_print_amni_regs(bus, FALSE);
+		dhdpcie_print_amni_regs(bus);
 #ifdef OEM_ANDROID
 		dhdpcie_dongle_reset(bus);
 #endif /* OEM_ANDROID */
-		dhdpcie_print_amni_regs(bus, FALSE);
+		dhdpcie_print_amni_regs(bus);
 
 		if (bus->dhd->busstate != DHD_BUS_DOWN) {
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
@@ -8288,14 +8279,14 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			bus->dhd->hp2p_enable = TRUE;
 #endif
 
-			dhdpcie_print_amni_regs(bus, FALSE);
+			dhdpcie_print_amni_regs(bus);
 #ifdef OEM_ANDROID
 			/* For android platforms reset (FLR) dongle during Wifi ON
 			 * this should be done before dongle attach
 			 */
 			dhdpcie_dongle_reset(bus);
 #endif /* OEM_ANDROID */
-			dhdpcie_print_amni_regs(bus, FALSE);
+			dhdpcie_print_amni_regs(bus);
 
 			bcmerror = dhdpcie_bus_dongle_attach(bus);
 			if (bcmerror) {
@@ -11880,7 +11871,7 @@ __dhdpcie_bus_download_state(dhd_bus_t *bus, bool state)
 
 		bus->arm_oor_time = OSL_LOCALTIME_NS();
 
-		dhdpcie_print_amni_regs(bus, FALSE);
+		dhdpcie_print_amni_regs(bus);
 
 		if (is_arm_ca7) {
 			/* for ARM CA7 it is enough if we clear bit5 in IO DMP ctrl
@@ -14804,7 +14795,7 @@ dhdpcie_wait_readshared_area_addr(dhd_bus_t *bus, uint32 *share_addr)
 			dhdpcie_bus_intr_disable(bus); /* Disable interrupt using IntMask!! */
 			dhdpcie_disable_irq_nosync(bus); /* Disable interrupt!! */
 		}
-		dhdpcie_print_amni_regs(bus, FALSE);
+		dhdpcie_print_amni_regs(bus);
 	} else {
 #ifdef GDB_PROXY
 		/* Loop while timeout is caused by firmware stop in GDB */
@@ -16440,10 +16431,10 @@ dhd_bus_flow_ring_create_response(dhd_bus_t *bus, uint16 flowid, int32 status)
 	DHD_INFO(("%s :Flow Response %d \n", __FUNCTION__, flowid));
 
 	/* Boundary check of the flowid */
-	if (flowid > bus->dhd->max_tx_flowid) {
-		DHD_ERROR(("%s: flowid is invalid %d, max id %d\n", __FUNCTION__,
-			flowid, bus->dhd->max_tx_flowid));
-		return;
+	if (DHD_FLOW_RING_INV_ID(bus->dhd, flowid)) {
+		DHD_ERROR(("%s: invalid flowid:%d alloc_max:%d fid_max:%d\n",
+			__FUNCTION__, flowid, bus->dhd->num_h2d_rings,
+			bus->dhd->max_tx_flowid));
 	}
 
 	flow_ring_node = DHD_FLOW_RING(bus->dhd, flowid);
@@ -16547,10 +16538,10 @@ dhd_bus_flow_ring_delete_response(dhd_bus_t *bus, uint16 flowid, uint32 status)
 	DHD_INFO(("%s :Flow Delete Response %d \n", __FUNCTION__, flowid));
 
 	/* Boundary check of the flowid */
-	if (flowid > bus->dhd->max_tx_flowid) {
-		DHD_ERROR(("%s: flowid is invalid %d, max id %d\n", __FUNCTION__,
-			flowid, bus->dhd->max_tx_flowid));
-		return;
+	if (DHD_FLOW_RING_INV_ID(bus->dhd, flowid)) {
+		DHD_ERROR(("%s: invalid flowid:%d alloc_max:%d fid_max:%d\n",
+			__FUNCTION__, flowid, bus->dhd->num_h2d_rings,
+			bus->dhd->max_tx_flowid));
 	}
 
 	flow_ring_node = DHD_FLOW_RING(bus->dhd, flowid);
@@ -16630,10 +16621,10 @@ dhd_bus_flow_ring_flush_response(dhd_bus_t *bus, uint16 flowid, uint32 status)
 	}
 
 	/* Boundary check of the flowid */
-	if (flowid > bus->dhd->max_tx_flowid) {
-		DHD_ERROR(("%s: flowid is invalid %d, max id %d\n", __FUNCTION__,
-			flowid, bus->dhd->max_tx_flowid));
-		return;
+	if (DHD_FLOW_RING_INV_ID(bus->dhd, flowid)) {
+		DHD_ERROR(("%s: invalid flowid:%d alloc_max:%d fid_max:%d\n",
+			__FUNCTION__, flowid, bus->dhd->num_h2d_rings,
+			bus->dhd->max_tx_flowid));
 	}
 
 	flow_ring_node = DHD_FLOW_RING(bus->dhd, flowid);

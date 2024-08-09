@@ -2054,12 +2054,6 @@ dhd_log_dump_deinit(dhd_pub_t *dhd)
 
 	BCM_REFERENCE(ring);
 
-#if defined(DHD_EVENT_LOG_FILTER)
-	if (dhd->event_log_filter) {
-		dhd_event_log_filter_deinit(dhd);
-	}
-#endif /* DHD_EVENT_LOG_FILTER */
-
 	if (dhd->concise_dbg_buf) {
 		VMFREE(dhd->osh, dhd->concise_dbg_buf, CONCISE_DUMP_BUFLEN);
 		dhd->concise_dbg_buf = NULL;

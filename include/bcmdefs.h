@@ -361,15 +361,6 @@ extern bool bcm_postattach_part_reclaimed;
 /* Use BCMSPECSYM() macro to tag symbols going to a special output section in the binary. */
 #define BCMSPECSYM(_sym)	__attribute__ ((__section__ (".special." #_sym))) _sym
 
-#ifdef BCMFUZZ
-#define BCM_UNROLL_LOOPS
-#else
-/** Use on functions with small loops with boundaries known at compile time to trade increased
- * memory usage for a few saved cycles by avoiding the branch statement caused by the loop.
- */
-#define BCM_UNROLL_LOOPS	__attribute__ ((optimize("unroll-loops")))
-#endif /* BCMFUZZ */
-
 #define STATIC	static
 
 /* functions that do not examine any values except their arguments, and have no effects except
@@ -813,19 +804,6 @@ extern bool _dvfsenab;
 #endif
 #else
 	#define BCMDVFS_ENAB() (FALSE)
-#endif /* BCMDVFS */
-
-#ifdef BCM_HW_SFHLLC
-extern bool _hw_sfhllc_enab;
-#if defined(ROM_ENAB_RUNTIME_CHECK)
-	#define BCM_HW_SFHLLC_ENAB() (_hw_sfhllc_enab)
-#elif !defined(BCM_HW_SFHLLC_DISABLED)
-	#define BCM_HW_SFHLLC_ENAB() (TRUE)
-#else
-	#define BCM_HW_SFHLLC_ENAB() (FALSE)
-#endif
-#else
-	#define BCM_HW_SFHLLC_ENAB() (FALSE)
 #endif /* BCMDVFS */
 
 /* Max size for reclaimable NVRAM array */
