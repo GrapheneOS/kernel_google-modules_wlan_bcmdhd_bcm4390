@@ -3415,14 +3415,14 @@ bcm_cfg80211_add_ibss_if(struct wiphy *wiphy, char *name)
 		goto fail;
 
 	event = &cfg->if_event_info;
-	/* By calling dhd_cfg80211_allocate_if (dhd_allocate_if eventually) we give the control
+	/* By calling wl_cfg80211_allocate_if (dhd_allocate_if eventually) we give the control
 	 * over this net_device interface to dhd_linux, hence the interface is managed by dhd_liux
 	 * and will be freed by dhd_detach unless it gets unregistered before that. The
 	 * wireless_dev instance new_ndev->ieee80211_ptr associated with this net_device will
 	 * be freed by wl_dealloc_netinfo
 	 */
-	new_ndev = dhd_cfg80211_allocate_if(cfg, event->ifidx, event->name,
-		event->mac, event->bssidx, event->name, FALSE);
+	new_ndev = wl_cfg80211_allocate_if(cfg, event->ifidx, event->name,
+		event->mac, event->bssidx, event->name);
 	if (new_ndev == NULL)
 		goto fail;
 	wdev = (struct wireless_dev *)MALLOCZ(cfg->osh, sizeof(*wdev));
@@ -3824,8 +3824,8 @@ wl_cfg80211_post_ifcreate(struct net_device *ndev,
 	} else
 #endif /* WL_STATIC_IF */
 	{
-		new_ndev = dhd_cfg80211_allocate_if(cfg, event->ifidx,
-			name, addr, event->bssidx, event->name, rtnl_lock_reqd);
+		new_ndev = wl_cfg80211_allocate_if(cfg, event->ifidx,
+			name, addr, event->bssidx, event->name);
 		if (!new_ndev) {
 			WL_ERR(("I/F allocation failed! \n"));
 			return NULL;
@@ -3983,30 +3983,6 @@ fail:
 
 s32
 wl_cfg80211_post_ifdel(struct net_device *ndev, bool rtnl_lock_reqd, s32 ifidx)
-{
-	s32 ret = BCME_OK;
-	struct bcm_cfg80211 *cfg;
-
-	if (!ndev || !ndev->ieee80211_ptr) {
-		/* No wireless dev done for this interface */
-		return -EINVAL;
-	}
-
-	cfg = wl_get_cfg(ndev);
-	if (!cfg) {
-		WL_ERR(("cfg null\n"));
-		return BCME_ERROR;
-	}
-
-	mutex_lock(&cfg->if_sync);
-	ret = _wl_cfg80211_post_ifdel(ndev, rtnl_lock_reqd, ifidx);
-	mutex_unlock(&cfg->if_sync);
-
-	return ret;
-}
-
-s32
-_wl_cfg80211_post_ifdel(struct net_device *ndev, bool rtnl_lock_reqd, s32 ifidx)
 {
 	s32 ret = BCME_OK;
 	struct bcm_cfg80211 *cfg;
@@ -4312,7 +4288,7 @@ exit:
 	} else
 #endif /* WL_STATIC_IF */
 	{
-		if (_wl_cfg80211_post_ifdel(ndev, false, ifidx) != BCME_OK) {
+		if (wl_cfg80211_post_ifdel(ndev, false, ifidx) != BCME_OK) {
 			WL_ERR(("post_ifdel failed\n"));
 			ret = BCME_ERROR;
 		}
@@ -6104,7 +6080,6 @@ exit:
 	return ret;
 }
 
-#define EHT_FEATURES_EHT_AP	0x1u
 static void
 wl_get_mlo_capabilities(struct net_device *dev)
 {
@@ -7012,7 +6987,17 @@ wl_do_preassoc_ops(struct bcm_cfg80211 *cfg,
 		 */
 		bool mlo_enable = TRUE;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)) || defined(WL_MLO_HOST_CTRL)
-		if (!(sme->flags & CONNECT_REQ_MLO_SUPPORT))
+		bool eht_disable = FALSE;
+
+		if (sme->flags & ASSOC_REQ_DISABLE_EHT) {
+			wl_cfgvif_set_eht_features(dev, cfg, DHD_DISABLE_STA_EHT);
+			eht_disable = TRUE;
+			WL_INFORM_MEM(("eht disabled\n"));
+		} else {
+			wl_cfgvif_set_eht_features(dev, cfg, DHD_ENABLE_STA_EHT);
+		}
+
+		if ((!(sme->flags & CONNECT_REQ_MLO_SUPPORT)) || (eht_disable))
 		{
 			WL_INFORM_MEM(("[%s] mlo disabled\n", dev->name));
 			mlo_enable = FALSE;
@@ -22677,10 +22662,8 @@ static void wl_cfg80211_work_handler(struct work_struct * work)
 	struct net_info *iter, *next;
 	s32 err = BCME_OK;
 	s32 pm = PM_FAST;
-
 	BCM_SET_CONTAINER_OF(cfg, work, struct bcm_cfg80211, pm_enable_work.work);
 	WL_DBG(("Enter \n"));
-
 	mutex_lock(&cfg->if_sync);
 	GCC_DIAGNOSTIC_PUSH_SUPPRESS_CAST();
 	for_each_ndev(cfg, iter, next) {

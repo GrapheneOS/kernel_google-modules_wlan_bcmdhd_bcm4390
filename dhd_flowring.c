@@ -868,12 +868,6 @@ dhd_flowid_lookup(dhd_pub_t *dhdp, uint8 ifindex,
 		if_flow_lkup_t *if_flow_lkup;
 		if_flow_lkup = (if_flow_lkup_t *)dhdp->if_flow_lkup;
 
-		if (dhd_check_del_in_progress(dhdp, ifindex)) {
-			DHD_ERROR(("%s: skip as ifindex:%d del_in_progress\n",
-				__FUNCTION__, ifindex));
-			return BCME_ERROR;
-		}
-
 		if (!if_flow_lkup[ifindex].status)
 			return BCME_ERROR;
 

@@ -478,8 +478,9 @@ typedef uint32 ratespec_t;
 /* bit definitions for bcnflags in wl_bss_info */
 #define WL_BSS_BCNFLAGS_INTERWORK_PRESENT	0x01 /* beacon had IE, accessnet valid */
 #define WL_BSS_BCNFLAGS_INTERWORK_PRESENT_VALID 0x02 /* on indicates support for this API */
-#define WL_BSS_BCNFLAGS_MULTIPLE_BSSID_SET 0x4 /* this AP belongs to a multiple BSSID set */
-#define WL_BSS_BCNFLAGS_NONTRANSMITTED_BSSID 0x8 /* this AP is the transmitted BSSID */
+#define WL_BSS_BCNFLAGS_MULTIPLE_BSSID_SET	0x04 /* this AP belongs to a multiple BSSID set */
+#define WL_BSS_BCNFLAGS_NONTRANSMITTED_BSSID	0x08 /* this AP is the transmitted BSSID */
+#define WL_BSS_BCNFLAGS_BSSCOLOR_PRESENT	0x10 /* this AP has BSS color info */
 
 /* bssinfo flag for nbss_cap */
 #define VHT_BI_SGI_80MHZ		0x00000100
@@ -2844,6 +2845,7 @@ enum wl_cnt_xtlv_id {
 #define WL_CLM_DFS_FCC             WL_CLM_DFS_TPC /**< Flag for DFS FCC */
 #define WL_CLM_DFS_EU              (WL_CLM_DFS_TPC | WL_CLM_RADAR_TYPE_EU) /**< Flag for DFS EU */
 #define WL_CLM_PP                  0x8000000u /**< Flag for Punctured bandwidth allowed */
+#define WL_CLM_NO_FDSS		   0x10000000u /**< Flag for FDSS disabled for given country */
 
 typedef enum sup_auth_status {
 	/* Basic supplicant authentication states */
@@ -3399,6 +3401,7 @@ enum wlc_capext_feature_bitpos {
 	WLC_CAPEXT_FEATURE_BITPOS_ANTGAIN6G		= 136,
 	WLC_CAPEXT_FEATURE_BITPOS_MONITOR_MULTI		= 137,
 	WLC_CAPEXT_FEATURE_BITPOS_MPF_SCAN		= 138,
+	WLC_CAPEXT_FEATURE_BITPOS_MRSNO			= 139,
 
 	WLC_CAPEXT_FEATURE_BITPOS_MAX
 };

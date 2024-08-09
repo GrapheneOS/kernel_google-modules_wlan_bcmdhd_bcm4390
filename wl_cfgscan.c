@@ -6449,9 +6449,11 @@ static int wl_cfgscan_acs_parse_parameter(struct bcm_cfg80211 *cfg,
 			return 0;
 		}
 
-		/* Handle 5G band (from bw20 to bw80) */
-		/* bw80 */
-		if ((bw == 80) &&
+		/* Handle 5G band (from bw20 to bw160)
+		 * Since bw160 falls into DFS, we downgrade the bw to 80MHz,
+		 * hence handling commonly here for both 160MHz and 80MHz
+		 */
+		if (((bw == 80) || (bw == 160)) &&
 				(pParameter->vht_enabled || pParameter->he_enabled)) {
 			chspec = wf_create_chspec_from_primary(channel,
 				WL_CHANSPEC_BW_80, chspec_band, 0);
@@ -6902,11 +6904,6 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 			goto success;
 		}
 	}
-#ifdef WL_CELLULAR_CHAN_AVOID_DUMP
-	else {
-		wl_cellavoid_dump_chan_info_list(cfg);
-	}
-#endif /* WL_CELLULAR_CHAN_AVOID_DUMP */
 
 	if (wl_cellavoid_mandatory_isset(cfg->cellavoid_info, NL80211_IFTYPE_AP)) {
 		WL_INFORM_MEM(("Mandatory flag for AP is set, skip the ACS, safe_chspec_cnt %d\n",

@@ -645,7 +645,7 @@ typedef struct wl_bss_info_v114 {
 	uint32		he_txmcsmap;		/**< HE tx mcs map (802.11ax) */
 	uint32		timestamp[2];		/* Beacon Timestamp for FAKEAP req */
 	uint8		eht_cap;		/* BSS is EHT capable */
-	uint8		RSVD4[1];
+	uint8		bss_color;
 	wl_eht_mcsmap_t	eht_mcsmap_sta;		/* EHT-MCS Map for the STA in associated state */
 	wl_eht_mcsmap_t	eht_mcsmap;		/* EHT-MCS Map for the BSS operating chan width */
 } wl_bss_info_v114_t;
@@ -703,7 +703,7 @@ typedef struct wl_bss_info_v115 {
 	uint32		he_txmcsmap;		/**< HE tx mcs map (802.11ax) */
 	uint32		timestamp[2];		/* Beacon Timestamp for FAKEAP req */
 	uint8		eht_cap;		/* BSS is EHT capable */
-	uint8		RSVD4[1];
+	uint8		bss_color;
 	wl_eht_mcsmap_t	eht_mcsmap_sta;		/* EHT-MCS Map for the STA in associated state */
 	wl_eht_mcsmap_t	eht_mcsmap;		/* EHT-MCS Map for the BSS operating chan width */
 	struct ether_addr mld_addr;		/* AP MLD address */
@@ -763,7 +763,7 @@ typedef struct wl_bss_info_v116 {
 	uint32		he_txmcsmap;		/**< HE tx mcs map (802.11ax) */
 	uint32		timestamp[2];		/* Beacon Timestamp for FAKEAP req */
 	uint8		eht_cap;		/* BSS is EHT capable */
-	uint8		RSVD4[1];
+	uint8		bss_color;
 	wl_eht_mcsmap_t	eht_mcsmap_sta;		/* EHT-MCS Map for the STA in associated state */
 	wl_eht_mcsmap_t	eht_mcsmap;		/* EHT-MCS Map for the BSS operating chan width */
 	struct ether_addr mld_addr;		/* AP MLD address */
@@ -14679,6 +14679,36 @@ struct wl_bcn_req_v2 {
 	chanspec_list_t chspec_list;
 };
 
+#define WL_RRM_BCN_REQ_VER_3	3u
+struct wl_bcn_req_v3 {
+	uint8	version;		/* size to be compatible with older version */
+	uint8	pad1[1];
+	uint16	length;			/* length for fixed struct + variable fields */
+	uint8	bcn_mode;		/* measurement mode */
+	uint8	last_bcn_rpt_ind;	/* Last Beacon Report Indication */
+	uint8	bw_ind;			/* Bandwidth Indication */
+	uint8	op_class;		/* operating class */
+	uint16	duration;		/* measurement duration */
+	uint8	channel;		/* channel number */
+	uint8	pad2[1];
+	struct ether_addr da;		/* STA MAC address */
+	struct ether_addr bssid;
+	uint16	interval;		/* randomization interval */
+	uint8	pad3[2];
+	wlc_ssid_t ssid;
+	uint16	reps;			/* # repetitions */
+	uint8	mode;			/* measurement request mode */
+	uint8	rep_details;		/* reporting details */
+	uint8	pad4[1];
+	uint8	req_elem_id_num;	/* # of request element IDs */
+	uint8	ap_op_class;		/* AP operating class */
+	uint8	ap_chan_num;		/* AP channel numbers list */
+	uint8	ap_chan_list[];
+//	uint8	pad[0 or 1];		- possible pad to make the next field at even address
+//	uint16	req_elem_id_list[];	- request element IDs list - < 255 for Elem ID;
+//					- >= 255 for 255 + Elem ID Ext
+};
+
 typedef struct rrmreq {
 	struct ether_addr da;
 	uint8 reg;
@@ -14801,9 +14831,10 @@ typedef struct frngreq {
 typedef struct frngrep_range {
 	uint32 start_tsf;		/* 4 lsb of tsf */
 	struct ether_addr bssid;
-	uint8 PAD[2];
+	uint8 max_err_exp;
+	uint8 PAD[1];
 	uint32 range;
-	uint32 max_err;
+	uint32 max_err;			/* deprecated - use max_err_exp */
 	uint8  rsvd;
 	uint8 PAD[3];
 } frngrep_range_t;
