@@ -757,9 +757,10 @@ wl_cellavoid_sort_chan_info_list(wl_cellavoid_info_t *cellavoid_info)
 /* Dump function, shows chanspec/pwrcap item both in the unsafe channel list (cellular channel list)
  * and safe channel list (avail channel list)
  */
-static void
-wl_cellavoid_dump_chan_info_list(wl_cellavoid_info_t *cellavoid_info)
+void
+wl_cellavoid_dump_chan_info_list(struct bcm_cfg80211 *cfg)
 {
+	wl_cellavoid_info_t *cellavoid_info = cfg->cellavoid_info;
 	wl_cellavoid_chan_info_t *chan_info, *next;
 	char chanspec_str[CHANSPEC_STR_LEN];
 
@@ -767,7 +768,7 @@ wl_cellavoid_dump_chan_info_list(wl_cellavoid_info_t *cellavoid_info)
 	list_for_each_entry_safe(chan_info, next, &cellavoid_info->cell_chan_info_list, list) {
 		GCC_DIAGNOSTIC_POP();
 		wf_chspec_ntoa(chan_info->chanspec, chanspec_str);
-		WL_MEM(("Cellular : chanspec %s(%x), pwrcap %d\n",
+		WL_INFORM_MEM(("Cellular : chanspec %s(%x), pwrcap %d\n",
 			chanspec_str, chan_info->chanspec, chan_info->pwr_cap));
 	}
 
@@ -775,7 +776,7 @@ wl_cellavoid_dump_chan_info_list(wl_cellavoid_info_t *cellavoid_info)
 	list_for_each_entry_safe(chan_info, next, &cellavoid_info->avail_chan_info_list, list) {
 		GCC_DIAGNOSTIC_POP();
 		wf_chspec_ntoa(chan_info->chanspec, chanspec_str);
-		WL_MEM(("Avail : chanspec %s(%x), pwrcap %d\n",
+		WL_INFORM_MEM(("Avail : chanspec %s(%x), pwrcap %d\n",
 			chanspec_str, chan_info->chanspec, chan_info->pwr_cap));
 	}
 
@@ -1454,6 +1455,12 @@ wl_cellavoid_find_ap_chan_info(struct bcm_cfg80211 *cfg, struct net_device *ndev
 	if (chan_info) {
 		WL_INFORM_MEM(("Found chan info %x\n", chan_info->chanspec));
 	}
+#ifdef WL_CELLULAR_CHAN_AVOID_DUMP
+	else {
+		WL_ERR(("No channel found. dump safe/avail list:\n"));
+		wl_cellavoid_dump_chan_info_list(cfg);
+	}
+#endif /* WL_CELLULAR_CHAN_AVOID_DUMP */
 
 	return chan_info;
 }
@@ -1734,7 +1741,7 @@ wl_cellavoid_set_cell_channels(struct bcm_cfg80211 *cfg, wl_cellavoid_param_t *p
 	wl_cellavoid_sort_chan_info_list(cellavoid_info);
 
 #ifdef WL_CELLULAR_CHAN_AVOID_DUMP
-	wl_cellavoid_dump_chan_info_list(cellavoid_info);
+	wl_cellavoid_dump_chan_info_list(cfg);
 #endif /* WL_CELLULAR_CHAN_AVOID_DUMP */
 
 	/* Perform actions needs to be done (AP->CSA)

@@ -1226,5 +1226,5 @@ void dhd_bus_pcie_pwr_req_clear(struct dhd_bus *bus);
 #define PCIE_SUBSYS_CTRL_BPACCESS_ENABLE 0x800C0u
 #define PCIE_SUBSYS_CTRL_BPACCESS_DISABLE 0x80080u
 #define BP_INDACCESS_SHIFT (0x1 << 6)
-void dhdpcie_print_amni_regs(dhd_bus_t *bus);
+void dhdpcie_print_amni_regs(dhd_bus_t *bus, bool trap_or_rot);
 #endif /* dhd_pcie_h */

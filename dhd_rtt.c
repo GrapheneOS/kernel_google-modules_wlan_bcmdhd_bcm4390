@@ -1282,6 +1282,10 @@ rtt_unpack_xtlv_cbfn(void *ctx, const uint8 *p_data, uint16 tlvid, uint16 len)
 		break;
 	}
 
+	if (ret != BCME_OK) {
+		DHD_RTT_ERR(("rtt_unpack_xtlv_cbfn error:%d for TLV ID %d len:%d \n",
+				ret, tlvid, len));
+	}
 	return ret;
 }
 
@@ -5471,6 +5475,9 @@ dhd_rtt_convert_az_results_to_host_v2(rtt_mc_az_result_t *rtt_result,
 	rtt_result->u.az_result.rtt_detail.i2r_ltf_rep = p_data_info->i2r_ltf_rep;
 	rtt_result->u.az_result.rtt_detail.r2i_ltf_rep = p_data_info->r2i_ltf_rep;
 
+	rtt_result->u.az_result.rtt_detail.i2r_sts = p_data_info->i2r_sts;
+	rtt_result->u.az_result.rtt_detail.r2i_sts = p_data_info->r2i_sts;
+
 	if (p_data_info->chanspec) {
 			chanspec = ltoh16_ua(&p_data_info->chanspec);
 #ifdef WL_CFG80211
@@ -5784,6 +5791,7 @@ exit:
 	return ret;
 
 }
+
 
 static int
 dhd_rtt_parse_az_result_event(wl_proxd_event_t *proxd_ev_data,

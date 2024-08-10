@@ -368,4 +368,46 @@ enum dsec_sboot_xtlv_id {
 	DSEC_OTP_XTLV_SBOOT_LOT_NUM_MS		= 29u,	/* Chip lot num high bits [17:47] 31 bits */
 	DSEC_OTP_XTLV_SBOOT_OTP_WR_LOCK_ENAB	= 30u,	/* OTP write lock enable bit */
 };
+
+/*
+ * sub-cmd ids shared between FW and wl. Required to qualify sub-cmd data
+ */
+typedef enum {
+	HNDEPMU_ver_SUBCMD = 0u,		/* FW returns IOVAR version */
+	HNDEPMU_reg0_SUBCMD = 1u,	/* reg0 read/write */
+	HNDEPMU_dvfs_SUBCMD = 2u,	/* dvfs registers read/write */
+	HNDEPMU_vreg_SUBCMD = 3u,	/* vreg registers read/write */
+	HNDEPMU_sws_SUBCMD = 4u,	/* sws registers read/write */
+	HNDEPMU_chip_SUBCMD = 5u,	/* chip registers read/write */
+	HNDEPMU_otp_SUBCMD = 6u,	/* otp registers read/write */
+	HNDEPMU_wsl_SUBCMD = 7u,	/* wsl registers read/write */
+	HNDEPMU_revinfo_SUBCMD = 8u,	/* FW returns chip revinfo */
+	HNDEPMU_reg_SUBCMD = 0xFEu	/* epmu(all) registers read/write */
+} epmu_subcmd_id_t;
+
+#define HNDEPMU_SUBCMD(r) HNDEPMU_## r ##_SUBCMD
+
+#define HNDEPMU_SUBCMD_CNT	10u
+
+#define EPMU_IOVAR_CMD_VER_0	0u
+#define EPMU_IOVAR_CMD_VER	EPMU_IOVAR_CMD_VER_0
+
+/*
+ * Used in register read/write sub-commands
+ */
+typedef struct epmu_reg_rw {
+	uint16 addr; /* epmu register address */
+	uint16 val;  /* value read or to be written */
+} epmu_reg_rw_t;
+
+/*
+ * used in 'revinfo' subcmd
+ */
+typedef struct epmu_rev_info {
+	uint16  ver;
+	uint16 len;
+	uint16 chipid;	/* chip id */
+	uint16 revid;	/* revision id */
+} epmu_rev_info_t;
+
 #endif /* _dngl_ioctl_h_ */

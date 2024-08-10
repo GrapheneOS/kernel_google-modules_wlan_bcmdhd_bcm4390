@@ -3342,9 +3342,7 @@ dhd_ifdel_event_handler(void *handle, void *event_info, u8 event)
 #endif /* WL_CFG80211 && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
 
 
-	if (!del_cmd_in_progress) {
-		dhd_clear_del_in_progress(dhdp, ndev);
-	}
+	dhd_clear_del_in_progress(dhdp, ndev);
 
 done:
 	MFREE(dhd->pub.osh, if_event, sizeof(dhd_if_event_t));
@@ -7560,7 +7558,10 @@ dhd_static_if_stop(struct net_device *net)
 		return BCME_OK;
 	}
 
+	dhd_net_if_lock_local(dhd);
 	dhd_set_del_in_progress(cfg->pub, net);
+	dhd_net_if_unlock_local(dhd);
+
 	/* Ensure queue is disabled */
 	netif_tx_disable(net);
 	ret = wl_cfg80211_static_if_close(net);
@@ -15196,6 +15197,11 @@ void dhd_detach(dhd_pub_t *dhdp)
 		}
 		dhd_net_if_unlock_local(dhd);
 
+#if defined(WL_STATIC_IF)
+		for (i = DHD_MAX_IFS; i < (DHD_MAX_IFS + DHD_MAX_STATIC_IFS); i++) {
+			MFREE(dhd->pub.osh, dhd->iflist[i], sizeof(*ifp));
+		}
+#endif /* WL_STATIC_IF */
 		/* 'ifp' indicates primary interface 0, clean it up. */
 		if (ifp && ifp->net) {
 #if (defined(BCM_ROUTER_DHD) && defined(HNDCTF))
@@ -16923,12 +16929,12 @@ done:
 	return ret;
 }
 
-int
+uint64
 dhd_dev_get_feature_set(struct net_device *dev)
 {
 	dhd_info_t *ptr = *(dhd_info_t **)netdev_priv(dev);
 	dhd_pub_t *dhd = (&ptr->pub);
-	int feature_set = 0;
+	uint64 feature_set = 0;
 
 	/* tdls capability or othters can be missed because of initialization */
 	if (dhd_get_fw_capabilities(dhd) < 0) {
@@ -17014,14 +17020,20 @@ dhd_dev_get_feature_set(struct net_device *dev)
 #ifdef WL_LATENCY_MODE
 	feature_set |= WIFI_FEATURE_SET_LATENCY_MODE;
 #endif /* WL_LATENCY_MODE */
+
+#ifdef WL_AGGRESSIVE_ROAM
+	feature_set |= WIFI_FEATURE_ROAMING_MODE_CONTROL;
+#endif /* WL_AGGRESSIVE_ROAM */
+
+	DHD_PRINT(("Supported feature_set %llx\n", feature_set));
 	return feature_set;
 }
 
-int
+uint64
 dhd_dev_get_feature_set_matrix(struct net_device *dev, int num)
 {
-	int feature_set_full;
-	int ret = 0;
+	uint64 feature_set_full;
+	uint64 ret = 0;
 
 	feature_set_full = dhd_dev_get_feature_set(dev);
 
@@ -17066,6 +17078,15 @@ dhd_dev_get_feature_set_matrix(struct net_device *dev, int num)
 		break;
 	}
 
+	if (ret > WIFI_FEATURE_INVALID) {
+		DHD_ERROR(("%s: Out of range feature_set_matrix: %llx\n", __FUNCTION__, ret));
+		ret = WIFI_FEATURE_INVALID;
+		/*
+		 * Max supported feature set matrix is upto u32,
+		 * beyond it requires further changes.
+		 *
+		 */
+	}
 	return ret;
 }
 
@@ -24824,6 +24845,7 @@ dhd_check_del_in_progress(dhd_pub_t *dhdp, uint8 ifindex)
 	dhd_if_t *ifp = NULL;
 	unsigned long flags;
 	bool ret = TRUE;
+
 	DHD_GENERAL_LOCK(dhdp, flags);
 	ifp = dhd_get_ifp(dhdp, ifindex);
 	if (ifp) {

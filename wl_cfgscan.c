@@ -364,9 +364,10 @@ s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_v109_t *bi, bool 
 		return err;
 	}
 
-	if (bi->length < (bi->ie_offset + bi->ie_length)) {
-		WL_ERR(("IE length is not Valid. IE offse:%d, len:%d\n",
-			bi->ie_offset, bi->ie_length));
+	if ((bi->length < bi->ie_length) || (bi->length < bi->ie_offset) ||
+		(bi->length < (bi->ie_offset + bi->ie_length))) {
+		WL_ERR(("IE length is not Valid. ie_offset %d, ie_length %d, length %d\n",
+		bi->ie_offset, bi->ie_length, bi->length));
 		return -EINVAL;
 	}
 
@@ -1223,6 +1224,7 @@ wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			}
 #endif /* DUAL_ESCAN_RESULT_BUFFER */
 			/* report scan results for aborted case */
+			wl_inform_bss(cfg);
 			wl_notify_escan_complete(cfg, ndev, true);
 		} else {
 			/* If there is no pending host initiated scan, do nothing */
@@ -3136,6 +3138,11 @@ wl_notify_escan_complete(struct bcm_cfg80211 *cfg,
 		/* use the current scan cache */
 		cfg->bss_list = wl_escan_get_buf(cfg, FALSE);
 #endif /* USE_CACHED_SCANRESULT_FOR_ABORT */
+	}
+
+	if (!cfg->bss_list) {
+		/* user abort case, get if cached scan is available */
+		cfg->bss_list = wl_escan_get_buf(cfg, aborted);
 	}
 
 	if (cfg->bss_list) {
@@ -5313,13 +5320,17 @@ wl_cfgscan_listen_complete_work(struct work_struct *work)
 	struct bcm_cfg80211 *cfg = NULL;
 	BCM_SET_CONTAINER_OF(cfg, work, struct bcm_cfg80211, loc.work.work);
 
+	mutex_lock(&cfg->if_sync);
 	WL_ERR(("listen timeout\n"));
 	/* listen not completed. Do recovery */
 	if (!cfg->loc.in_progress) {
 		WL_ERR(("No listen in progress!\n"));
-		return;
+		goto exit;
 	}
 	wl_cfgscan_notify_listen_complete(cfg);
+
+exit:
+	mutex_unlock(&cfg->if_sync);
 }
 
 s32
@@ -6764,6 +6775,7 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 	u32 *p_chspec_list = NULL;
 	char chanspec_str[CHANSPEC_STR_LEN];
 	u32 chan_info;
+	u16 channel_2g;
 #ifdef WL_CELLULAR_CHAN_AVOID
 	int safe_chspec_cnt = 0;
 	u32 *safe_chspeclist = NULL;
@@ -6890,6 +6902,11 @@ wl_convert_freqlist_to_chspeclist(struct bcm_cfg80211 *cfg,
 			goto success;
 		}
 	}
+#ifdef WL_CELLULAR_CHAN_AVOID_DUMP
+	else {
+		wl_cellavoid_dump_chan_info_list(cfg);
+	}
+#endif /* WL_CELLULAR_CHAN_AVOID_DUMP */
 
 	if (wl_cellavoid_mandatory_isset(cfg->cellavoid_info, NL80211_IFTYPE_AP)) {
 		WL_INFORM_MEM(("Mandatory flag for AP is set, skip the ACS, safe_chspec_cnt %d\n",
@@ -6928,16 +6945,28 @@ success:
 		p_chspec_list = chspeclist;
 	}
 
-	for (i = 0; i < freq_list_len; i++) {
-		if ((parameter->freq_bands & CHSPEC_TO_WLC_BAND(p_chspec_list[i])) == 0) {
-			WL_DBG(("Skipping no matched band channel(0x%x).\n", p_chspec_list[i]));
-			continue;
-		}
+	if (!wf_chspec_valid(parameter->scc_chspec)) {
+		for (i = 0; i < freq_list_len; i++) {
+			if ((parameter->freq_bands & CHSPEC_TO_WLC_BAND(p_chspec_list[i])) == 0) {
+				WL_DBG(("Skipping no matched band channel(0x%x).\n",
+					p_chspec_list[i]));
+				continue;
+			}
 
-		wf_chspec_ntoa(p_chspec_list[i], chanspec_str);
-		WL_INFORM_MEM(("ACS : %s (0x%x)\n", chanspec_str, p_chspec_list[i]));
-		wl_cfgscan_acs_parse_parameter(cfg, req_len, pList,
-			p_chspec_list[i], parameter);
+			/* Limit 2G channels to 1, 6, 11 */
+			if (CHSPEC_IS2G(p_chspec_list[i])) {
+				channel_2g =  wf_chspec_ctlchan((chanspec_t)p_chspec_list[i]);
+				if (!(IS_P2P_SOCIAL_CHANNEL(channel_2g))) {
+					WL_DBG(("Skipping 2G channel %d\n", channel_2g));
+					continue;
+				}
+			}
+
+			wf_chspec_ntoa(p_chspec_list[i], chanspec_str);
+			WL_INFORM_MEM(("ACS : %s (0x%x)\n", chanspec_str, p_chspec_list[i]));
+			wl_cfgscan_acs_parse_parameter(cfg, req_len, pList,
+				p_chspec_list[i], parameter);
+		}
 	}
 
 exit:
@@ -7958,4 +7987,22 @@ u8 wl_cfgscan_get_max_num_chans_per_bw(chanspec_t chspec)
 
 	}
 	return max_num_chans;
+}
+
+void
+wl_connected_channel_debuggability(struct bcm_cfg80211 * cfg, struct net_device * ndev)
+{
+	chanspec_t *chanspec;
+	struct ieee80211_channel *chan;
+	u32 center_freq;
+	struct wiphy *wiphy = bcmcfg_to_wiphy(cfg);
+
+	chanspec = (chanspec_t *)wl_read_prof(cfg, ndev, WL_PROF_CHAN);
+	center_freq = wl_channel_to_frequency(wf_chspec_ctlchan(*chanspec),
+			CHSPEC_BAND(*chanspec));
+
+	chan = ieee80211_get_channel(wiphy, center_freq);
+	if (chan) {
+		WL_INFORM_MEM(("Connected center_freq:%d flags:%x\n", center_freq, chan->flags));
+	}
 }
