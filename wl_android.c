@@ -15040,8 +15040,8 @@ wl_cfg80211_register_static_if(struct bcm_cfg80211 *cfg, u16 iftype, char *ifnam
 	mac_addr[0] |= 0x02;
 #endif /* DHD_USE_RANDMAC */
 
-	ndev = dhd_cfg80211_allocate_if(cfg, ifidx, ifname, mac_addr,
-		WL_BSSIDX_MAX, NULL, FALSE);
+	ndev = wl_cfg80211_allocate_if(cfg, ifidx, ifname, mac_addr,
+		WL_BSSIDX_MAX, NULL);
 	if (unlikely(!ndev)) {
 		WL_ERR(("Failed to allocate static_if\n"));
 		goto fail;
