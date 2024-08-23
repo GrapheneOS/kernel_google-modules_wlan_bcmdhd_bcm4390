@@ -534,7 +534,7 @@ BCMFASTPATH(pktsegcnt)(osl_t *osh, void *p)
 			cnt++;
 		}
 #ifdef BCMLFRAG
-		if (BCMLFRAG_ENAB() && PKTISTXFRAG(osh, p)) {
+		if (BCMLFRAG_ENAB() && PKTISFRAG(osh, p)) {
 				cnt += PKTFRAGTOTNUM(osh, p);
 		}
 #endif /* BCMLFRAG */
@@ -745,7 +745,7 @@ struct bcm_sm_log_info {
  *
  * @return Returns the pointer to logger instance
  */
-bcm_sm_log_info_t *
+void *
 bcm_sm_logger_init(osl_t *osh, uint32 flags, uint32 num_entries, uint32 module_entry_sz)
 {
 	bcm_sm_log_info_t *bsli;
@@ -763,7 +763,7 @@ bcm_sm_logger_init(osl_t *osh, uint32 flags, uint32 num_entries, uint32 module_e
 
 		if (flags & BCM_SM_LOG_FLAG_EVENT_PRESENT) {
 			bsli->event = MALLOCZ(osh, (num_entries * sizeof(*bsli->state)));
-			if (!bsli->event) {
+			if (!bsli->state) {
 				goto fail;
 			}
 		}
@@ -787,23 +787,14 @@ bcm_sm_logger_init(osl_t *osh, uint32 flags, uint32 num_entries, uint32 module_e
 	return bsli;
 
 fail:
-	bcm_sm_logger_deinit(osh, bsli);
-	return NULL;
-}
-
-void
-bcm_sm_logger_deinit(osl_t *osh, bcm_sm_log_info_t *bsli)
-{
-	if (bsli == NULL) {
-		return;
-	}
-
-	MFREE(osh, bsli->state, (bsli->num_entries * sizeof(*bsli->state)));
-	MFREE(osh, bsli->event, (bsli->num_entries * sizeof(*bsli->event)));
-	MFREE(osh, bsli->call_site, (bsli->num_entries * sizeof(*bsli->call_site)));
-	MFREE(osh, bsli->time_stamp, (bsli->num_entries * sizeof(*bsli->time_stamp)));
-	MFREE(osh, bsli->data, (bsli->num_entries * bsli->module_entry_sz));
+	MFREE(osh, bsli->state, (num_entries * sizeof(*bsli->state)));
+	MFREE(osh, bsli->event, (num_entries * sizeof(*bsli->event)));
+	MFREE(osh, bsli->call_site, (num_entries * sizeof(*bsli->call_site)));
+	MFREE(osh, bsli->time_stamp, (num_entries * sizeof(*bsli->time_stamp)));
+	MFREE(osh, bsli->data, (num_entries * (num_entries * module_entry_sz)));
 	MFREE(osh, bsli, sizeof(*bsli));
+
+	return NULL;
 }
 
 /**

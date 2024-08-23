@@ -1597,7 +1597,7 @@ wl_cfg80211_cleanup_virtual_ifaces(struct bcm_cfg80211 *cfg, bool rtnl_lock_reqd
 					/* hold the rtnl lock explicitly for vendor hal callers */
 					rtnl_lock_reqd = true;
 				}
-				_wl_cfg80211_post_ifdel(iter->ndev, rtnl_lock_reqd, 0);
+				wl_cfg80211_post_ifdel(iter->ndev, rtnl_lock_reqd, 0);
 			}
 		}
 	}
@@ -2324,9 +2324,6 @@ wl_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 		cur_chspec =
 			wl_cellavoid_find_widechspec_fromchspec(cfg->cellavoid_info, chspec, dev);
 		if (cur_chspec == INVCHANSPEC) {
-#ifdef WL_CELLULAR_CHAN_AVOID_DUMP
-			wl_cellavoid_dump_chan_info_list(cfg);
-#endif /* WL_CELLULAR_CHAN_AVOID_DUMP */
 			wl_cellavoid_sync_unlock(cfg);
 			return BCME_ERROR;
 		}
@@ -9510,6 +9507,83 @@ exit:
 	return res;
 }
 #endif /* KEEP_ALIVE && OEM_ANDROID */
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
+s32
+wl_cfgvif_set_eht_features(struct net_device *dev, struct bcm_cfg80211 *cfg,
+	u32 eht_mask)
+{
+	bcm_xtlv_t read_eht_xtlv;
+	uint8 set_eht_xtlv[32];
+	int set_eht_xtlv_len = sizeof(set_eht_xtlv);
+	xtlv_v32_t v32;
+	u32 eht_feature = 0;
+	s32 err = BCME_OK;
+	uint8 iovar_buf[WLC_IOCTL_SMLEN];
+
+	bzero(&v32, sizeof(xtlv_v32_t));
+	bzero(&read_eht_xtlv, sizeof(read_eht_xtlv));
+
+	read_eht_xtlv.id = WL_EHT_CMD_FEATURES;
+	read_eht_xtlv.len = 0;
+
+	err = wldev_iovar_getbuf(dev, "eht", &read_eht_xtlv, sizeof(read_eht_xtlv),
+			iovar_buf, WLC_IOCTL_SMLEN, NULL);
+	if (err < 0) {
+		WL_ERR(("EHT get failed. error=%d\n", err));
+		goto exit;
+	} else {
+		eht_feature = *(int*)iovar_buf;
+		eht_feature = dtoh32(eht_feature);
+	}
+
+	v32.id = WL_EHT_CMD_FEATURES;
+	v32.len = sizeof(s32);
+
+	v32.val = eht_feature;
+
+	if (eht_mask) {
+		if (eht_mask & DHD_DISABLE_STA_EHT) {
+			/* Host enforced EHT disable */
+			v32.val |= WL_EHT_FEATURES_STA_DISABLE;
+			WL_INFORM(("host enforced STA EHT disable. fw_cap:0x%x\n",
+					(eht_feature & WL_EHT_FEATURES_STA_DISABLE)));
+		}
+
+		if (eht_mask & DHD_ENABLE_STA_EHT) {
+			if (eht_feature & WL_EHT_FEATURES_STA_DISABLE) {
+				v32.val &= ~WL_EHT_FEATURES_STA_DISABLE;
+				WL_INFORM(("Reset host enforced EHT disable. fw_cap:0x%x\n",
+						v32.val));
+			}
+		}
+	}
+
+	if (eht_feature == v32.val) {
+		WL_INFORM(("eht_feature val is unchanged, skip overwrite\n"));
+		goto exit;
+	}
+
+	err = bcm_pack_xtlv_buf((void *)&v32, set_eht_xtlv, sizeof(set_eht_xtlv),
+			BCM_XTLV_OPTION_ALIGN32, wl_get_uint_cb, wl_pack_uint_cb,
+			&set_eht_xtlv_len);
+	if (err != BCME_OK) {
+		WL_ERR(("failed to pack eht settvl=%d\n", err));
+		goto exit;
+	}
+
+	err = wldev_iovar_setbuf(dev, "eht", set_eht_xtlv, sizeof(set_eht_xtlv),
+			cfg->ioctl_buf, WLC_IOCTL_SMLEN, &cfg->ioctl_buf_sync);
+	if (err < 0) {
+		WL_ERR(("failed to set eht features, error=%d\n", err));
+		goto exit;
+	}
+
+	WL_INFORM_MEM(("Set EHT done: 0x%x\n", v32.val));
+exit:
+	return err;
+}
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0) */
 
 s32
 wl_cfgvif_get_eht_features(struct net_device *dev, u32 *eht_feature_val)

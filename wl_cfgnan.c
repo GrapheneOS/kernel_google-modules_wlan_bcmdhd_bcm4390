@@ -2717,17 +2717,11 @@ wl_cfgnan_set_nan_soc_chans(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		wl_cellavoid_sync_unlock(cfg);
 		if (!allowed_soc_2g) {
 			WL_ERR(("2G social channel is in the unsafe list\n"));
-#ifdef WL_CELLULAR_CHAN_AVOID_DUMP
-			wl_cellavoid_dump_chan_info_list(cfg);
-#endif /* WL_CELLULAR_CHAN_AVOID_DUMP */
 			return BCME_ERROR;
 		}
 		if (!allowed_soc_5g) {
 			WL_ERR(("5G social channel is in the unsafe list\n"));
 			soc_chans->soc_chan_5g = 0;
-#ifdef WL_CELLULAR_CHAN_AVOID_DUMP
-			wl_cellavoid_dump_chan_info_list(cfg);
-#endif /* WL_CELLULAR_CHAN_AVOID_DUMP */
 		}
 #endif /* WL_CELLULAR_CHAN_AVOID */
 	} else {

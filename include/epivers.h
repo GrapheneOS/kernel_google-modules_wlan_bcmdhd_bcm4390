@@ -27,47 +27,47 @@
 
 #define EPI_MINOR_VERSION	10
 
-#define EPI_RC_NUMBER		422
+#define EPI_RC_NUMBER		407
 
-#define EPI_INCREMENTAL_NUMBER	22
+#define EPI_INCREMENTAL_NUMBER	27
 
 #define EPI_BUILD_NUMBER	0
 
-#define EPI_VERSION		103, 10, 407, 22
+#define EPI_VERSION		103, 10, 407, 27
 
-#define EPI_VERSION_NUM		0x670a1a60
+#define EPI_VERSION_NUM		0x670a1971
 
-#define EPI_UNIQUE_NUM		0x670a19716
+#define EPI_UNIQUE_NUM		0x670a1971b
 
-#define EPI_VERSION_DEV		103.10.422
+#define EPI_VERSION_DEV		103.10.407
 
 /* Driver Version String, ASCII, 32 chars max */
 #if defined (WLTEST)
-#define EPI_VERSION_STR		"103.10.407.22 (wlan=r1074288 WLTEST)"
+#define EPI_VERSION_STR		"103.10.407.27 (wlan=r1076258 WLTEST)"
 #elif (defined (BCMDBG_ASSERT) && \
 	!defined (BCMDBG_ASSERT_DISABLED) && \
 	!defined (ASSERT_FP_DISABLE))
-#define EPI_VERSION_STR		"103.10.407.22 (wlan=r1074288 ASSRT)"
+#define EPI_VERSION_STR		"103.10.407.27 (wlan=r1076258 ASSRT)"
 #else
-#define EPI_VERSION_STR		"103.10.407.22 (wlan=r1074288)"
+#define EPI_VERSION_STR		"103.10.407.27 (wlan=r1076258)"
 #endif /* BCMINTERNAL */
 
 /* Macros for coex firmware. */
 #define CXFW_MAJOR_VERSION	2024
 
-#define CXFW_MINOR_VERSION	7
+#define CXFW_MINOR_VERSION	8
 
-#define CXFW_RC_NUMBER		19
+#define CXFW_RC_NUMBER		9
 
 #define CXFW_INCREMENTAL_NUMBER	0
 
-#define CXFW_VERSION		2024, 7, 19, 0
+#define CXFW_VERSION		2024, 8, 9, 0
 
-#define CXFW_VERSION_NUM	0x670a1a60
+#define CXFW_VERSION_NUM	0x670a1971
 
-#define CXFW_UNIQUE_NUM		0x670a19716
+#define CXFW_UNIQUE_NUM		0x670a1971b
 
 /* COEX Firmware Version String, ASCII */
-#define CXFW_VERSION_STR	"2024.07.19 (coex=r1064907)"
+#define CXFW_VERSION_STR	"2024.08.09 (coex=r1064907)"
 
 #endif /* _epivers_h_ */

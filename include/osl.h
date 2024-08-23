@@ -324,17 +324,6 @@ do { \
 #define PKTRESETTXALFRAG(osh, lb)	BCM_REFERENCE(osh)
 #endif
 
-/* RX ALFRAG */
-#ifndef PKT_IS_RX_ALFRAG
-#define PKT_IS_RX_ALFRAG(osh, lb)	(0)
-#endif
-#ifndef PKT_SET_RX_ALFRAG
-#define PKT_SET_RX_ALFRAG(osh, lb)	(BCM_REFERENCE(osh))
-#endif
-#ifndef PKT_RESET_RX_ALFRAG
-#define PKT_RESET_RX_ALFRAG(osh, lb)	(BCM_REFERENCE(osh))
-#endif
-
 #ifndef PKTNUMMPDUS
 #define PKTNUMMPDUS(osh, lb)		(1)
 #endif
