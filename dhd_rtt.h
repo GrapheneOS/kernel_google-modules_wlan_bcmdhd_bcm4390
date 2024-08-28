@@ -476,26 +476,10 @@ typedef struct rtt_mc_result {
 } rtt_mc_result_t;
 
 struct rtt_az_result_detail {
-	/* Minimum non-trigger based (non-TB) dynamic measurement
-	 * time assigned by responder in 100 us unit
-	 */
-	uint32			min_delta;
-	/* Maximum non-trigger based (non-TB) dynamic measurement
-	 * time assigned by responder in 10 ms unit
-	 */
-	uint32			max_delta;
-	/* Multiple transmissions of HE-LTF symbols in an HE (I2R) Ranging NDP.
-	 * An HE-LTF repetition value of 1 indicates no repetitions.
-	 */
+	uint32			min_delta; /* in 100 us unit */
+	uint32			max_delta; /* in 10 ms unit */
 	uint8			i2r_ltf_rep;
-	/* Multiple transmissions of HE-LTF symbols in an HE (R2I) Ranging NDP.
-	 * An HE-LTF repetition value of 1 indicates no repetitions.
-	 */
 	uint8			r2i_ltf_rep;
-	/* Number of transmit space-time streams used */
-	uint8			i2r_sts;
-	/* Number of receive space-time streams used */
-	uint8			r2i_sts;
 };
 
 typedef struct rtt_az_result {

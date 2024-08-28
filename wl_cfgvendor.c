@@ -412,11 +412,11 @@ wl_cfgvendor_get_feature_set(struct wiphy *wiphy,
 {
 	int err = 0;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
-	uint64 reply;
+	int reply;
 
 	reply = dhd_dev_get_feature_set(bcmcfg_to_prmry_ndev(cfg));
 
-	err =  wl_cfgvendor_send_cmd_reply(wiphy, &reply, sizeof(uint64));
+	err =  wl_cfgvendor_send_cmd_reply(wiphy, &reply, sizeof(int));
 	if (unlikely(err))
 		WL_ERR(("Vendor Command reply failed ret:%d \n", err));
 
@@ -430,7 +430,7 @@ wl_cfgvendor_get_feature_set_matrix(struct wiphy *wiphy,
 	int err = 0;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	struct sk_buff *skb;
-	uint32 reply;
+	int reply;
 	int mem_needed, i;
 
 	mem_needed = VENDOR_REPLY_OVERHEAD +
@@ -2322,7 +2322,7 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 				goto free_mem;
 			}
 
-			ret = nla_put_u32(skb, RTT_ATTRIBUTE_RESULT_NTB_MIN_DELTA,
+			ret = nla_put_u32(skb, RTT_ATTRIBUTE_NTB_MIN_DELTA,
 				rtt_result->u.az_result.rtt_detail.min_delta);
 			if (ret < 0) {
 				WL_ERR(("Failed to put RTT_ATTRIBUTE_NTB_MIN_DELTA, ret:%d\n",
@@ -2330,7 +2330,7 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 				goto free_mem;
 			}
 
-			ret = nla_put_u32(skb, RTT_ATTRIBUTE_RESULT_NTB_MAX_DELTA,
+			ret = nla_put_u32(skb, RTT_ATTRIBUTE_NTB_MAX_DELTA,
 				rtt_result->u.az_result.rtt_detail.max_delta);
 			if (ret < 0) {
 				WL_ERR(("Failed to put RTT_ATTRIBUTE_NTB_MAX_DELTA, ret:%d\n",
@@ -2338,21 +2338,6 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 				goto free_mem;
 			}
 
-			ret = nla_put_u8(skb, RTT_ATTRIBUTE_RESULT_NTB_I2R_STS,
-				rtt_result->u.az_result.rtt_detail.i2r_sts);
-			if (ret < 0) {
-				WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT_NTB_I2R_STS, ret:%d\n",
-					ret));
-				goto free_mem;
-			}
-
-			ret = nla_put_u8(skb, RTT_ATTRIBUTE_RESULT_NTB_R2I_STS,
-				rtt_result->u.az_result.rtt_detail.r2i_sts);
-			if (ret < 0) {
-				WL_ERR(("Failed to put RTT_ATTRIBUTE_RESULT_NTB_R2I_STS, ret:%d\n",
-					ret));
-				goto free_mem;
-			}
 		}
 		nla_nest_end(skb, rtt_nl_hdr);
 		cfg80211_vendor_event(skb, kflags);
@@ -14730,10 +14715,8 @@ const struct nla_policy rtt_attr_policy[RTT_ATTRIBUTE_MAX] = {
 	.len = sizeof(struct rtt_mc_result_detail) },
 	[RTT_ATTRIBUTE_RESULT_I2R_LTF_REP_COUNT] = { .type = NLA_U8 },
 	[RTT_ATTRIBUTE_RESULT_R2I_LTF_REP_COUNT] = { .type = NLA_U8 },
-	[RTT_ATTRIBUTE_RESULT_NTB_MIN_DELTA] = { .type = NLA_U32 },
-	[RTT_ATTRIBUTE_RESULT_NTB_MAX_DELTA] = { .type = NLA_U32 },
-	[RTT_ATTRIBUTE_RESULT_NTB_I2R_STS] = { .type = NLA_U8 },
-	[RTT_ATTRIBUTE_RESULT_NTB_R2I_STS] = { .type = NLA_U8 },
+	[RTT_ATTRIBUTE_NTB_MIN_DELTA] = { .type = NLA_U32 },
+	[RTT_ATTRIBUTE_NTB_MAX_DELTA] = { .type = NLA_U32 },
 };
 #endif /* RTT_SUPPORT */
 

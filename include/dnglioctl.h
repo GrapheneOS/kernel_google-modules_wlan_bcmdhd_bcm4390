@@ -382,6 +382,7 @@ typedef enum {
 	HNDEPMU_otp_SUBCMD = 6u,	/* otp registers read/write */
 	HNDEPMU_wsl_SUBCMD = 7u,	/* wsl registers read/write */
 	HNDEPMU_revinfo_SUBCMD = 8u,	/* FW returns chip revinfo */
+	HNDEPMU_dump_SUBCMD = 9u,	/* provides dump of epmu region or other context */
 	HNDEPMU_reg_SUBCMD = 0xFEu	/* epmu(all) registers read/write */
 } epmu_subcmd_id_t;
 
@@ -404,10 +405,36 @@ typedef struct epmu_reg_rw {
  * used in 'revinfo' subcmd
  */
 typedef struct epmu_rev_info {
-	uint16  ver;
+	uint16 ver;
 	uint16 len;
 	uint16 chipid;	/* chip id */
 	uint16 revid;	/* revision id */
 } epmu_rev_info_t;
+
+/*
+ * wl epmu dump - defines
+ */
+
+#define EPMU_DVFS_REGN_STR	"dvfs"
+#define EPMU_VREG_REGN_STR	"vreg"
+#define EPMU_SWS_REGN_STR	"sws"
+#define EPMU_CHIP_REGN_STR	"chip"
+#define EPMU_OTP_REGN_STR	"otp"
+#define EPMU_WSL_REGN_STR	"wsl"
+
+/*
+ * 'dump' sub-cmd response struct
+ * 'ver' - version of the implementaton
+ * 'len' - strlen(val) + 1;
+ * 'val' - string of register 'addr: val' pairs
+ */
+typedef struct epmu_dump_resp {
+	uint16 ver;
+	uint16 len;
+	char val[];		/* preformated string of register 'addr: val' pairs */
+} epmu_dump_resp_t;
+
+#define EPMU_DUMP_VER_0		0u
+#define EPMU_DUMP_VER		EPMU_DUMP_VER_0
 
 #endif /* _dngl_ioctl_h_ */
