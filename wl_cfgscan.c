@@ -7144,6 +7144,14 @@ wl_cfgscan_acs(struct wiphy *wiphy,
 				break;
 			}
 		}
+
+		if (req_len <= 0) {
+			ret = BCME_BADARG;
+			WL_ERR(("%s: *Error, Freq conversion resulted in (%d) no of frequencies\n",
+				__FUNCTION__, req_len));
+			break;
+		}
+
 		WL_TRACE(("%s: list_len=%d after freq_list\n", __FUNCTION__, req_len));
 
 		pReq->count = req_len;
